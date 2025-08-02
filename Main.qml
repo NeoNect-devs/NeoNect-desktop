@@ -1,11 +1,11 @@
 import QtQuick
-import QtQuick.Controls
+//import QtQuick.Controls
 
 Window {
     width: 640
     height: 480
     visible: true
-    title: qsTr("Avila")
+    title: "Avila"
     color: Qt.darker("grey",2)
 
     SidebarCanvas

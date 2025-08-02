@@ -6,7 +6,7 @@ Rectangle{
 
     color: Qt.darker("white",6)
     anchors{
-        top: topbar.bottom
+        top: parent.bottom
         bottom: parent.bottom
         right: parent.right
     }

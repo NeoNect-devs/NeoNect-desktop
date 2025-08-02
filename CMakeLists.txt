@@ -4,6 +4,8 @@ project(Avila VERSION 0.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_PREFIX_PATH "C:/Qt/6.9.1/mingw_64/lib/cmake")
+
 find_package(Qt6 REQUIRED COMPONENTS Quick)
 
 qt_standard_project_setup(REQUIRES 6.5)
@@ -23,6 +25,8 @@ qt_add_qml_module(Avila
         QML_FILES ChatboxCanvas.qml
         QML_FILES MessageInputCanvas.qml
         QML_FILES MainPanel.qml
+        QML_FILES MessageBubble.qml
+        QML_FILES MessageBubble.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

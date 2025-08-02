@@ -2,6 +2,7 @@ import QtQuick
 
     Rectangle{
         id:root
+        property bool memberlistVisibility: true
         height: 50
         clip:true
         anchors{
@@ -73,18 +74,8 @@ import QtQuick
                     MouseArea{
                         id:showMemberMouseArea
                         anchors.fill: parent
-                        onClicked:{
 
-                            memberlist.visible = !memberlist.visible
-                            if(memberlist.visible)
-                            {
-                                chatbox.anchors.right = memberlist.left
-                                chatbox.anchors.rightMargin = 7
-                            }else{
-                                chatbox.anchors.right = chatbox.parent.right
-                                chatbox.anchors.rightMargin = 0
-                            }
-                        }
+                        onClicked: root.memberlistVisibility = !root.memberlistVisibility
                     }
                 }
             }

@@ -1,5 +1,4 @@
 import QtQuick
-
 Rectangle{
     id:root
     color: "#00000000" //transparent
@@ -17,12 +16,12 @@ Rectangle{
 
     TopbarCanvas{
         id:topbar
+
         height:50
         anchors{
             left: parent.left
             right: parent.right
             top: parent.top
-
         }
 
     }
@@ -36,6 +35,7 @@ Rectangle{
             right: parent.right
             //left: chatbox.right
         }
+        visible: topbar.memberlistVisibility
     }
 
     ChatboxCanvas{
@@ -43,7 +43,8 @@ Rectangle{
 
         anchors{
             left:parent.left
-            right:memberlist.left
+            right: (memberlist.visible)? memberlist.left : parent.right
+            rightMargin: (memberlist.visible)? 7 : 0
             top: topbar.bottom
             bottom: parent.bottom
         }
