@@ -26,7 +26,6 @@ qt_add_qml_module(Avila
         QML_FILES MessageInputCanvas.qml
         QML_FILES MainPanel.qml
         QML_FILES MessageBubble.qml
-        QML_FILES MessageBubble.qml
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

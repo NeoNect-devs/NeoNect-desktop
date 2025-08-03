@@ -1,43 +1,97 @@
+// MessageBubble.qml
 import QtQuick
 import QtQuick.Layouts
 
-RowLayout {
+Item {
     id: root
-    width: parent.width // Take the full width of its container (e.g., the ScrollView's layout).
+    width: parent.width
+    height: messageRow.height
 
     // --- Public Properties ---
-    // These can be set from outside when you create a MessageBubble.
-    property string messageText: "This is a default message that is long enough to demonstrate word wrapping."
-    property bool sentByMe: false // Set to true for your messages, false for others.
+    property string messageText: "This is a default message."
+    property bool sentByMe: false
+    property bool avatarVisible: false
+    property url avatarSource: ""
 
-    // This Spacer pushes the bubble to the right if sentByMe is true.
-    Item { Layout.fillWidth: !root.sentByMe }
+    RowLayout {
+        id: messageRow
+        width: parent.width
+        spacing: 6
 
-    // --- The Bubble ---
-    Rectangle {
-        id: bubbleBackground
-        // Adjust width based on the text content, but don't let it get too wide.
-        //width: Math.min(messageLabel.implicitWidth + 24, messagebubble.width * 0.75)
-        Layout.preferredWidth: Math.min(messageLabel.implicitWidth + 24, root.width * 0.75)
-        //height: messageLabel.implicitHeight + 16
-        Layout.preferredHeight: messageLabel.implicitHeight + 16
-        radius: 12
+        // --- Avatar for received messages ---
+        Item {
+            Layout.preferredWidth: 32
+            Layout.leftMargin: 12
+            visible: !root.sentByMe
 
-        // Change color based on the sender.
-        color: root.sentByMe ? "#5865F2" : "#313338"
+            Image {
+                id: receivedAvatar
+                width: 32
+                height: 32
+                source: root.avatarSource
+                anchors.bottom: parent.bottom
+                visible: root.avatarVisible
+                fillMode: Image.PreserveAspectCrop
 
-        Text {
-            id: messageLabel
-            text: root.messageText
-            width: bubbleBackground.width - 24 // 12 pixels of padding on each sid
-            //anchors.fill: parent
-            //anchors.margins: root.sentByMe ? 10 : 12 // Adjust margins slightly for better text alignment.
-            anchors.centerIn: parent
-            wrapMode: Text.WordWrap // Crucial for long messages.
-            color: "#DCDDDE"
+                // Simple circular clipping by overlaying a transparent rectangle with a radius
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 16
+                    color: "transparent"
+                    border.color: "transparent"
+                    antialiasing: true
+                }
+            }
+        }
+
+        // --- Spacer to align sent messages to the right ---
+        Item { Layout.fillWidth: root.sentByMe }
+
+        // --- The Bubble ---
+        Rectangle {
+            id: bubbleBackground
+            Layout.preferredWidth: Math.min(messageLabel.implicitWidth + 24, root.width * 0.7)
+            Layout.preferredHeight: messageLabel.implicitHeight + 16
+            radius: 12
+            color: root.sentByMe ? "#5865F2" : "#40444B"
+
+            Text {
+                id: messageLabel
+                text: root.messageText
+                width: bubbleBackground.width - 24
+                anchors.centerIn: parent
+                wrapMode: Text.Wrap // Handles long unbroken strings
+                color: "#DCDDDE"
+            }
+        }
+
+        // --- Spacer to align received messages to the left ---
+        Item { Layout.fillWidth: !root.sentByMe }
+
+        // --- Avatar for sent messages ---
+        Item {
+            Layout.preferredWidth: 32
+            Layout.rightMargin: 12
+
+            visible: root.sentByMe
+
+            Image {
+                id: sentAvatar
+                width: 32
+                height: 32
+                source: root.avatarSource
+                anchors.bottom: parent.bottom
+                visible: root.avatarVisible
+                fillMode: Image.PreserveAspectCrop
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 16
+                    color: "transparent"
+                    border.color: "transparent"
+                    antialiasing: true
+                }
+            }
         }
     }
-
-    // This Spacer pushes the bubble to the left if sentByMe is false.
-    Item { Layout.fillWidth: root.sentByMe }
 }

@@ -33,7 +33,7 @@ Rectangle{
             top: topbar.bottom
             bottom: parent.bottom
             right: parent.right
-            //left: chatbox.right
+            // left: chatbox.right
         }
         visible: topbar.memberlistVisibility
     }
