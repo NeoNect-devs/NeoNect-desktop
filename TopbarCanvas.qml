@@ -20,8 +20,8 @@ import QtQuick
             height: 50
 
             border.width:2
-            border.color: Qt.darker("lightgrey",1.5)
-            color: Qt.darker("#444",2)
+            border.color:"#171717" //Qt.darker("lightgrey",1.5)
+            color: "#101210"
             anchors{
                 right: parent.right
                 left: parent.left
@@ -48,7 +48,7 @@ import QtQuick
 
                 Text {
                     id:lblServerDesc
-                    text:"Avila_Server.com"
+                    text:"Avila"
                     font.pointSize: 16
                     //font.family:"Bangers"
                     color: "white"

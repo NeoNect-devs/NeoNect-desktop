@@ -32,7 +32,7 @@ import QtQuick
         Rectangle{
             id: sidebar
 
-            color: Qt.darker("grey",4)
+            color: "#101210"
             anchors{
                 top: btnMenu.bottom
                 bottom: parent.bottom

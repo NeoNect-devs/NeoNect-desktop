@@ -6,7 +6,7 @@ Window {
     height: 480
     visible: true
     title: "Avila"
-    color: Qt.darker("grey",2)
+    color: "#1A1A1A"
 
     SidebarCanvas
     {

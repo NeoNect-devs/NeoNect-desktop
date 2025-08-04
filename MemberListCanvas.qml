@@ -4,7 +4,7 @@ Rectangle{
     id:root
     width:175
 
-    color: Qt.darker("white",6)
+    color: "#101210"
     anchors{
         top: parent.bottom
         bottom: parent.bottom

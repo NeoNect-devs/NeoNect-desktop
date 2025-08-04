@@ -2,96 +2,47 @@
 import QtQuick
 import QtQuick.Layouts
 
+// The root Item now fills the width of its column in the parent layout.
+// This provides a stable width for the bubble inside to be positioned against.
 Item {
     id: root
-    width: parent.width
-    height: messageRow.height
+    Layout.fillWidth: true
+    // *** FIX: Use implicitHeight to notify the parent layout of size changes. ***
+        // ColumnLayout is designed to work with implicitHeight, not height.
+    implicitHeight: bubble.height
 
     // --- Public Properties ---
-    property string messageText: "This is a default message."
+    property string messageText: "..."
     property bool sentByMe: false
-    property bool avatarVisible: false
-    property url avatarSource: ""
 
-    RowLayout {
-        id: messageRow
-        width: parent.width
-        spacing: 6
+    // --- Visuals ---
+    Rectangle {
+        id: bubble
 
-        // --- Avatar for received messages ---
-        Item {
-            Layout.preferredWidth: 32
-            Layout.leftMargin: 12
-            visible: !root.sentByMe
+        // --- FIX: Anchor the bubble to the right or left within the root Item. ---
+        anchors.right: root.sentByMe ? parent.right : undefined
+        anchors.left: !root.sentByMe ? parent.left : undefined
 
-            Image {
-                id: receivedAvatar
-                width: 32
-                height: 32
-                source: root.avatarSource
-                anchors.bottom: parent.bottom
-                visible: root.avatarVisible
-                fillMode: Image.PreserveAspectCrop
+        // The bubble's width is calculated based on its text content, but is
+        // constrained by the root Item's width (which is stable).
+        width: Math.min(messageLabel.implicitWidth + 24, root.width)
+        // The bubble's height is determined by the actual height of the wrapped text.
+        height: messageLabel.height + 16
 
-                // Simple circular clipping by overlaying a transparent rectangle with a radius
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 16
-                    color: "transparent"
-                    border.color: "transparent"
-                    antialiasing: true
-                }
-            }
-        }
+        color: root.sentByMe ? "#BCC5C9" : "#1D1F1D"
+        radius: 12
 
-        // --- Spacer to align sent messages to the right ---
-        Item { Layout.fillWidth: root.sentByMe }
+        Text {
+            id: messageLabel
+            text: root.messageText
+            color: root.sentByMe ? "black" : "#DCDDDE"
+            font.pixelSize: 14
 
-        // --- The Bubble ---
-        Rectangle {
-            id: bubbleBackground
-            Layout.preferredWidth: Math.min(messageLabel.implicitWidth + 24, root.width * 0.7)
-            Layout.preferredHeight: messageLabel.implicitHeight + 16
-            radius: 12
-            color: root.sentByMe ? "#5865F2" : "#40444B"
-
-            Text {
-                id: messageLabel
-                text: root.messageText
-                width: bubbleBackground.width - 24
-                anchors.centerIn: parent
-                wrapMode: Text.Wrap // Handles long unbroken strings
-                color: "#DCDDDE"
-            }
-        }
-
-        // --- Spacer to align received messages to the left ---
-        Item { Layout.fillWidth: !root.sentByMe }
-
-        // --- Avatar for sent messages ---
-        Item {
-            Layout.preferredWidth: 32
-            Layout.rightMargin: 12
-
-            visible: root.sentByMe
-
-            Image {
-                id: sentAvatar
-                width: 32
-                height: 32
-                source: root.avatarSource
-                anchors.bottom: parent.bottom
-                visible: root.avatarVisible
-                fillMode: Image.PreserveAspectCrop
-
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 16
-                    color: "transparent"
-                    border.color: "transparent"
-                    antialiasing: true
-                }
-            }
+            // The Text's width is explicitly constrained by the bubble's final width.
+            // This binding is what makes the text wrap correctly.
+            width: bubble.width - 24
+            wrapMode: Text.Wrap
+            anchors.centerIn: parent
         }
     }
 }
