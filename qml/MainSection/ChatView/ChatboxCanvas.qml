@@ -122,7 +122,6 @@ Rectangle {
                         Item { Layout.fillWidth: true; visible: !model.fromMe }
                     }
 
-                    cacheBuffer: 200
                     Component.onCompleted: {
                         ChatHandler.loadMessages(messageModel);
                         Qt.callLater(root.updateStickyAvatar);
