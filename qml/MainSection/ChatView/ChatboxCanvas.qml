@@ -23,7 +23,7 @@ Rectangle {
             if (modelData.fromMe) continue;
 
             const itemTopInView = item.y - messageListView.contentY;
-            const itemBottomInView = itemTopInView + item.height;
+            const itemBottomInView = itemTopInView + item.height-16;
             if (itemBottomInView > 0 && itemTopInView < chatScrollView.height) {
                 const avatarY = Math.max(0, itemTopInView);
                 stickyAvatar.source = modelData.senderAvatar;

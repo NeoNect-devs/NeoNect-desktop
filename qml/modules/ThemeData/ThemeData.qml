@@ -5,6 +5,7 @@ QtObject {
 
 
     // Colors
+    readonly property color mainWindowBackground: "#1F1F1F"
     readonly property color viewsBackground: "#101210"
     readonly property color inputBackground: "#202225"
     readonly property color myBubble: "#BCC5C9"

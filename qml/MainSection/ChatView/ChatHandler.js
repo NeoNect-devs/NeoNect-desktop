@@ -83,3 +83,26 @@ function loadMessages(messageModel) {
         });
     }
 }
+
+function loadMembers(memberModel) {
+    const messages = getFlatMessageList();
+    const uniqueUsers = {};
+
+    // Iterate through all messages to find unique users
+    messages.forEach(msg => {
+        // Add user to the list if they are not the current user ("Me")
+        // and have not been added yet.
+        if (!msg.fromMe && !uniqueUsers[msg.senderName]) {
+            uniqueUsers[msg.senderName] = {
+                name: msg.senderName,
+                avatar: msg.senderAvatar
+            };
+        }
+    });
+
+    // Clear the model and add the unique users found.
+    memberModel.clear();
+    Object.values(uniqueUsers).forEach(user => {
+        memberModel.append(user);
+    });
+}

@@ -4,17 +4,6 @@ Rectangle{
     id:root
     color: "#00000000" //transparent
 
-    anchors
-    {
-        left: parent.right
-        right: parent.right
-        bottom: parent.bottom
-        top: parent.top
-        rightMargin:7
-        bottomMargin:10
-
-    }
-
     TopbarCanvas{
         id:topbar
 

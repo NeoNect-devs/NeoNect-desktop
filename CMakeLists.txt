@@ -30,15 +30,18 @@ qt_add_qml_module(Avila
 
         QML_FILES qml/MainSection/MainPanel.qml
         QML_FILES qml/MainSection/TopView/TopbarCanvas.qml
+
         QML_FILES qml/MainSection/MemberListView/MemberListCanvas.qml
+        QML_FILES qml/MainSection/MemberListView/MemberItem.qml
 
         QML_FILES qml/MainSection/ChatView/ChatboxCanvas.qml
-        QML_FILES qml/MainSection/ChatView/MessageInputCanvas.qml
         QML_FILES qml/MainSection/ChatView/MessageBubble.qml
         QML_FILES qml/MainSection/ChatView/CircularImage.qml
+        QML_FILES qml/MainSection/ChatView/MessageInputCanvas.qml
         QML_FILES qml/MainSection/ChatView/ChatHandler.js
 
         QML_FILES qml/SideSection/SidebarCanvas.qml
+
 
 
 )

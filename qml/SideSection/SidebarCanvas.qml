@@ -3,15 +3,9 @@ import QtQuick
 
     Rectangle{
         id:root
-        width: 67
-        height: parent.height
 
-        color: "#00000000"
-        anchors{
-            top: parent.top
-            bottom: parent.bottom
-            left: parent.left
-        }
+        color: "transparent"
+
         Rectangle{
             id: btnMenu
             height: 60

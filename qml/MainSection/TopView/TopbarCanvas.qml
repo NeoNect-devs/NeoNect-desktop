@@ -2,7 +2,7 @@ import QtQuick
 import Avila 1.0
     Rectangle{
         id:root
-        property bool memberlistVisibility: true
+        property bool memberlistVisibility: false
         height: 50
         clip:true
         color: "#00000000"
