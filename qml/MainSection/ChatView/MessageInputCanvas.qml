@@ -1,63 +1,95 @@
+// MessageInputCanvas.qml
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Avila 1.0
+
 Rectangle {
     id: root
-    color: "#202225" // A darker, more modern background color
-    // anchors{
-    //     leftMargin: 10
-    //     bottomMargin: 10
-    //     rightMargin: 10
-    // }
-    // Signal to notify the parent (ChatboxCanvas) to send a message.
-    signal sendMessage(string msgText)
+    color: "#202225"
     radius: 8
+
+    signal sendMessage(string msgText)
+    signal inputHeightChanged()
+
+    onHeightChanged: inputHeightChanged()
+
+    readonly property int minHeight: 28
+    readonly property int maxHeight: 100
+
+    Layout.preferredHeight: Math.max(minHeight, Math.min(messageInput.implicitHeight, maxHeight))
+
     RowLayout {
         anchors.fill: parent
-        // anchors.leftMargin: 10
-        // anchors.rightMargin: 10
-        //spacing: 10
+        anchors.leftMargin: 10
+        anchors.rightMargin: 10
+        spacing: 10
 
-        // The text input field where the user types their message.
-        TextField {
-            id: messageInput
+        ScrollView {
+            id: scrollView
             Layout.fillWidth: true
             Layout.fillHeight: true
-            // Layout.minimumHeight: root.height
-            // Layout.maximumHeight: root.height
-            placeholderText: "Type a message..."
-            color: "#DCDDDE"
-            placeholderTextColor:"#444444"
-            font.pixelSize:14
-            // Custom background for the text field
-            background: Rectangle {
-                color: "#00000000"
-                //radius: 18
+            rightPadding: 6
+            clip: true
+            // --- FIX: All vertical scrollbar properties are now in one block ---
+            ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+            ScrollBar.vertical: ScrollBar {
+                id: inputScrollbar
+                policy: ScrollBar.AsNeeded // The policy is now set here
+                width: 8
+                size: 0.6
+                position: 0.2
+                active: true
+                anchors {
+                    right: parent.right
+                    top: parent.top
+                    bottom: parent.bottom
+                }
+                background: Rectangle {
+                    color: "transparent"
+                }
+                orientation: Qt.Vertical
+                contentItem: Rectangle {
+                    implicitWidth: 6
+                    radius: 5
+                    implicitHeight: scrollView.height
+                    color: inputScrollbar.pressed ? Qt.darker("grey", 1.5) : "grey"
+                    opacity: inputScrollbar.policy === ScrollBar.AlwaysOn || (inputScrollbar.active && inputScrollbar.size < 1.0) ? 0.75 : 0
+                }
             }
 
-            // When the user presses Enter, emit the sendMessage signal.
-            onAccepted: {
-                if (text.trim() !== "") {
-                    root.sendMessage(text)
-                    text = "" // Clear the input field
+            TextArea {
+                id: messageInput
+                width: scrollView.availableWidth
+
+                placeholderText: "Type a message..."
+                color: "#DCDDDE"
+                placeholderTextColor: "#444444"
+                font.pixelSize: 14
+                wrapMode: Text.Wrap
+
+                Keys.onPressed: (event) => {
+                    if (event.key === Qt.Key_Return && !(event.modifiers & Qt.ShiftModifier)) {
+                        if (text.trim() !== "") {
+                            root.sendMessage(text);
+                            text = "";
+                        }
+                        event.accepted = true;
+                    }
                 }
             }
         }
 
-        // The send button.
         Rectangle {
             id: btnSend
             Layout.preferredWidth: 30
             Layout.preferredHeight: 30
-            //Layout.fillWidth: true
-            //Layout.fillHeight: true
-            color: "#00000000" // A nice blue for the button
-            //radius: 18 // Make it circular
+            Layout.alignment: Qt.AlignBottom
+            color: "transparent"
 
-            // Text or an Icon for the button
             Text {
-                text: "➤" // Using a simple arrow character as an icon
+                text: "➤"
                 anchors.centerIn: parent
                 color: "white"
                 font.pixelSize: 22
@@ -68,12 +100,13 @@ Rectangle {
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
                     if (messageInput.text.trim() !== "") {
-                        root.sendMessage(messageInput.text)
-                        messageInput.text = "" // Clear the input field
+                        root.sendMessage(messageInput.text);
+                        messageInput.text = "";
                     }
                 }
-
             }
+
         }
+
     }
 }

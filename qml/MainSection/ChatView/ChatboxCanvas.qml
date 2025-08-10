@@ -1,9 +1,8 @@
-// ChatboxCanvas.qml
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
-// No longer need GraphicalEffects
 import Avila 1.0
 import "ChatHandler.js" as ChatHandler
 
@@ -24,7 +23,7 @@ Rectangle {
             if (modelData.fromMe) continue;
 
             const itemTopInView = item.y - messageListView.contentY;
-            const itemBottomInView = itemTopInView + item.height - 26;
+            const itemBottomInView = itemTopInView + item.height;
             if (itemBottomInView > 0 && itemTopInView < chatScrollView.height) {
                 const avatarY = Math.max(0, itemTopInView);
                 stickyAvatar.source = modelData.senderAvatar;
@@ -50,6 +49,8 @@ Rectangle {
                 id: chatScrollView
                 clip: true
                 anchors.fill: parent
+                rightPadding: 5
+                topPadding: 5
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                 ScrollBar.vertical: ScrollBar {
@@ -76,17 +77,14 @@ Rectangle {
                     id: messageListView
                     width: chatScrollView.width
                     model: messageModel
-                    // --- FIX: Set a smaller base spacing for all messages ---
                     spacing: 4
                     property int stickyAvatarIndex: -1
 
-                    onContentYChanged: root.updateStickyAvatar()
+                    onContentYChanged: Qt.callLater(root.updateStickyAvatar)
 
                     delegate: RowLayout {
                         width: messageListView.width
                         spacing: 6
-
-                        // --- FIX: Add extra top margin for the first message in a block ---
                         Layout.topMargin: model.isFirstInBlock ? 12 : 0
 
                         Item { Layout.fillWidth: true; visible: model.fromMe }
@@ -124,6 +122,7 @@ Rectangle {
                         Item { Layout.fillWidth: true; visible: !model.fromMe }
                     }
 
+                    cacheBuffer: 200
                     Component.onCompleted: {
                         ChatHandler.loadMessages(messageModel);
                         Qt.callLater(root.updateStickyAvatar);
@@ -142,14 +141,20 @@ Rectangle {
 
         MessageInputCanvas {
             id: messageInput
-            Layout.preferredHeight: 28
             Layout.fillWidth: true
             Layout.topMargin: 6
             Layout.bottomMargin: 6
             Layout.rightMargin: 3
             Layout.leftMargin: 3
+
             onSendMessage: msgText => {
                 ChatHandler.sendMessage(msgText, messageModel);
+                Qt.callLater(messageListView.positionViewAtEnd);
+            }
+
+            // Listen for the signal from the input and scroll the list to the end
+            // to keep the input field visible as it grows.
+            onInputHeightChanged: {
                 Qt.callLater(messageListView.positionViewAtEnd);
             }
         }
