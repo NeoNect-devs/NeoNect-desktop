@@ -14,19 +14,33 @@ qt_add_executable(Avila
     main.cpp
 )
 
+set_source_files_properties(qml/modules/ThemeData/ThemeData.qml
+    PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
+
+set(QT_QML_SKIP_QMLDIR_ENTRY FALSE)
 qt_add_qml_module(Avila
     URI Avila
     VERSION 1.0
-    QML_FILES
-        Main.qml
-        QML_FILES SidebarCanvas.qml
-        QML_FILES TopbarCanvas.qml
-        QML_FILES MemberListCanvas.qml
-        QML_FILES ChatboxCanvas.qml
-        QML_FILES MessageInputCanvas.qml
-        QML_FILES MainPanel.qml
-        QML_FILES MessageBubble.qml
-        QML_FILES MessagesGroup.qml
+
+        QML_FILES qml/Main.qml
+
+
+        QML_FILES qml/modules/ThemeData/ThemeData.qml
+
+        QML_FILES qml/MainSection/MainPanel.qml
+        QML_FILES qml/MainSection/TopView/TopbarCanvas.qml
+        QML_FILES qml/MainSection/MemberListView/MemberListCanvas.qml
+
+        QML_FILES qml/MainSection/ChatView/ChatboxCanvas.qml
+        QML_FILES qml/MainSection/ChatView/MessageInputCanvas.qml
+        QML_FILES qml/MainSection/ChatView/MessageBubble.qml
+        QML_FILES qml/MainSection/ChatView/CircularImage.qml
+        QML_FILES qml/MainSection/ChatView/ChatHandler.js
+
+        QML_FILES qml/SideSection/SidebarCanvas.qml
+
+
 )
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.

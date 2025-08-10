@@ -1,7 +1,6 @@
-// MessageBubble.qml
 import QtQuick
 import QtQuick.Layouts
-
+import Avila 1.0
 // The root Item now fills the width of its column in the parent layout.
 // This provides a stable width for the bubble inside to be positioned against.
 Item {
@@ -29,14 +28,14 @@ Item {
         // The bubble's height is determined by the actual height of the wrapped text.
         height: messageLabel.height + 16
 
-        color: root.sentByMe ? "#BCC5C9" : "#1D1F1D"
+        color: root.sentByMe ? ThemeData.myBubble : ThemeData.othersBubble
         radius: 12
 
         Text {
             id: messageLabel
             text: root.messageText
-            color: root.sentByMe ? "black" : "#DCDDDE"
-            font.pixelSize: 14
+            color: root.sentByMe ? ThemeData.textOnMyMessage : ThemeData.textOnOthersMessage
+            font.pixelSize: ThemeData.chatFontSize
 
             // The Text's width is explicitly constrained by the bubble's final width.
             // This binding is what makes the text wrap correctly.

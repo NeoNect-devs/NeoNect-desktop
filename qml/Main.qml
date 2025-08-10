@@ -1,12 +1,12 @@
 import QtQuick
 import QtQuick.Controls
-
+import Avila 1.0
 Window {
     width: 640
     height: 480
     visible: true
     title: "Avila"
-    color: "#1A1A1A"
+    color: "#1F1F1F"
 
     SidebarCanvas
     {

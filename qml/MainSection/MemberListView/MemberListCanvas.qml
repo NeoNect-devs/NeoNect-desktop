@@ -1,10 +1,10 @@
 import QtQuick
-
+import Avila 1.0
 Rectangle{
     id:root
     width:175
 
-    color: "#101210"
+    color: ThemeData.viewsBackground
     anchors{
         top: parent.bottom
         bottom: parent.bottom

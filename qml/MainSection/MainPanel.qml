@@ -1,4 +1,5 @@
 import QtQuick
+import Avila 1.0
 Rectangle{
     id:root
     color: "#00000000" //transparent
@@ -18,10 +19,13 @@ Rectangle{
         id:topbar
 
         height:50
+
         anchors{
             left: parent.left
             right: parent.right
             top: parent.top
+            //bottom: chatbox.top
+
         }
 
     }
@@ -34,6 +38,7 @@ Rectangle{
             bottom: parent.bottom
             right: parent.right
             // left: chatbox.right
+            topMargin: 3
         }
         visible: topbar.memberlistVisibility
     }
@@ -44,9 +49,10 @@ Rectangle{
         anchors{
             left:parent.left
             right: (memberlist.visible)? memberlist.left : parent.right
-            rightMargin: (memberlist.visible)? 7 : 0
             top: topbar.bottom
             bottom: parent.bottom
+            topMargin: 3
+            rightMargin: (memberlist.visible)? 3 : 0
         }
     }
 }

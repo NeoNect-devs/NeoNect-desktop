@@ -1,36 +1,20 @@
 import QtQuick
-
+import Avila 1.0
     Rectangle{
         id:root
         property bool memberlistVisibility: true
         height: 50
         clip:true
-        anchors{
-            right: parent.right
-            left: parent.left
-            top: parent.top
-
-            //topMargin: -border.width
-
-        }
-
+        color: "#00000000"
         Rectangle{
             id:topbar
             //width: parent.width
             height: 50
 
-            border.width:2
-            border.color:"#171717" //Qt.darker("lightgrey",1.5)
-            color: "#101210"
-            anchors{
-                right: parent.right
-                left: parent.left
-                top: parent.top
-                bottom: parent.bottom
-                topMargin: -border.width
-                leftMargin: -border.width
-                rightMargin: -border.width
-            }
+            // border.width:2
+            // border.color:"#171717" //Qt.darker("lightgrey",1.5)
+            color: ThemeData.viewsBackground
+            anchors.fill:parent
 
 
                 Rectangle{
@@ -75,7 +59,10 @@ import QtQuick
                         id:showMemberMouseArea
                         anchors.fill: parent
 
-                        onClicked: root.memberlistVisibility = !root.memberlistVisibility
+                        onClicked: {
+                            root.memberlistVisibility = !root.memberlistVisibility;
+
+                        }
                     }
                 }
             }

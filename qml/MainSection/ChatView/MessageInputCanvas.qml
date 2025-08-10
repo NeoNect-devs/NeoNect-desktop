@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-
+import Avila 1.0
 Rectangle {
     id: root
     color: "#202225" // A darker, more modern background color
@@ -49,9 +49,9 @@ Rectangle {
         Rectangle {
             id: btnSend
             Layout.preferredWidth: 30
-            // Layout.preferredHeight: 26
+            Layout.preferredHeight: 30
             //Layout.fillWidth: true
-            Layout.fillHeight: true
+            //Layout.fillHeight: true
             color: "#00000000" // A nice blue for the button
             //radius: 18 // Make it circular
 
