@@ -32,7 +32,7 @@ import Avila 1.0
 
                 Text {
                     id:lblServerDesc
-                    text:"Avila"
+                    text:""
                     font.pointSize: 16
                     //font.family:"Bangers"
                     color: "white"

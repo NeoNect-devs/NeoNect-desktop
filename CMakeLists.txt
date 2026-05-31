@@ -41,6 +41,12 @@ qt_add_qml_module(Avila
         QML_FILES qml/MainSection/ChatView/ChatHandler.js
 
         QML_FILES qml/SideSection/SidebarCanvas.qml
+        QML_FILES qml/entrypage/entry.qml
+
+        RESOURCES
+            assets/icons/arrow-back.svg
+            assets/logo.png
+            QML_FILES qml/entrypage/apiService.js
 
 
 
