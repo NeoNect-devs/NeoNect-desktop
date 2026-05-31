@@ -47,6 +47,7 @@ qt_add_qml_module(Avila
             assets/icons/arrow-back.svg
             assets/logo.png
             QML_FILES qml/entrypage/apiService.js
+            QML_FILES qml/SideSection/ChannelListItem.qml
 
 
 
