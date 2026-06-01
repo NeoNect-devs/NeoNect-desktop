@@ -1,4 +1,4 @@
-
+// ChatboxCanvas.qml
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Basic
@@ -14,16 +14,23 @@ Rectangle {
         id: messageModel
     }
 
+    // Fixed loop lookup mechanism to protect against null component returns
     function updateStickyAvatar() {
+        if (messageListView.count === 0) {
+            stickyAvatar.visible = false;
+            return;
+        }
+
         for (var i = 0; i < messageListView.count; i++) {
             const item = messageListView.itemAtIndex(i);
             if (!item) continue;
 
             const modelData = messageModel.get(i);
-            if (modelData.fromMe) continue;
+            if (!modelData || modelData.fromMe) continue;
 
             const itemTopInView = item.y - messageListView.contentY;
-            const itemBottomInView = itemTopInView + item.height-16;
+            const itemBottomInView = itemTopInView + item.height - 16;
+
             if (itemBottomInView > 0 && itemTopInView < chatScrollView.height) {
                 const avatarY = Math.max(0, itemTopInView);
                 stickyAvatar.source = modelData.senderAvatar;
@@ -49,77 +56,77 @@ Rectangle {
                 id: chatScrollView
                 clip: true
                 anchors.fill: parent
-                rightPadding: 5
+                rightPadding: 8
                 topPadding: 5
                 ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                 ScrollBar.vertical: ScrollBar {
                     id: chatScrollbar
-                    size: 0.6
-                    position: 0.2
                     active: true
-                    anchors {
-                        right: parent.right
-                        top: parent.top
-                        bottom: parent.bottom
-                    }
-                    orientation: Qt.Vertical
+                    policy: ScrollBar.AsNeeded
+
                     contentItem: Rectangle {
                         implicitWidth: 6
-                        radius: 5
-                        implicitHeight: chatScrollView.height
-                        color: chatScrollbar.pressed ? Qt.darker("grey", 1.5) : "grey"
-                        opacity: chatScrollbar.policy === ScrollBar.AlwaysOn || (chatScrollbar.active && chatScrollbar.size < 1.0) ? 0.75 : 0
+                        radius: 3
+                        color: chatScrollbar.pressed ? "#50545c" : "#4f545c"
+                        opacity: chatScrollbar.active ? 0.7 : 0
+                        Behavior on opacity { NumberAnimation { duration: 100 } }
                     }
                 }
 
                 ListView {
                     id: messageListView
-                    width: chatScrollView.width
+                    width: chatScrollView.availableWidth
                     model: messageModel
-                    spacing: 4
+                    spacing: 6
                     property int stickyAvatarIndex: -1
 
                     onContentYChanged: Qt.callLater(root.updateStickyAvatar)
 
-                    delegate: RowLayout {
+                    delegate: Item {
+                        // Wraps the row layout securely so height can be safely inferred by the list engine
                         width: messageListView.width
-                        spacing: 6
-                        Layout.topMargin: model.isFirstInBlock ? 12 : 0
+                        height: delegateRow.implicitHeight
 
-                        Item { Layout.fillWidth: true; visible: model.fromMe }
+                        RowLayout {
+                            id: delegateRow
+                            anchors.fill: parent
+                            spacing: 8
+                            Layout.topMargin: model.isFirstInBlock ? 12 : 0
 
-                        CircularImage {
-                            id: avatar
-                            source: model.senderAvatar
-                            Layout.preferredWidth: 32
-                            Layout.preferredHeight: 32
-                            Layout.leftMargin: 4
-                            Layout.alignment: Qt.AlignTop
-                            visible: !model.fromMe
-                            opacity: model.isFirstInBlock && messageListView.stickyAvatarIndex !== index ? 1 : 0
-                        }
+                            Item { Layout.fillWidth: true; visible: model.fromMe }
 
-                        ColumnLayout {
-                            spacing: 4
-                            Layout.maximumWidth: root.width * 0.70
-                            Layout.rightMargin: model.fromMe ? 6 : 0
-
-                            Text {
-                                text: model.senderName
-                                visible: !model.fromMe && model.isFirstInBlock
-                                color: "#8e9297"
-                                font.pixelSize: 14
-                                font.bold: true
+                            CircularImage {
+                                id: avatar
+                                source: model.senderAvatar
+                                Layout.preferredWidth: 32
+                                Layout.preferredHeight: 32
+                                Layout.alignment: Qt.AlignTop
+                                visible: !model.fromMe
+                                opacity: model.isFirstInBlock && messageListView.stickyAvatarIndex !== index ? 1.0 : 0.0
                             }
 
-                            MessageBubble {
-                                messageText: model.text
-                                sentByMe: model.fromMe
-                            }
-                        }
+                            ColumnLayout {
+                                spacing: 2
+                                Layout.maximumWidth: root.width * 0.70
 
-                        Item { Layout.fillWidth: true; visible: !model.fromMe }
+                                Text {
+                                    text: model.senderName
+                                    visible: !model.fromMe && model.isFirstInBlock
+                                    color: "#FFFFFF"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Bold
+                                }
+
+                                MessageBubble {
+                                    messageText: model.text
+                                    sentByMe: model.fromMe
+                                }
+                            }
+
+                            Item { Layout.fillWidth: true; visible: !model.fromMe }
+                        }
                     }
 
                     Component.onCompleted: {
@@ -132,7 +139,10 @@ Rectangle {
 
             CircularImage {
                 id: stickyAvatar
-                x: 4; y: 0; width: 32; height: 32
+                x: 0 // Adjusted margin placement rules to match row track offsets
+                y: 0
+                width: 32
+                height: 32
                 visible: false
                 source: ""
             }
@@ -141,18 +151,12 @@ Rectangle {
         MessageInputCanvas {
             id: messageInput
             Layout.fillWidth: true
-            Layout.topMargin: 6
-            Layout.bottomMargin: 6
-            Layout.rightMargin: 3
-            Layout.leftMargin: 3
+            Layout.margins: 12
 
             onSendMessage: msgText => {
                 ChatHandler.sendMessage(msgText, messageModel);
                 Qt.callLater(messageListView.positionViewAtEnd);
             }
-
-            // Listen for the signal from the input and scroll the list to the end
-            // to keep the input field visible as it grows.
             onInputHeightChanged: {
                 Qt.callLater(messageListView.positionViewAtEnd);
             }

@@ -3,29 +3,24 @@ import QtQuick
 import QtQuick.Layouts
 import Avila 1.0
 
-// The root is now a Rectangle to provide a background for the hover effect.
 Rectangle {
     id: root
     width: parent.width
-    // The height will be determined by the content, with some vertical padding.
-    implicitHeight: layout.implicitHeight + 10
+    implicitHeight: 42 // Locked to standard chat panel height metric rules
+    radius: 4
+    color: mouseArea.containsMouse ? "#2F3136" : "transparent"
 
-    // --- Properties ---
+    Behavior on color { ColorAnimation { duration: 100 } }
+
     property string memberName: ""
     property url memberAvatar: ""
 
-    // --- Visuals ---
-    // The background color changes when the mouse is hovering over the item.
-    color: mouseArea.containsMouse ? "#2E2F34" : "transparent"
-    radius: 4 // Add rounded corners to the background.
-
-    // The layout containing the avatar and name.
     RowLayout {
         id: layout
         anchors.fill: parent
-        anchors.leftMargin: 5  // Add padding from the left edge.
-        anchors.rightMargin: 5 // Add padding from the right edge.
-        spacing: 10
+        anchors.leftMargin: 8
+        anchors.rightMargin: 8
+        spacing: 12
 
         CircularImage {
             source: root.memberAvatar
@@ -36,18 +31,22 @@ Rectangle {
 
         Text {
             text: root.memberName
-            color: "#8e9297"
+            color: mouseArea.containsMouse ? "#DCDDDE" : "#8E9297"
+            font.family: "Segoe UI"
             font.pixelSize: 14
+            font.weight: Font.Medium
             Layout.alignment: Qt.AlignVCenter
             Layout.fillWidth: true
+            elide: Text.ElideRight
+
+            Behavior on color { ColorAnimation { duration: 100 } }
         }
     }
 
-    // MouseArea to detect the hover state.
     MouseArea {
         id: mouseArea
         anchors.fill: parent
-        hoverEnabled: true // This is required to detect mouse enter/exit events.
+        hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
     }
 }

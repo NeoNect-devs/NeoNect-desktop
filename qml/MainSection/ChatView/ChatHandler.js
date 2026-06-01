@@ -1,10 +1,7 @@
 // ChatHandler.js
 .pragma library
 
-// This function now returns a simple flat list of message objects.
-// The grouping logic has been removed from the QML side.
 function getFlatMessageList() {
-    // This is your original test data, kept as a flat list.
     return [
         { "text": "Okay team, let's begin the final stress test.", "fromMe": true, "senderName": "Me", "senderAvatar": "https://placehold.co/40x40/5865F2/FFFFFF?text=ME" },
         { "text": "Ready when you are! I'll start with some basic messages.", "fromMe": false, "senderName": "JaneDoe", "senderAvatar": "https://placehold.co/40x40/7289DA/FFFFFF?text=JD" },
@@ -22,40 +19,31 @@ function getFlatMessageList() {
     ];
 }
 
-// --- REIMPLEMENTED sendMessage ---
-// Appends a single message to the model. It also checks the previous message
-// to update its `isLastInBlock` property correctly.
 function sendMessage(msgText, messageModel) {
-    if (msgText.trim() === "") return;
+    if (!msgText || msgText.trim() === "") return;
 
     const lastIndex = messageModel.count - 1;
     let isFirst = true;
 
     if (lastIndex >= 0) {
         const lastMessage = messageModel.get(lastIndex);
-        // If the last message was also from me, this new one isn't the first in its block.
-        if (lastMessage.fromMe) {
+        if (lastMessage && lastMessage.fromMe) {
             isFirst = false;
-            // The previous message is no longer the last in the block.
             lastMessage.isLastInBlock = false;
             messageModel.set(lastIndex, lastMessage);
         }
     }
 
-    // Append the new message. It's always the last in its block initially.
     messageModel.append({
-        "text": msgText,
+        "text": msgText.trim(),
         "fromMe": true,
         "senderName": "Me",
         "senderAvatar": "https://placehold.co/40x40/5865F2/FFFFFF?text=ME",
         "isFirstInBlock": isFirst,
-        "isLastInBlock": true // A new message is always the last one.
+        "isLastInBlock": true
     });
 }
 
-// --- REIMPLEMENTED loadMessages ---
-// This function now processes the flat list and adds helper properties
-// (`isFirstInBlock`, `isLastInBlock`) to each message object before adding it to the model.
 function loadMessages(messageModel) {
     const flatMessageList = getFlatMessageList();
     messageModel.clear();
@@ -65,12 +53,7 @@ function loadMessages(messageModel) {
         const prevMsg = i > 0 ? flatMessageList[i - 1] : null;
         const nextMsg = i < flatMessageList.length - 1 ? flatMessageList[i + 1] : null;
 
-        // A message is the first in its block if it's the very first message
-        // or if the sender is different from the previous message's sender.
         const isFirst = !prevMsg || prevMsg.senderName !== currentMsg.senderName;
-
-        // A message is the last in its block if it's the very last message
-        // or if the sender is different from the next message's sender.
         const isLast = !nextMsg || nextMsg.senderName !== currentMsg.senderName;
 
         messageModel.append({
@@ -88,10 +71,7 @@ function loadMembers(memberModel) {
     const messages = getFlatMessageList();
     const uniqueUsers = {};
 
-    // Iterate through all messages to find unique users
     messages.forEach(msg => {
-        // Add user to the list if they are not the current user ("Me")
-        // and have not been added yet.
         if (!msg.fromMe && !uniqueUsers[msg.senderName]) {
             uniqueUsers[msg.senderName] = {
                 name: msg.senderName,
@@ -100,7 +80,6 @@ function loadMembers(memberModel) {
         }
     });
 
-    // Clear the model and add the unique users found.
     memberModel.clear();
     Object.values(uniqueUsers).forEach(user => {
         memberModel.append(user);
