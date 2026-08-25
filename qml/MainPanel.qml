@@ -18,20 +18,47 @@ Item {
     }
 
     Connections {
-        target: CryptoManager
-        function onEncryptionCompleted(channelId, cipherBase64, nonceBase64) {
-            NetworkManager.sendSecurePayload(channelId, cipherBase64, nonceBase64)
+        target: NetworkManager
+
+        function onIncomingRelayMessageReceived(fromUsername, text, timestamp) {
+            var dmKey = "dms:" + fromUsername.toLowerCase()
+            if (!chatHistories[dmKey]) {
+                chatHistories[dmKey] = []
+            }
+            chatHistories[dmKey].push({ text: text, fromMe: false, sender: fromUsername, avatar: fromUsername.charAt(0).toUpperCase() })
+
+            // If active view is this DM, insert directly into model
+            if (root.selectedServer === "dms" && root.activeChannel.toLowerCase() === fromUsername.toLowerCase()) {
+                nativeMessageModel.insertMessage(text, false, fromUsername, fromUsername.charAt(0).toUpperCase())
+                scrollTimer.restart()
+            }
+        }
+    }
+
+    property bool showAddFriendModal: false
+    property string addFriendStatusMsg: ""
+    property bool addFriendSuccess: false
+
+    Connections {
+        target: NetworkManager
+        function onAddFriendResult(success, message, username) {
+            root.addFriendSuccess = success;
+            root.addFriendStatusMsg = message;
+            if (success) {
+                root.selectedServer = "dms";
+                root.activeChannel = username.toLowerCase();
+            }
         }
     }
 
     property var defaultHistories: ({
         "server1:welcome-rules": [
-            { text: "Welcome to Avila secure node alpha server!", fromMe: false, sender: "System", avatar: "🛠️" },
-            { text: "All conversations here are encrypted client-side using OpenSSL 4.0.0 AES-256-GCM.", fromMe: false, sender: "System", avatar: "🛠️" }
+            { text: "Welcome to Danisa / Avila secure E2EE node server!", fromMe: false, sender: "System", avatar: "🛠️" },
+            { text: "All conversations here are relayed client-side using OpenSSL 4.0.0 AES-256-GCM.", fromMe: false, sender: "System", avatar: "🛠️" }
         ],
         "server1:general": [
             { text: "Hello! Is anyone online?", fromMe: false, sender: "Alex", avatar: "A" },
-            { text: "Hey Alex! Yes, just testing the new QML UI.", fromMe: false, sender: "Beatrice", avatar: "B" }
+            { text: "Hey Alex! Yes, testing live E2EE relay messaging.", fromMe: false, sender: "Beatrice", avatar: "B" }
         ],
         "dms:alex": [
             { text: "Hey Alex, are you available for a quick sync later today?", fromMe: true, sender: "Me", avatar: "" },
@@ -79,25 +106,6 @@ Item {
     onSelectedServerChanged: switchChannel()
     Component.onCompleted: switchChannel()
 
-    Timer {
-        id: simulatedResponseTimer
-        interval: 1200
-        repeat: false
-        onTriggered: {
-            var key = selectedServer + ":" + activeChannel
-            var replyUser = "Alex"
-            var replyAvatar = "A"
-            var replyText = "Message payload received and processed."
-
-            if (!chatHistories[key]) {
-                chatHistories[key] = []
-            }
-            chatHistories[key].push({ text: replyText, fromMe: false, sender: replyUser, avatar: replyAvatar })
-            nativeMessageModel.insertMessage(replyText, false, replyUser, replyAvatar)
-            messageListView.positionViewAtEnd()
-        }
-    }
-
     Rectangle {
         anchors.fill: parent
         color: ThemeData.windowBackground
@@ -107,7 +115,7 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // Full-width Header Bar spanning both chat and members panel
+        // Full-width Header Bar
         Rectangle {
             Layout.fillWidth: true
             height: 48
@@ -155,7 +163,7 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    text: root.selectedServer === "dms" ? "End-to-End Encrypted Direct Messages" : "Secure Workspace Channel"
+                    text: root.selectedServer === "dms" ? "Danisa Zero-Knowledge E2EE Direct Messages" : "Secure Workspace Channel"
                     color: ThemeData.textSecondary
                     font.family: "Segoe UI"
                     font.pixelSize: 12
@@ -320,8 +328,10 @@ Item {
                         root.chatHistories[key].push({ text: msgText, fromMe: true, sender: "Me", avatar: "" })
                         nativeMessageModel.insertMessage(msgText, true, "Me", "")
                         messageListView.positionViewAtEnd()
-                        CryptoManager.encryptMessageAsposing(root.activeChannel, msgText)
-                        simulatedResponseTimer.restart()
+
+                        // Send E2EE Relay Message via Danisa REST API
+                        var target = root.selectedServer === "dms" ? root.activeChannel : "general"
+                        NetworkManager.sendRelayMessage(target, msgText)
                     }
                 }
             }
@@ -331,6 +341,106 @@ Item {
                 Layout.fillHeight: true
                 selectedServer: root.selectedServer
                 expanded: root.selectedServer !== "dms" && userToggledExpanded
+            }
+        }
+    }
+
+    // ─── ADD FRIEND / DIRECT CHAT MODAL OVERLAY ───────────────────────────
+    Rectangle {
+        id: addFriendOverlay
+        anchors.fill: parent
+        color: Qt.rgba(0, 0, 0, 0.7)
+        visible: root.showAddFriendModal
+        z: 9999
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.showAddFriendModal = false
+        }
+
+        Rectangle {
+            width: 380; height: 260
+            radius: 16
+            color: ThemeData.panelBackground
+            border.color: Qt.rgba(1, 1, 1, 0.1)
+            anchors.centerIn: parent
+
+            MouseArea { anchors.fill: parent } // Block clicks from closing modal
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: 24
+                spacing: 16
+
+                RowLayout {
+                    width: parent.width
+
+                    Text {
+                        text: "Add Friend / Start Direct Chat"
+                        color: ThemeData.textPrimary
+                        font.bold: true
+                        font.pixelSize: 16
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: "✕"
+                        color: ThemeData.textSecondary
+                        font.pixelSize: 16
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.showAddFriendModal = false
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Enter the username of a user on the Danisa network to add them to your Direct Messages."
+                    color: ThemeData.textSecondary
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+
+                AvilaTextField {
+                    id: friendInput
+                    width: parent.width
+                    placeholderText: "Enter username (e.g. alex)"
+                }
+
+                Text {
+                    text: root.addFriendStatusMsg
+                    color: root.addFriendSuccess ? "#23a55a" : "#ef5350"
+                    font.pixelSize: 12
+                    visible: text !== ""
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 12
+
+                    AvilaButton {
+                        text: "Cancel"
+                        width: (parent.width - 12) / 2
+                        highlighted: false
+                        onClicked: {
+                            root.showAddFriendModal = false
+                            root.addFriendStatusMsg = ""
+                        }
+                    }
+
+                    AvilaButton {
+                        text: "Add Friend"
+                        width: (parent.width - 12) / 2
+                        enabled: friendInput.text.trim() !== ""
+                        highlighted: true
+                        onClicked: {
+                            root.addFriendStatusMsg = ""
+                            NetworkManager.addFriend(friendInput.text.trim())
+                        }
+                    }
+                }
             }
         }
     }

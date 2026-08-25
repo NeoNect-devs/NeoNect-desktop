@@ -68,22 +68,30 @@ Rectangle {
 
     ListModel {
         id: dmListModel
-        ListElement {
-            name: "alex"
-            isDM: true
-            userStatus: "online"
-        }
-        ListElement {
-            name: "beatrice"
-            isDM: true
-            userStatus: "offline"
-        }
-        ListElement {
-            name: "charlie"
-            isDM: true
-            userStatus: "online"
+    }
+
+    function syncFriendsModel() {
+        dmListModel.clear();
+        var list = (NetworkManager && NetworkManager.friends && NetworkManager.friends.length > 0) ?
+                    NetworkManager.friends : ["alex", "beatrice", "charlie"];
+        for (var i = 0; i < list.length; ++i) {
+            dmListModel.append({
+                name: list[i],
+                isDM: true,
+                userStatus: "online"
+            });
         }
     }
+
+    Connections {
+        target: NetworkManager
+        function onFriendsChanged() {
+            sidebarRoot.syncFriendsModel();
+        }
+    }
+
+    Component.onCompleted: syncFriendsModel()
+
 
     ColumnLayout {
         anchors.fill: parent

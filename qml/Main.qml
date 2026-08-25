@@ -77,13 +77,16 @@ Window {
                                 selectedServer: root.currentSelectedServer
                                 activeChannel: root.currentActiveChannel
                                 onChannelChanged: (chan) => root.currentActiveChannel = chan
+                                onAddFriendRequested: mainPanel.showAddFriendModal = true
                             }
                             MainPanel {
+                                id: mainPanel
                                 selectedServer: root.currentSelectedServer
                                 activeChannel: root.currentActiveChannel
                                 SplitView.fillWidth: true
                                 Layout.fillHeight: true
                             }
+
                         }
                     }
                 }
