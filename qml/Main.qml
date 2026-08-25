@@ -30,9 +30,13 @@ Window {
         }
     }
 
-    // ➔ DEV CHEAT LINK STATE TRACKER
-    property string devDeepLink: "server"
-
+    onAppStateChanged: {
+        if (appState === "gateway" && typeof viewFlowLoader !== "undefined") {
+            viewFlowLoader.sourceComponent = null;
+            viewFlowLoader.source = "";
+            viewFlowLoader.source = "entrypage/entry.qml";
+        }
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -53,19 +57,12 @@ Window {
             }
         }
 
-    onAppStateChanged: {
-        if (appState === "gateway") {
-            viewFlowLoader.sourceComponent = null;
-            viewFlowLoader.source = "";
-            viewFlowLoader.source = "entrypage/entry.qml";
-        }
-    }
+        Loader {
+            id: viewFlowLoader
+            anchors.top: titleBar.bottom; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+            source: root.appState === "gateway" ? "entrypage/entry.qml" : ""
+            sourceComponent: root.appState === "authenticated" ? chatDashboardComponent : null
 
-    Loader {
-        id: viewFlowLoader
-        anchors.top: titleBar.bottom; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
-        source: root.appState === "gateway" ? "entrypage/entry.qml" : ""
-        sourceComponent: root.appState === "authenticated" ? chatDashboardComponent : null
 
 
             Connections {
