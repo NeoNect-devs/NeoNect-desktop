@@ -326,10 +326,12 @@ void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &
     packet["content"] = plainText;
     packet["timestamp"] = QDateTime::currentSecsSinceEpoch();
 
+    QByteArray packetBytes = QJsonDocument(packet).toJson(QJsonDocument::Compact);
+
     QJsonObject payload;
     payload["from_device_id"] = CryptoManager::instance()->getDeviceId();
     payload["to_username"] = toUsername.trimmed();
-    payload["ciphertext"] = QString::fromUtf8(QJsonDocument(packet).toJson(QJsonDocument::Compact));
+    payload["ciphertext"] = QString::fromUtf8(packetBytes.toBase64());
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
 
     QNetworkReply *reply = m_nam->post(request, QJsonDocument(payload).toJson());
@@ -363,15 +365,15 @@ void NetworkManager::pollPendingMessages() {
         for (const QJsonValue &val : msgs) {
             QJsonObject obj = val.toObject();
             qint64 msgId = obj.value("id").toInteger();
-            QString rawCiphertext = obj.value("ciphertext").toString();
-            QString fromDevice = obj.value("from_device_id").toString();
+            QString base64Cipher = obj.value("ciphertext").toString();
             qint64 timestamp = obj.value("timestamp").toInteger();
 
+            QByteArray decodedBytes = QByteArray::fromBase64(base64Cipher.toUtf8());
+            QString textContent = QString::fromUtf8(decodedBytes);
             QString sender = "";
-            QString textContent = rawCiphertext;
 
-            // Attempt to parse structured packet from ciphertext
-            auto packetDoc = QJsonDocument::fromJson(rawCiphertext.toUtf8());
+            // Attempt to parse structured packet from decoded bytes
+            auto packetDoc = QJsonDocument::fromJson(decodedBytes);
             if (!packetDoc.isNull() && packetDoc.isObject()) {
                 QJsonObject packetObj = packetDoc.object();
                 if (packetObj.contains("sender")) {
@@ -383,13 +385,7 @@ void NetworkManager::pollPendingMessages() {
             }
 
             if (sender.isEmpty()) {
-                if (obj.contains("from_username")) {
-                    sender = obj.value("from_username").toString();
-                } else if (fromDevice.startsWith("user:")) {
-                    sender = fromDevice.mid(5);
-                } else {
-                    sender = "Anonymous";
-                }
+                sender = "Anonymous";
             }
 
             emit incomingRelayMessageReceived(sender, textContent, timestamp);
@@ -399,6 +395,7 @@ void NetworkManager::pollPendingMessages() {
         }
     });
 }
+
 
 
 void NetworkManager::acknowledgeMessage(qint64 messageId) {

@@ -1,0 +1,5 @@
+build/
+.cache/
+Backend/
+backend/
+*.log
