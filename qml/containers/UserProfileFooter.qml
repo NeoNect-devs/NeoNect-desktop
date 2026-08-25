@@ -27,11 +27,35 @@ Rectangle {
             Layout.preferredWidth: root.sidebarOffsetWidth
             Layout.fillHeight: true
 
-            CircularImage {
+            Item {
                 anchors.centerIn: parent
                 width: 34; height: 34
-                cornerRadius: 17
-                source: "qrc:/qt/qml/Avila/assets/logo.png"
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 17
+                    color: ThemeData.accentColor
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: (NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") ?
+                              NetworkManager.currentUsername.charAt(0).toUpperCase() : "A"
+                        color: "#ffffff"
+                        font.bold: true
+                        font.pixelSize: 15
+                    }
+                }
+
+                // Online / Offline Status Badge Dot
+                Rectangle {
+                    width: 10; height: 10
+                    radius: 5
+                    color: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "#23A55A" : "#80848E"
+                    border.color: "#0F1110"
+                    border.width: 1.5
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                }
             }
         }
 
@@ -42,7 +66,8 @@ Rectangle {
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 0
                 Text {
-                    text: "SecureIdentity"
+                    text: (NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") ?
+                          NetworkManager.currentUsername : "Guest User"
                     color: ThemeData.textPrimary
                     font.family: "Segoe UI"
                     font.pixelSize: 13
@@ -51,14 +76,15 @@ Rectangle {
                     Layout.fillWidth: true
                 }
                 Text {
-                    text: "Keys Initialized"
-                    color: "#00A36C"
+                    text: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "Online" : "Offline"
+                    color: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "#23A55A" : "#80848E"
                     font.family: "Segoe UI"
                     font.pixelSize: 11
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
             }
+
 
             Row {
                 spacing: 2

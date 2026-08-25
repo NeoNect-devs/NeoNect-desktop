@@ -70,15 +70,19 @@ Rectangle {
         id: dmListModel
     }
 
+    property var friendStatusMap: ({})
+
     function syncFriendsModel() {
         dmListModel.clear();
         var list = (NetworkManager && NetworkManager.friends && NetworkManager.friends.length > 0) ?
                     NetworkManager.friends : ["alex", "beatrice", "charlie"];
         for (var i = 0; i < list.length; ++i) {
+            var friendName = list[i].toLowerCase();
+            var st = sidebarRoot.friendStatusMap[friendName] || "online";
             dmListModel.append({
                 name: list[i],
                 isDM: true,
-                userStatus: "online"
+                userStatus: st
             });
         }
     }
@@ -88,9 +92,14 @@ Rectangle {
         function onFriendsChanged() {
             sidebarRoot.syncFriendsModel();
         }
+        function onIncomingRelayMessageReceived(fromUsername, text, timestamp) {
+            sidebarRoot.friendStatusMap[fromUsername.toLowerCase()] = "online";
+            sidebarRoot.syncFriendsModel();
+        }
     }
 
     Component.onCompleted: syncFriendsModel()
+
 
 
     ColumnLayout {

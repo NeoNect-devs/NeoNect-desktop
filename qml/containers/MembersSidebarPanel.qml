@@ -56,9 +56,29 @@ Rectangle {
         membersModel.clear()
         if (selectedServer === "dms") return
 
+        // Insert current logged in user at top of online members list
+        if (NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") {
+            membersModel.append({
+                name: NetworkManager.currentUsername + " (You)",
+                role: "YOU",
+                status: "online",
+                avatarColor: "#5865F2"
+            })
+        }
+
         var list = serverMembersMap[selectedServer] || serverMembersMap["server1"] || []
         for (var i = 0; i < list.length; i++) {
             membersModel.append(list[i])
+        }
+    }
+
+    Connections {
+        target: NetworkManager
+        function onCurrentUsernameChanged() {
+            membersRoot.refreshModel()
+        }
+        function onTokenChanged() {
+            membersRoot.refreshModel()
         }
     }
 
@@ -74,6 +94,7 @@ Rectangle {
 
     onSelectedServerChanged: refreshModel()
     Component.onCompleted: refreshModel()
+
 
     ColumnLayout {
         anchors.fill: parent
