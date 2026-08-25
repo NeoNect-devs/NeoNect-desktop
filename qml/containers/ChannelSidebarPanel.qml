@@ -96,7 +96,12 @@ Rectangle {
             sidebarRoot.friendStatusMap[fromUsername.toLowerCase()] = "online";
             sidebarRoot.syncFriendsModel();
         }
+        function onFriendStatusUpdated(username, status) {
+            sidebarRoot.friendStatusMap[username.toLowerCase()] = status;
+            sidebarRoot.syncFriendsModel();
+        }
     }
+
 
     Component.onCompleted: syncFriendsModel()
 

@@ -44,6 +44,7 @@ public:
 
     // Friends & DM Management
     Q_INVOKABLE void addFriend(const QString &username);
+    Q_INVOKABLE void checkFriendsStatus();
 
 signals:
     void serverUrlChanged();
@@ -63,6 +64,8 @@ signals:
 
     void incomingRelayMessageReceived(const QString &fromUsername, const QString &text, qint64 timestamp);
     void addFriendResult(bool success, const QString &message, const QString &username);
+    void friendStatusUpdated(const QString &username, const QString &status);
+
 
 private:
     void setIsLoading(bool loading);

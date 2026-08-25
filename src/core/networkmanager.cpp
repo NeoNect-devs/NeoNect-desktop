@@ -16,13 +16,18 @@ NetworkManager* NetworkManager::instance() {
 }
 
 NetworkManager::NetworkManager(QObject *parent) : QObject(parent) {
+    m_serverUrl = "http://localhost:8080";
     m_nam = new QNetworkAccessManager(this);
     m_pollTimer = new QTimer(this);
     m_pollTimer->setInterval(2500); // 2.5 seconds background relay poll
 
-    connect(m_pollTimer, &QTimer::timeout, this, &NetworkManager::pollPendingMessages);
+    connect(m_pollTimer, &QTimer::timeout, this, [this]() {
+        pollPendingMessages();
+        checkFriendsStatus();
+    });
     loadFriends();
 }
+
 
 void NetworkManager::setProfile(const QString &profileName) {
     m_profile = profileName;
@@ -459,5 +464,30 @@ void NetworkManager::addFriend(const QString &username) {
         }
     });
 }
+
+void NetworkManager::checkFriendsStatus() {
+    if (m_serverUrl.isEmpty()) return;
+    for (const QString &friendUser : m_friends) {
+        QString target = friendUser.trimmed().toLower();
+        QUrl url(m_serverUrl + "/api/v1/users/availability");
+        QUrlQuery query;
+        query.addQueryItem("u", target);
+        url.setQuery(query);
+
+        QNetworkRequest request(url);
+        QNetworkReply *reply = m_nam->get(request);
+
+        connect(reply, &QNetworkReply::finished, this, [this, target, reply]() {
+            reply->deleteLater();
+            if (reply->error() != QNetworkReply::NoError) return;
+            auto doc = QJsonDocument::fromJson(reply->readAll());
+            if (!doc.isNull() && doc.object().contains("available")) {
+                bool exists = !doc.object().value("available").toBool();
+                emit friendStatusUpdated(target, exists ? "online" : "offline");
+            }
+        });
+    }
+}
+
 
 

@@ -62,7 +62,15 @@ Window {
             Item {
                 RowLayout {
                     anchors.fill: parent; spacing: 0
-                    SidebarCanvas { Layout.fillHeight: true; Layout.preferredWidth: 60 }
+                    SidebarCanvas {
+                        Layout.fillHeight: true
+                        Layout.preferredWidth: 60
+                        selectedServer: root.currentSelectedServer
+                        activeChannel: root.currentActiveChannel
+                        onServerSelected: (srv) => root.currentSelectedServer = srv
+                        onChannelSelected: (chan) => root.currentActiveChannel = chan
+                    }
+
 
                     Rectangle {
                         Layout.fillWidth: true; Layout.fillHeight: true
