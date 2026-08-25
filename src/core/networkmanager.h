@@ -72,8 +72,11 @@ private:
     QString cleanUrl(const QString &input);
     void loadFriends();
     void saveFriends();
+    void loadSettings();
+    void saveSettings();
     void startPolling();
     void stopPolling();
+
 
     QNetworkAccessManager *m_nam;
     QTimer *m_pollTimer;

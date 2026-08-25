@@ -32,6 +32,7 @@ NetworkManager::NetworkManager(QObject *parent) : QObject(parent) {
 void NetworkManager::setProfile(const QString &profileName) {
     m_profile = profileName;
     loadFriends();
+    loadSettings();
 }
 
 void NetworkManager::loadFriends() {
@@ -50,6 +51,26 @@ void NetworkManager::saveFriends() {
     QSettings settings("Avila", group);
     settings.setValue("friends", m_friends);
 }
+
+void NetworkManager::loadSettings() {
+    QString group = m_profile.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + m_profile.trimmed());
+    QSettings settings("Avila", group);
+    m_token = settings.value("auth_token").toString();
+    m_currentUsername = settings.value("username").toString();
+    if (!m_token.isEmpty()) {
+        emit tokenChanged();
+        emit currentUsernameChanged();
+        registerDevice(CryptoManager::instance()->getDeviceId(), CryptoManager::instance()->getDevicePublicKey());
+    }
+}
+
+void NetworkManager::saveSettings() {
+    QString group = m_profile.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + m_profile.trimmed());
+    QSettings settings("Avila", group);
+    settings.setValue("auth_token", m_token);
+    settings.setValue("username", m_currentUsername);
+}
+
 
 
 void NetworkManager::startPolling() {
@@ -222,6 +243,7 @@ void NetworkManager::loginUser(const QString &username, const QString &password)
 
         m_token = doc.object().value("token").toString();
         m_currentUsername = username.trimmed().toLower();
+        saveSettings();
         emit tokenChanged();
         emit currentUsernameChanged();
         emit loginResult(true, m_token);
@@ -240,8 +262,12 @@ void NetworkManager::logoutUser() {
         connect(reply, &QNetworkReply::finished, reply, &QNetworkReply::deleteLater);
     }
     m_token.clear();
+    m_currentUsername.clear();
+    saveSettings();
     emit tokenChanged();
+    emit currentUsernameChanged();
 }
+
 
 void NetworkManager::registerDevice(const QString &deviceId, const QString &publicKey) {
     if (m_token.isEmpty()) return;
@@ -346,12 +372,24 @@ void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &
     QNetworkReply *reply = m_nam->post(request, QJsonDocument(payload).toJson());
     connect(reply, &QNetworkReply::finished, this, [this, targetUser, reply]() {
         bool ok = (reply->error() == QNetworkReply::NoError);
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (ok) {
             emit friendStatusUpdated(targetUser, "online");
         } else {
+            QByteArray errBody = reply->readAll();
             qDebug() << "[NetworkManager] sendRelayMessage failed for" << targetUser 
                      << "Error:" << reply->errorString()
-                     << "Response:" << reply->readAll();
+                     << "Code:" << statusCode
+                     << "Response:" << errBody;
+            if (statusCode == 401 || errBody.contains("unauthorized")) {
+                m_token.clear();
+                m_currentUsername.clear();
+                saveSettings();
+                stopPolling();
+                emit tokenChanged();
+                emit currentUsernameChanged();
+                emit loginResult(false, "Session expired or unauthorized. Please log in again.");
+            }
         }
         emit secureMessageTransmitted(targetUser, ok);
         reply->deleteLater();
@@ -373,7 +411,19 @@ void NetworkManager::pollPendingMessages() {
     QNetworkReply *reply = m_nam->get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
+        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        if (statusCode == 401) {
+            m_token.clear();
+            m_currentUsername.clear();
+            saveSettings();
+            stopPolling();
+            emit tokenChanged();
+            emit currentUsernameChanged();
+            emit loginResult(false, "Session expired or unauthorized. Please log in again.");
+            return;
+        }
         if (reply->error() != QNetworkReply::NoError) return;
+
 
         auto doc = QJsonDocument::fromJson(reply->readAll());
         if (doc.isNull() || !doc.object().contains("messages")) return;
