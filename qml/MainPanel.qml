@@ -21,18 +21,26 @@ Item {
         target: NetworkManager
 
         function onIncomingRelayMessageReceived(fromUsername, text, timestamp) {
-            var dmKey = "dms:" + fromUsername.toLowerCase()
+            var senderLower = fromUsername.toLowerCase()
+            var dmKey = "dms:" + senderLower
             if (!chatHistories[dmKey]) {
                 chatHistories[dmKey] = []
             }
             chatHistories[dmKey].push({ text: text, fromMe: false, sender: fromUsername, avatar: fromUsername.charAt(0).toUpperCase() })
 
-            // If active view is this DM, insert directly into model
-            if (root.selectedServer === "dms" && root.activeChannel.toLowerCase() === fromUsername.toLowerCase()) {
+            // Auto add friend to Direct Messages list if not already in friends list
+            if (NetworkManager && NetworkManager.friends && NetworkManager.friends.indexOf(senderLower) === -1) {
+                NetworkManager.addFriend(senderLower)
+            }
+
+            // Insert message into active model if viewing this DM or general channel
+            if ((root.selectedServer === "dms" && root.activeChannel.toLowerCase() === senderLower) ||
+                (root.selectedServer !== "dms" && root.activeChannel === "general")) {
                 nativeMessageModel.insertMessage(text, false, fromUsername, fromUsername.charAt(0).toUpperCase())
                 scrollTimer.restart()
             }
         }
+
     }
 
     property bool showAddFriendModal: false

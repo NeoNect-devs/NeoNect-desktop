@@ -320,10 +320,16 @@ void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Authorization", "Bearer " + m_token.toUtf8());
 
+    QJsonObject packet;
+    packet["sender"] = m_currentUsername;
+    packet["target"] = toUsername.trimmed();
+    packet["content"] = plainText;
+    packet["timestamp"] = QDateTime::currentSecsSinceEpoch();
+
     QJsonObject payload;
     payload["from_device_id"] = CryptoManager::instance()->getDeviceId();
     payload["to_username"] = toUsername.trimmed();
-    payload["ciphertext"] = plainText;
+    payload["ciphertext"] = QString::fromUtf8(QJsonDocument(packet).toJson(QJsonDocument::Compact));
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
 
     QNetworkReply *reply = m_nam->post(request, QJsonDocument(payload).toJson());
@@ -357,21 +363,43 @@ void NetworkManager::pollPendingMessages() {
         for (const QJsonValue &val : msgs) {
             QJsonObject obj = val.toObject();
             qint64 msgId = obj.value("id").toInteger();
-            QString ciphertext = obj.value("ciphertext").toString();
+            QString rawCiphertext = obj.value("ciphertext").toString();
             QString fromDevice = obj.value("from_device_id").toString();
             qint64 timestamp = obj.value("timestamp").toInteger();
 
-            // Extract sender username or fallback to device/from
-            QString sender = fromDevice.startsWith("user:") ? fromDevice.mid(5) : fromDevice;
-            if (sender.isEmpty()) sender = "Anonymous";
+            QString sender = "";
+            QString textContent = rawCiphertext;
 
-            emit incomingRelayMessageReceived(sender, ciphertext, timestamp);
+            // Attempt to parse structured packet from ciphertext
+            auto packetDoc = QJsonDocument::fromJson(rawCiphertext.toUtf8());
+            if (!packetDoc.isNull() && packetDoc.isObject()) {
+                QJsonObject packetObj = packetDoc.object();
+                if (packetObj.contains("sender")) {
+                    sender = packetObj.value("sender").toString();
+                }
+                if (packetObj.contains("content")) {
+                    textContent = packetObj.value("content").toString();
+                }
+            }
+
+            if (sender.isEmpty()) {
+                if (obj.contains("from_username")) {
+                    sender = obj.value("from_username").toString();
+                } else if (fromDevice.startsWith("user:")) {
+                    sender = fromDevice.mid(5);
+                } else {
+                    sender = "Anonymous";
+                }
+            }
+
+            emit incomingRelayMessageReceived(sender, textContent, timestamp);
 
             // Acknowledge receipt so server removes message from relay queue
             acknowledgeMessage(msgId);
         }
     });
 }
+
 
 void NetworkManager::acknowledgeMessage(qint64 messageId) {
     if (m_token.isEmpty()) return;

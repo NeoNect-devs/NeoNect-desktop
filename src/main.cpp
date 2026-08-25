@@ -25,6 +25,8 @@ int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName("Avila");
     QGuiApplication::setApplicationVersion("1.0");
+    QGuiApplication::setQuitOnLastWindowClosed(true);
+
 
     QString profile;
     QStringList args = app.arguments();

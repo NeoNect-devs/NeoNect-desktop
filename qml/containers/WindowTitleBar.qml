@@ -167,8 +167,12 @@ Rectangle {
                     id: authCloseM
                     anchors.fill: parent
                     hoverEnabled: true
-                    onClicked: root.windowTarget.close()
+                    onClicked: {
+                        root.windowTarget.close();
+                        Qt.quit();
+                    }
                 }
+
             }
         }
     }
