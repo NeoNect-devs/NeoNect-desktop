@@ -369,7 +369,8 @@ void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &
     payload["ciphertext"] = QString::fromUtf8(packetBytes.toBase64());
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
 
-    QNetworkReply *reply = m_nam->post(request, QJsonDocument(payload).toJson());
+    QNetworkReply *reply = m_nam->post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+
     connect(reply, &QNetworkReply::finished, this, [this, targetUser, reply]() {
         bool ok = (reply->error() == QNetworkReply::NoError);
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
