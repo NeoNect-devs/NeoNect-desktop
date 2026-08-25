@@ -221,14 +221,13 @@ void NetworkManager::loginUser(const QString &username, const QString &password)
         }
 
         m_token = doc.object().value("token").toString();
-        m_currentUsername = username.trimmed();
+        m_currentUsername = username.trimmed().toLower();
         emit tokenChanged();
         emit currentUsernameChanged();
         emit loginResult(true, m_token);
 
-        // Perform automatic device registration and start message polling
+        // Perform automatic device registration (polling will start once device is registered)
         registerDevice(CryptoManager::instance()->getDeviceId(), CryptoManager::instance()->getDevicePublicKey());
-        startPolling();
     });
 }
 
@@ -262,8 +261,12 @@ void NetworkManager::registerDevice(const QString &deviceId, const QString &publ
         auto doc = QJsonDocument::fromJson(reply->readAll());
         QString msg = success ? "Device registered" : (doc.object().value("error").toString());
         emit deviceRegistrationResult(success, msg);
+
+        // Start message polling after device ownership is registered on server
+        startPolling();
     });
 }
+
 
 void NetworkManager::fetchDevicePublicKey(const QString &deviceId) {
     if (deviceId.trimmed().isEmpty()) return;
@@ -319,7 +322,8 @@ void NetworkManager::sendSecurePayload(const QString &channelId, const QString &
 }
 
 void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &plainText) {
-    if (m_token.isEmpty() || toUsername.trimmed().isEmpty() || plainText.isEmpty()) return;
+    QString targetUser = toUsername.trimmed().toLower();
+    if (m_token.isEmpty() || targetUser.isEmpty() || plainText.isEmpty()) return;
 
     QNetworkRequest request(QUrl(m_serverUrl + "/api/v1/relay/send"));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
@@ -327,7 +331,7 @@ void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &
 
     QJsonObject packet;
     packet["sender"] = m_currentUsername;
-    packet["target"] = toUsername.trimmed();
+    packet["target"] = targetUser;
     packet["content"] = plainText;
     packet["timestamp"] = QDateTime::currentSecsSinceEpoch();
 
@@ -335,17 +339,25 @@ void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &
 
     QJsonObject payload;
     payload["from_device_id"] = CryptoManager::instance()->getDeviceId();
-    payload["to_username"] = toUsername.trimmed();
+    payload["to_username"] = targetUser;
     payload["ciphertext"] = QString::fromUtf8(packetBytes.toBase64());
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
 
     QNetworkReply *reply = m_nam->post(request, QJsonDocument(payload).toJson());
-    connect(reply, &QNetworkReply::finished, this, [this, toUsername, reply]() {
+    connect(reply, &QNetworkReply::finished, this, [this, targetUser, reply]() {
         bool ok = (reply->error() == QNetworkReply::NoError);
-        emit secureMessageTransmitted(toUsername, ok);
+        if (ok) {
+            emit friendStatusUpdated(targetUser, "online");
+        } else {
+            qDebug() << "[NetworkManager] sendRelayMessage failed for" << targetUser 
+                     << "Error:" << reply->errorString()
+                     << "Response:" << reply->readAll();
+        }
+        emit secureMessageTransmitted(targetUser, ok);
         reply->deleteLater();
     });
 }
+
 
 void NetworkManager::pollPendingMessages() {
     if (m_token.isEmpty()) return;
@@ -466,28 +478,9 @@ void NetworkManager::addFriend(const QString &username) {
 }
 
 void NetworkManager::checkFriendsStatus() {
-    if (m_serverUrl.isEmpty()) return;
-    for (const QString &friendUser : m_friends) {
-        QString target = friendUser.trimmed().toLower();
-        QUrl url(m_serverUrl + "/api/v1/users/availability");
-        QUrlQuery query;
-        query.addQueryItem("u", target);
-        url.setQuery(query);
-
-        QNetworkRequest request(url);
-        QNetworkReply *reply = m_nam->get(request);
-
-        connect(reply, &QNetworkReply::finished, this, [this, target, reply]() {
-            reply->deleteLater();
-            if (reply->error() != QNetworkReply::NoError) return;
-            auto doc = QJsonDocument::fromJson(reply->readAll());
-            if (!doc.isNull() && doc.object().contains("available")) {
-                bool exists = !doc.object().value("available").toBool();
-                emit friendStatusUpdated(target, exists ? "online" : "offline");
-            }
-        });
-    }
+    // Dynamic status is updated in real-time when relay messages or active sessions are confirmed.
 }
+
 
 
 

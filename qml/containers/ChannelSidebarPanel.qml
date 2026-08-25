@@ -78,12 +78,13 @@ Rectangle {
                     NetworkManager.friends : ["alex", "beatrice", "charlie"];
         for (var i = 0; i < list.length; ++i) {
             var friendName = list[i].toLowerCase();
-            var st = sidebarRoot.friendStatusMap[friendName] || "online";
+            var st = sidebarRoot.friendStatusMap[friendName] || "offline";
             dmListModel.append({
                 name: list[i],
                 isDM: true,
                 userStatus: st
             });
+
         }
     }
 
