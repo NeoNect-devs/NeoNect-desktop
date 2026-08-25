@@ -375,6 +375,7 @@ void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &
         bool ok = (reply->error() == QNetworkReply::NoError);
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (ok) {
+            m_lastSeen[targetUser] = QDateTime::currentDateTime();
             emit friendStatusUpdated(targetUser, "online");
         } else {
             QByteArray errBody = reply->readAll();
@@ -434,8 +435,6 @@ void NetworkManager::pollPendingMessages() {
         }
         if (reply->error() != QNetworkReply::NoError) return;
 
-
-
         auto doc = QJsonDocument::fromJson(reply->readAll());
         if (doc.isNull() || !doc.object().contains("messages")) return;
 
@@ -466,7 +465,10 @@ void NetworkManager::pollPendingMessages() {
                 sender = "Anonymous";
             }
 
-            emit friendStatusUpdated(sender.trimmed().toLower(), "online");
+            if (sender.toLower() != m_currentUsername.toLower() && sender != "Anonymous") {
+                m_lastSeen[sender.trimmed().toLower()] = QDateTime::currentDateTime();
+                emit friendStatusUpdated(sender.trimmed().toLower(), "online");
+            }
             emit incomingRelayMessageReceived(sender, textContent, timestamp);
 
             // Acknowledge receipt so server removes message from relay queue
@@ -478,31 +480,19 @@ void NetworkManager::pollPendingMessages() {
 void NetworkManager::checkFriendsStatus() {
     if (m_token.isEmpty()) return;
 
+    QDateTime now = QDateTime::currentDateTime();
     for (const QString &friendName : m_friends) {
         QString target = friendName.trimmed().toLower();
         if (target.isEmpty() || target == m_currentUsername.toLower()) continue;
 
-        QUrl url(m_serverUrl + "/api/v1/users/availability");
-        QUrlQuery query;
-        query.addQueryItem("u", target);
-        url.setQuery(query);
-
-        QNetworkRequest request(url);
-        QNetworkReply *reply = m_nam->get(request);
-        connect(reply, &QNetworkReply::finished, this, [this, target, reply]() {
-            reply->deleteLater();
-            auto doc = QJsonDocument::fromJson(reply->readAll());
-            if (!doc.isNull() && doc.object().contains("available")) {
-                bool exists = !doc.object().value("available").toBool();
-                if (exists) {
-                    emit friendStatusUpdated(target, "online");
-                } else {
-                    emit friendStatusUpdated(target, "offline");
-                }
-            }
-        });
+        if (m_lastSeen.contains(target) && m_lastSeen[target].secsTo(now) <= 30) {
+            emit friendStatusUpdated(target, "online");
+        } else {
+            emit friendStatusUpdated(target, "offline");
+        }
     }
 }
+
 
 
 void NetworkManager::acknowledgeMessage(qint64 messageId) {

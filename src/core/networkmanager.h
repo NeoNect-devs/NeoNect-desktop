@@ -85,8 +85,10 @@ private:
     QString m_token;
     QString m_currentUsername;
     QStringList m_friends;
+    QMap<QString, QDateTime> m_lastSeen;
     bool m_isLoading{false};
 };
+
 
 
 
