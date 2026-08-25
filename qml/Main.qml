@@ -14,13 +14,25 @@ Window {
     visible: true
     flags: Qt.Window | Qt.FramelessWindowHint
 
-    property string appState: "gateway"
+    property string appState: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "authenticated" : "gateway"
     property string activeTitleText: "Server Connection"
     property string currentActiveChannel: "general"
     property string currentSelectedServer: "server1"
 
+    Connections {
+        target: NetworkManager
+        function onTokenChanged() {
+            if (NetworkManager && NetworkManager.token && NetworkManager.token !== "") {
+                root.appState = "authenticated";
+            } else {
+                root.appState = "gateway";
+            }
+        }
+    }
+
     // ➔ DEV CHEAT LINK STATE TRACKER
     property string devDeepLink: "server"
+
 
     Rectangle {
         anchors.fill: parent

@@ -252,7 +252,20 @@ Item {
                             onClicked: entryRoot.currentScreen = "signup"
                         }
                     }
+
+                    AvilaBrandButton {
+                        width: parent.width
+                        height: 42
+                        text: "⚡ Quick Connect (@" + (typeof appProfile !== "undefined" && appProfile !== "" ? appProfile : "demo") + ")"
+                        enabled: entryRoot.isServerReady && !NetworkManager.isLoading
+                        onClicked: {
+                            var u = (typeof appProfile !== "undefined" && appProfile !== "") ? appProfile : "alice";
+                            entryRoot.quickConnectUser = u;
+                            NetworkManager.loginUser(u, "password123");
+                        }
+                    }
                 }
+
 
                 // ─── SCREEN 2: USER LOGIN ──────────────────────────────────
                 Column {
@@ -545,6 +558,8 @@ Item {
     }
 
     // ─── SIGNAL CONNECTIONS ────────────────────────────────────────────────
+    property string quickConnectUser: ""
+
     Connections {
         target: NetworkManager
 
@@ -564,8 +579,9 @@ Item {
         function onRegistrationResult(success, message) {
             if (success) {
                 entryRoot.regSuccessText = "Account created! Signing in...";
-                // Auto-login after successful registration
-                NetworkManager.loginUser(regUser.text.trim(), regPass.text);
+                var u = regUser.text.trim() !== "" ? regUser.text.trim() : (entryRoot.quickConnectUser !== "" ? entryRoot.quickConnectUser : "alice");
+                var p = regPass.text !== "" ? regPass.text : "password123";
+                NetworkManager.loginUser(u, p);
             } else {
                 entryRoot.regErrorText = message;
             }
@@ -573,10 +589,17 @@ Item {
 
         function onLoginResult(success, tokenOrError) {
             if (success) {
+                entryRoot.quickConnectUser = "";
                 if (typeof root !== "undefined") {
                     root.appState = "authenticated";
                 }
             } else {
+                if (entryRoot.quickConnectUser !== "") {
+                    var u = entryRoot.quickConnectUser;
+                    entryRoot.quickConnectUser = "";
+                    NetworkManager.registerUser(u, "password123");
+                    return;
+                }
                 if (entryRoot.currentScreen === "signup") {
                     entryRoot.regErrorText = tokenOrError;
                 } else {
@@ -585,6 +608,7 @@ Item {
             }
         }
     }
+
 
     Component.onCompleted: {
         if (typeof root !== "undefined" && root.devDeepLink !== "") {
