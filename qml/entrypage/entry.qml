@@ -592,9 +592,6 @@ Item {
         function onLoginResult(success, tokenOrError) {
             if (success) {
                 entryRoot.quickConnectUser = "";
-                if (typeof root !== "undefined") {
-                    root.appState = "authenticated";
-                }
             } else {
                 if (entryRoot.quickConnectUser !== "") {
                     var u = entryRoot.quickConnectUser;
@@ -603,9 +600,9 @@ Item {
                     return;
                 }
                 if (entryRoot.currentScreen === "signup") {
-                    entryRoot.regErrorText = tokenOrError;
+                    entryRoot.regErrorText = tokenOrError ? tokenOrError : "Registration error";
                 } else {
-                    entryRoot.loginErrorText = tokenOrError;
+                    entryRoot.loginErrorText = tokenOrError ? tokenOrError : "Login error";
                 }
             }
         }
