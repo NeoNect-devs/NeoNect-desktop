@@ -465,6 +465,7 @@ void NetworkManager::pollPendingMessages() {
                 sender = "Anonymous";
             }
 
+            emit friendStatusUpdated(sender.trimmed().toLower(), "online");
             emit incomingRelayMessageReceived(sender, textContent, timestamp);
 
             // Acknowledge receipt so server removes message from relay queue
@@ -473,6 +474,34 @@ void NetworkManager::pollPendingMessages() {
     });
 }
 
+void NetworkManager::checkFriendsStatus() {
+    if (m_token.isEmpty()) return;
+
+    for (const QString &friendName : m_friends) {
+        QString target = friendName.trimmed().toLower();
+        if (target.isEmpty() || target == m_currentUsername.toLower()) continue;
+
+        QUrl url(m_serverUrl + "/api/v1/users/availability");
+        QUrlQuery query;
+        query.addQueryItem("u", target);
+        url.setQuery(query);
+
+        QNetworkRequest request(url);
+        QNetworkReply *reply = m_nam->get(request);
+        connect(reply, &QNetworkReply::finished, this, [this, target, reply]() {
+            reply->deleteLater();
+            auto doc = QJsonDocument::fromJson(reply->readAll());
+            if (!doc.isNull() && doc.object().contains("available")) {
+                bool exists = !doc.object().value("available").toBool();
+                if (exists) {
+                    emit friendStatusUpdated(target, "online");
+                } else {
+                    emit friendStatusUpdated(target, "offline");
+                }
+            }
+        });
+    }
+}
 
 
 void NetworkManager::acknowledgeMessage(qint64 messageId) {
@@ -537,9 +566,6 @@ void NetworkManager::addFriend(const QString &username) {
     });
 }
 
-void NetworkManager::checkFriendsStatus() {
-    // Dynamic status is updated in real-time when relay messages or active sessions are confirmed.
-}
 
 
 

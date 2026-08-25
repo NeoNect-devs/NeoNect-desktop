@@ -443,9 +443,10 @@ Item {
                             AvilaTextField {
                                 id: regPass
                                 anchors.fill: parent
-                                placeholderText: "Choose a password"
+                                placeholderText: "Min 8 chars, letters & numbers (e.g. pass1234)"
                                 echoMode: entryRoot.showRegPassword ? TextInput.Normal : TextInput.Password
                             }
+
                             Text {
                                 text: entryRoot.showRegPassword ? "Hide" : "Show"
                                 color: ThemeData.accentColor
