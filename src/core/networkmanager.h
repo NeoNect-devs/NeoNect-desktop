@@ -25,7 +25,9 @@ public:
     bool isLoading() const { return m_isLoading; }
     QStringList friends() const { return m_friends; }
 
+    Q_INVOKABLE void setProfile(const QString &profileName);
     Q_INVOKABLE void verifyServer(const QString &address);
+
     Q_INVOKABLE void checkUsernameAvailability(const QString &username);
     Q_INVOKABLE void registerUser(const QString &username, const QString &password);
     Q_INVOKABLE void loginUser(const QString &username, const QString &password);
@@ -72,11 +74,13 @@ private:
 
     QNetworkAccessManager *m_nam;
     QTimer *m_pollTimer;
+    QString m_profile;
     QString m_serverUrl;
     QString m_token;
     QString m_currentUsername;
     QStringList m_friends;
     bool m_isLoading{false};
 };
+
 
 

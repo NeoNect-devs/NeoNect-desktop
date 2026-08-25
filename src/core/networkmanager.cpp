@@ -24,19 +24,28 @@ NetworkManager::NetworkManager(QObject *parent) : QObject(parent) {
     loadFriends();
 }
 
+void NetworkManager::setProfile(const QString &profileName) {
+    m_profile = profileName;
+    loadFriends();
+}
+
 void NetworkManager::loadFriends() {
-    QSettings settings("Avila", "DesktopClient");
+    QString group = m_profile.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + m_profile.trimmed());
+    QSettings settings("Avila", group);
     m_friends = settings.value("friends").toStringList();
     if (m_friends.isEmpty()) {
         m_friends = QStringList{"alex", "beatrice", "charlie"};
         saveFriends();
     }
+    emit friendsChanged();
 }
 
 void NetworkManager::saveFriends() {
-    QSettings settings("Avila", "DesktopClient");
+    QString group = m_profile.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + m_profile.trimmed());
+    QSettings settings("Avila", group);
     settings.setValue("friends", m_friends);
 }
+
 
 void NetworkManager::startPolling() {
     if (!m_pollTimer->isActive()) {

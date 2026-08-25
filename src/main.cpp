@@ -1,27 +1,39 @@
 // src/main.cpp
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
-#include <QQmlContext> // ➔ REQUIRED FOR CONTEXT PROPERTIES
+#include <QQmlContext>
+#include <QCommandLineParser>
+#include <QCommandLineOption>
 #include "core/networkmanager.h"
 #include "core/cryptomanager.h"
 #include "core/chatmessagemodel.h"
-#include "themedata.h" // ➔ 1. INCLUDE YOUR THEME HEADER
+#include "themedata.h"
 
 int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
+    QGuiApplication::setApplicationName("Avila");
+    QGuiApplication::setApplicationVersion("1.0");
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription("Avila Desktop Client");
+    parser.addHelpOption();
+    parser.addVersionOption();
+
+    QCommandLineOption profileOption(QStringList() << "p" << "profile", "Profile identifier for running multiple instances side-by-side", "profile");
+    parser.addOption(profileOption);
+    parser.process(app);
+
+    QString profile = parser.value(profileOption);
+    if (!profile.isEmpty()) {
+        CryptoManager::instance()->setProfile(profile);
+        NetworkManager::instance()->setProfile(profile);
+    }
+
     QQmlApplicationEngine engine;
 
-    // ➔ 2. ACCESS OR INSTANTIATE YOUR THEME
-    // If ThemeData is a singleton type like NetworkManager, use ThemeData::instance()
-    // Otherwise, create an instance pointer here:
-    // ThemeData *themeData = new ThemeData(&app);
-
-    // ➔ 3. EXPOSE IT GLOBALLY TO QML
-    // This makes the "ThemeData" variable available everywhere in QML instantly
     engine.rootContext()->setContextProperty("ThemeData", ThemeData::instance());
-    // (Swap out 'ThemeData::instance()' with 'themeData' if it is not a singleton)
+    engine.rootContext()->setContextProperty("appProfile", profile);
 
-    // Register other backends...
     qmlRegisterSingletonInstance("Avila.Core", 1, 0, "NetworkManager", NetworkManager::instance());
     qmlRegisterSingletonInstance("Avila.Core", 1, 0, "CryptoManager", CryptoManager::instance());
     qmlRegisterType<ChatMessageModel>("Avila.Core", 1, 0, "ChatMessageModel");
@@ -35,3 +47,4 @@ int main(int argc, char *argv[]) {
 
     return app.exec();
 }
+

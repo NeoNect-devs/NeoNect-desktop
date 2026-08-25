@@ -14,11 +14,17 @@ CryptoManager* CryptoManager::instance() {
 
 CryptoManager::CryptoManager(QObject *parent) : QObject(parent) {
     m_masterSymKey.resize(32); // 256-bit Key Allocation
+    setProfile("");
+}
 
-    QSettings settings("Avila", "DesktopClient");
+void CryptoManager::setProfile(const QString &profileName) {
+    m_profile = profileName;
+    QString group = profileName.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + profileName.trimmed());
+    QSettings settings("Avila", group);
+
     m_deviceId = settings.value("device_id").toString();
     if (m_deviceId.isEmpty()) {
-        m_deviceId = "avila-dev-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+        m_deviceId = "avila-dev-" + (profileName.trimmed().isEmpty() ? "" : (profileName.trimmed() + "-")) + QUuid::createUuid().toString(QUuid::WithoutBraces);
         settings.setValue("device_id", m_deviceId);
     }
 
@@ -38,6 +44,7 @@ QString CryptoManager::getDeviceId() {
 QString CryptoManager::getDevicePublicKey() {
     return m_publicKey;
 }
+
 
 
 void CryptoManager::initializeKeyFromPassphrase(const QString &passphrase) {

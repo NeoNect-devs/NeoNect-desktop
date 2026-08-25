@@ -10,6 +10,7 @@ public:
     static CryptoManager* instance();
     explicit CryptoManager(QObject *parent = nullptr);
 
+    Q_INVOKABLE void setProfile(const QString &profileName);
     Q_INVOKABLE QString getDeviceId();
     Q_INVOKABLE QString getDevicePublicKey();
     Q_INVOKABLE void initializeKeyFromPassphrase(const QString &passphrase);
@@ -21,6 +22,8 @@ signals:
 
 private:
     QByteArray m_masterSymKey;
+    QString m_profile;
     QString m_deviceId;
     QString m_publicKey;
-};
+};
+

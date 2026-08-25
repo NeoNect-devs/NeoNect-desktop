@@ -82,7 +82,7 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignHCenter
-            text: root.titleText
+            text: root.titleText + ((typeof appProfile !== "undefined" && appProfile !== "") ? "  [" + appProfile + "]" : "")
             color: "gray"
             font.pointSize: 11
         }
