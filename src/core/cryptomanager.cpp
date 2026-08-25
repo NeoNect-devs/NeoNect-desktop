@@ -4,6 +4,9 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
+#include <QUuid>
+#include <QSettings>
+
 CryptoManager* CryptoManager::instance() {
     static CryptoManager _instance;
     return &_instance;
@@ -11,7 +14,31 @@ CryptoManager* CryptoManager::instance() {
 
 CryptoManager::CryptoManager(QObject *parent) : QObject(parent) {
     m_masterSymKey.resize(32); // 256-bit Key Allocation
+
+    QSettings settings("Avila", "DesktopClient");
+    m_deviceId = settings.value("device_id").toString();
+    if (m_deviceId.isEmpty()) {
+        m_deviceId = "avila-dev-" + QUuid::createUuid().toString(QUuid::WithoutBraces);
+        settings.setValue("device_id", m_deviceId);
+    }
+
+    m_publicKey = settings.value("public_key").toString();
+    if (m_publicKey.isEmpty()) {
+        QByteArray randomKey(32, 0);
+        RAND_bytes(reinterpret_cast<unsigned char*>(randomKey.data()), 32);
+        m_publicKey = randomKey.toBase64();
+        settings.setValue("public_key", m_publicKey);
+    }
 }
+
+QString CryptoManager::getDeviceId() {
+    return m_deviceId;
+}
+
+QString CryptoManager::getDevicePublicKey() {
+    return m_publicKey;
+}
+
 
 void CryptoManager::initializeKeyFromPassphrase(const QString &passphrase) {
     QtConcurrent::run([this, passphrase]() {

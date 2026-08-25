@@ -1,9 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 
+set(CMAKE_AUTOMOC_COMPILER_PREDEFS OFF)
+
 project(Avila VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+
 
 # =====================================================================
 # 1. Find and load the Qt6 package natively
@@ -21,6 +25,7 @@ qt_standard_project_setup(REQUIRES 6.9)
 if(WIN32)
     set(TEST_PATHS
         "C:/OpenSSL-Win64"
+        "C:/PROGRA~1/OpenSSL-Win64"
         "C:/Program Files/OpenSSL-Win64"
         "C:/OpenSSL"
     )
@@ -62,12 +67,14 @@ if(WIN32)
     if(MANUAL_CRYPTO_LIB AND MANUAL_SSL_LIB)
         add_library(OpenSSL::Crypto UNKNOWN IMPORTED)
         set_target_properties(OpenSSL::Crypto PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
             INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
             IMPORTED_LOCATION "${MANUAL_CRYPTO_LIB}"
         )
 
         add_library(OpenSSL::SSL UNKNOWN IMPORTED)
         set_target_properties(OpenSSL::SSL PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
             INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
             IMPORTED_LOCATION "${MANUAL_SSL_LIB}"
             INTERFACE_LINK_LIBRARIES OpenSSL::Crypto
@@ -89,6 +96,8 @@ qt_add_executable(AvilaApp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
 )
+set_target_properties(AvilaApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
+
 
 # =====================================================================
 # 5. Process the QML modules (Explicit List with SVG Assets)
