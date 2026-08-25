@@ -253,11 +253,12 @@ Item {
                         }
                     }
 
-                    AvilaBrandButton {
+                    AvilaButton {
                         width: parent.width
                         height: 42
                         text: "⚡ Quick Connect (@" + (typeof appProfile !== "undefined" && appProfile !== "" ? appProfile : "demo") + ")"
                         enabled: entryRoot.isServerReady && !NetworkManager.isLoading
+                        highlighted: true
                         onClicked: {
                             var u = (typeof appProfile !== "undefined" && appProfile !== "") ? appProfile : "alice";
                             entryRoot.quickConnectUser = u;
@@ -265,6 +266,7 @@ Item {
                         }
                     }
                 }
+
 
 
                 // ─── SCREEN 2: USER LOGIN ──────────────────────────────────
