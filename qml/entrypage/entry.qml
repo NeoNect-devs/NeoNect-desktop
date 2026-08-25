@@ -561,6 +561,7 @@ Item {
 
     // ─── SIGNAL CONNECTIONS ────────────────────────────────────────────────
     property string quickConnectUser: ""
+    property string pendingQuickConnectUser: ""
 
     Connections {
         target: NetworkManager
@@ -581,8 +582,9 @@ Item {
         function onRegistrationResult(success, message) {
             if (success) {
                 entryRoot.regSuccessText = "Account created! Signing in...";
-                var u = regUser.text.trim() !== "" ? regUser.text.trim() : (entryRoot.quickConnectUser !== "" ? entryRoot.quickConnectUser : "alice");
+                var u = regUser.text.trim() !== "" ? regUser.text.trim() : (entryRoot.pendingQuickConnectUser !== "" ? entryRoot.pendingQuickConnectUser : (typeof appProfile !== "undefined" && appProfile !== "" ? appProfile : "alice"));
                 var p = regPass.text !== "" ? regPass.text : "password123";
+                entryRoot.pendingQuickConnectUser = "";
                 NetworkManager.loginUser(u, p);
             } else {
                 entryRoot.regErrorText = message;
@@ -592,9 +594,11 @@ Item {
         function onLoginResult(success, tokenOrError) {
             if (success) {
                 entryRoot.quickConnectUser = "";
+                entryRoot.pendingQuickConnectUser = "";
             } else {
                 if (entryRoot.quickConnectUser !== "") {
                     var u = entryRoot.quickConnectUser;
+                    entryRoot.pendingQuickConnectUser = u;
                     entryRoot.quickConnectUser = "";
                     NetworkManager.registerUser(u, "password123");
                     return;
@@ -608,11 +612,11 @@ Item {
         }
     }
 
-
     Component.onCompleted: {
-        if (typeof root !== "undefined" && root.devDeepLink !== "") {
+        if (typeof root !== "undefined" && typeof root.devDeepLink === "string" && root.devDeepLink !== "") {
             entryRoot.currentScreen = root.devDeepLink;
         }
     }
 }
+
 
