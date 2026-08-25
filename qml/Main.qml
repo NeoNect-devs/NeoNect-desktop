@@ -53,11 +53,20 @@ Window {
             }
         }
 
-        Loader {
-            id: viewFlowLoader
-            anchors.top: titleBar.bottom; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
-            source: root.appState === "gateway" ? "entrypage/entry.qml" : ""
-            sourceComponent: root.appState === "authenticated" ? chatDashboardComponent : null
+    onAppStateChanged: {
+        if (appState === "gateway") {
+            viewFlowLoader.sourceComponent = null;
+            viewFlowLoader.source = "";
+            viewFlowLoader.source = "entrypage/entry.qml";
+        }
+    }
+
+    Loader {
+        id: viewFlowLoader
+        anchors.top: titleBar.bottom; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+        source: root.appState === "gateway" ? "entrypage/entry.qml" : ""
+        sourceComponent: root.appState === "authenticated" ? chatDashboardComponent : null
+
 
             Connections {
                 target: viewFlowLoader.item

@@ -413,6 +413,15 @@ void NetworkManager::pollPendingMessages() {
         reply->deleteLater();
         int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (statusCode == 401) {
+            static int poll401Retries = 0;
+            if (poll401Retries < 2) {
+                poll401Retries++;
+                qDebug() << "[NetworkManager] 401 on poll: re-registering device (" << poll401Retries << ")";
+                registerDevice(CryptoManager::instance()->getDeviceId(), CryptoManager::instance()->getDevicePublicKey());
+                return;
+            }
+            poll401Retries = 0;
+            qDebug() << "[NetworkManager] Token genuinely unauthorized or expired. Logging out.";
             m_token.clear();
             m_currentUsername.clear();
             saveSettings();
@@ -423,6 +432,7 @@ void NetworkManager::pollPendingMessages() {
             return;
         }
         if (reply->error() != QNetworkReply::NoError) return;
+
 
 
         auto doc = QJsonDocument::fromJson(reply->readAll());
