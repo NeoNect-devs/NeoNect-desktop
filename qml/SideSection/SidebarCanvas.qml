@@ -2,6 +2,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import Avila 1.0
 
 Item {
     id: sidebarRoot
@@ -9,7 +10,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: "#101210"
+        color: ThemeData.sidebarBackground
     }
 
     ScrollView {
@@ -42,14 +43,24 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
 
                     scale: dmMouseArea.containsMouse || root.currentSelectedServer === "dms" ? 1.15 : 1.0
-                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                    Behavior on scale {
+                        NumberAnimation {
+                            duration: 150
+                            easing.type: Easing.OutCubic
+                        }
+                    }
 
                     Rectangle {
                         id: dmBorderLayer
                         anchors.fill: parent
                         radius: dmMouseArea.containsMouse || root.currentSelectedServer === "dms" ? 14 : 24
                         color: root.currentSelectedServer === "dms" ? "#FFFFFF" : "transparent"
-                        Behavior on radius { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+                        Behavior on radius {
+                            NumberAnimation {
+                                duration: 150
+                                easing.type: Easing.OutCubic
+                            }
+                        }
                     }
 
                     Rectangle {
@@ -58,8 +69,17 @@ Item {
                         radius: dmMouseArea.containsMouse || root.currentSelectedServer === "dms" ? 12 : 24
                         color: root.currentSelectedServer === "dms" ? "#00A36C" : (dmMouseArea.containsMouse ? "#2A2C2A" : "#1E201E")
 
-                        Behavior on radius { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-                        Behavior on color { ColorAnimation { duration: 150 } }
+                        Behavior on radius {
+                            NumberAnimation {
+                                duration: 150
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+                        Behavior on color {
+                            ColorAnimation {
+                                duration: 150
+                            }
+                        }
 
                         Text {
                             anchors.centerIn: parent
@@ -74,8 +94,8 @@ Item {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            root.currentSelectedServer = "dms"
-                            root.currentActiveChannel = "dm-alex"
+                            root.currentSelectedServer = "dms";
+                            root.currentActiveChannel = "dm-alex";
                         }
                     }
                 }
@@ -131,13 +151,24 @@ Item {
                                 radius: server1Mouse.containsMouse || root.currentSelectedServer === "server1" ? 12 : 24
                                 color: root.currentSelectedServer === "server1" ? "#00A36C" : (server1Mouse.containsMouse ? "#2A2C2A" : "#1E201E")
 
-                                Text { anchors.centerIn: parent; text: "A"; color: "white"; font.weight: Font.DemiBold }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "A"
+                                    color: "white"
+                                    font.weight: Font.DemiBold
+                                }
                             }
                         }
 
                         MouseArea {
-                            id: server1Mouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.currentSelectedServer = "server1"; root.currentActiveChannel = "general" }
+                            id: server1Mouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.currentSelectedServer = "server1";
+                                root.currentActiveChannel = "general";
+                            }
                         }
                     }
 
@@ -177,20 +208,44 @@ Item {
                                 radius: server2Mouse.containsMouse || root.currentSelectedServer === "server2" ? 12 : 24
                                 color: root.currentSelectedServer === "server2" ? "#00A36C" : (server2Mouse.containsMouse ? "#2A2C2A" : "#1E201E")
 
-                                Text { anchors.centerIn: parent; text: "B"; color: "white"; font.weight: Font.DemiBold }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "B"
+                                    color: "white"
+                                    font.weight: Font.DemiBold
+                                }
                             }
                         }
 
                         Rectangle {
-                            anchors.top: parent.top; anchors.right: parent.right; anchors.topMargin: -2; anchors.rightMargin: -2
-                            width: 16; height: 16; radius: 8; color: "#FF3333"; z: 10
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.topMargin: -2
+                            anchors.rightMargin: -2
+                            width: 16
+                            height: 16
+                            radius: 8
+                            color: "#FF3333"
+                            z: 10
                             visible: parent.mentionCount > 0
-                            Text { anchors.centerIn: parent; text: parent.parent.mentionCount.toString(); color: "white"; font.pixelSize: 9; font.weight: Font.Bold }
+                            Text {
+                                anchors.centerIn: parent
+                                text: parent.parent.mentionCount.toString()
+                                color: "white"
+                                font.pixelSize: 9
+                                font.weight: Font.Bold
+                            }
                         }
 
                         MouseArea {
-                            id: server2Mouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                            onClicked: { root.currentSelectedServer = "server2"; root.currentActiveChannel = "general" }
+                            id: server2Mouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.currentSelectedServer = "server2";
+                                root.currentActiveChannel = "general";
+                            }
                         }
                     }
                 }

@@ -1,67 +1,166 @@
-# CMakeLists.txt
 cmake_minimum_required(VERSION 3.16)
 
-project(Avila VERSION 0.1 LANGUAGES CXX)
+project(Avila VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(CMAKE_PREFIX_PATH "C:/Qt/6.9.1/mingw_64/lib/cmake")
+# =====================================================================
+# 1. Find and load the Qt6 package natively
+# =====================================================================
+find_package(Qt6 REQUIRED COMPONENTS Gui Qml Quick Concurrent Network)
 
-find_package(Qt6 REQUIRED COMPONENTS Quick)
+# =====================================================================
+# 2. Fix Qt 6.9+ Infinite Recursion Policy Bug
+# =====================================================================
+qt_standard_project_setup(REQUIRES 6.9)
 
-qt_standard_project_setup(REQUIRES 6.5)
+# =====================================================================
+# 3. OpenSSL 4.0.0 Windows Multi-Path Discovery & Target Bypass
+# =====================================================================
+if(WIN32)
+    set(TEST_PATHS
+        "C:/OpenSSL-Win64"
+        "C:/Program Files/OpenSSL-Win64"
+        "C:/OpenSSL"
+    )
 
-qt_add_executable(Avila
-    main.cpp
+    set(OPENSSL_ROOT_DIR "")
+    foreach(PATH_CANDIDATE ${TEST_PATHS})
+        if(EXISTS "${PATH_CANDIDATE}")
+            set(OPENSSL_ROOT_DIR "${PATH_CANDIDATE}")
+            message(STATUS "➔ Found OpenSSL Root Directory at: ${OPENSSL_ROOT_DIR}")
+            break()
+        endif()
+    endforeach()
+
+    if("${OPENSSL_ROOT_DIR}" STREQUAL "")
+        message(FATAL_ERROR "➔ OpenSSL installation folder not found!")
+    endif()
+
+    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include")
+
+    file(GLOB_RECURSE FOUND_CRYPTO_FILES "${OPENSSL_ROOT_DIR}/*crypto*.*")
+    file(GLOB_RECURSE FOUND_SSL_FILES    "${OPENSSL_ROOT_DIR}/*ssl*.*")
+
+    set(MANUAL_CRYPTO_LIB "")
+    foreach(FILE ${FOUND_CRYPTO_FILES})
+        if(NOT FILE MATCHES ".*/bin/.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
+            set(MANUAL_CRYPTO_LIB "${FILE}")
+            break()
+        endif()
+    endforeach()
+
+    set(MANUAL_SSL_LIB "")
+    foreach(FILE ${FOUND_SSL_FILES})
+        if(NOT FILE MATCHES ".*/bin/.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
+            set(MANUAL_SSL_LIB "${FILE}")
+            break()
+        endif()
+    endforeach()
+
+    if(MANUAL_CRYPTO_LIB AND MANUAL_SSL_LIB)
+        add_library(OpenSSL::Crypto UNKNOWN IMPORTED)
+        set_target_properties(OpenSSL::Crypto PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
+            IMPORTED_LOCATION "${MANUAL_CRYPTO_LIB}"
+        )
+
+        add_library(OpenSSL::SSL UNKNOWN IMPORTED)
+        set_target_properties(OpenSSL::SSL PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
+            IMPORTED_LOCATION "${MANUAL_SSL_LIB}"
+            INTERFACE_LINK_LIBRARIES OpenSSL::Crypto
+        )
+    else()
+        message(FATAL_ERROR "➔ Failed to bind OpenSSL runtime files.")
+    endif()
+else()
+    find_package(OpenSSL REQUIRED)
+endif()
+
+# =====================================================================
+# 4. Define the executable target (C++ ONLY)
+# =====================================================================
+qt_add_executable(AvilaApp
+    src/main.cpp
+    src/themedata.h
+    src/core/networkmanager.h src/core/networkmanager.cpp
+    src/core/cryptomanager.h src/core/cryptomanager.cpp
+    src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
 )
 
-set_source_files_properties(qml/modules/ThemeData/ThemeData.qml
-    PROPERTIES QT_QML_SINGLETON_TYPE TRUE
-)
-
-set(QT_QML_SKIP_QMLDIR_ENTRY FALSE)
-
-qt_add_qml_module(Avila
+# =====================================================================
+# 5. Process the QML modules (Explicit List with SVG Assets)
+# =====================================================================
+qt_add_qml_module(AvilaApp
     URI Avila
     VERSION 1.0
-
     QML_FILES
+        # --- Root QML Folder ---
         qml/Main.qml
-        qml/modules/ThemeData/ThemeData.qml
-        qml/MainSection/MainPanel.qml
-        qml/MainSection/TopView/TopbarCanvas.qml
-        qml/MainSection/MemberListView/MemberListCanvas.qml
-        qml/MainSection/MemberListView/MemberItem.qml
-        qml/MainSection/ChatView/ChatboxCanvas.qml
-        qml/MainSection/ChatView/MessageBubble.qml
-        qml/MainSection/ChatView/CircularImage.qml
-        qml/MainSection/ChatView/MessageInputCanvas.qml
-        qml/MainSection/ChatView/ChatHandler.js
-        qml/SideSection/SidebarCanvas.qml
-        qml/SideSection/ChannelListItem.qml
+        qml/MainPanel.qml
+
+        # --- Containers Folder ---
+        qml/containers/WindowTitleBar.qml
+        qml/containers/ChannelSidebarPanel.qml
+        qml/containers/MembersSidebarPanel.qml
+        qml/containers/UserProfileFooter.qml
+
+        # --- Components Folder ---
+        qml/components/AvilaButton.qml
+        qml/components/AvilaMessageInput.qml
+        qml/components/AvilaTextField.qml
+        qml/components/ChannelListItem.qml
+        qml/components/CircularImage.qml
+        qml/components/ScrollableArea.qml
+        qml/components/AvilaBrandButton.qml
+        # --- Entrypage Folder ---
         qml/entrypage/entry.qml
-        qml/entrypage/apiService.js
+
+        # --- SideSection Folder ---
+        qml/SideSection/SidebarCanvas.qml
 
     RESOURCES
-        assets/icons/arrow-back.svg
         assets/logo.png
+        assets/icons/arrow-back.svg
+        assets/icons/friends.svg
+        assets/icons/hash.svg
+        assets/icons/headphones.svg
+        assets/icons/mic.svg
+        assets/icons/plus-circle.svg
+        assets/icons/send.svg
+        assets/icons/settings.svg
+        assets/icons/smile.svg
+        assets/icons/sticker.svg
+        assets/icons/users.svg
 )
 
-set_target_properties(Avila PROPERTIES
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-    MACOSX_BUNDLE TRUE
-    WIN32_EXECUTABLE TRUE
+target_include_directories(AvilaApp PRIVATE src)
+
+# =====================================================================
+# 6. Pipeline Linking Operations
+# =====================================================================
+target_link_libraries(AvilaApp PRIVATE
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::Concurrent
+    Qt6::Network
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
-target_link_libraries(Avila
-    PRIVATE Qt6::Quick
-)
-
-include(GNUInstallDirs)
-install(TARGETS Avila
-    BUNDLE DESTINATION .
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+# =====================================================================
+# 7. Automatic DLL Deployment (Windows Only)
+# =====================================================================
+if(WIN32)
+    set(OPENSSL_BIN_DIR "${OPENSSL_ROOT_DIR}/bin")
+    add_custom_command(TARGET AvilaApp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${OPENSSL_BIN_DIR}/libcrypto-4-x64.dll"
+            "${OPENSSL_BIN_DIR}/libssl-4-x64.dll"
+            $<TARGET_FILE_DIR:AvilaApp>
+        COMMENT "➔ Automatically deploying OpenSSL 4 runtime DLLs to target execution directory..."
+    )
+endif()

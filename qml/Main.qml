@@ -4,37 +4,46 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import Avila 1.0
-import "entrypage"
-import "MainSection"
-import "SideSection"
+import Avila.Core 1.0
+import "."
 
 Window {
     id: root
-    color: ThemeData.mainWindowBackground
-    width: 850
-    height: 640
+    color: ThemeData.windowBackground
+    width: 850; height: 640
     visible: true
     flags: Qt.Window | Qt.FramelessWindowHint
 
     property string appState: "gateway"
     property string activeTitleText: "Server Connection"
-    property string sessionToken: ""
-    property string verifiedServerUrl: ""
     property string currentActiveChannel: "general"
     property string currentSelectedServer: "server1"
 
+    // ➔ DEV CHEAT LINK STATE TRACKER
+    property string devDeepLink: "server"
+
     Rectangle {
-        id: mainBackground
         anchors.fill: parent
         color: root.color
 
+        WindowTitleBar {
+            id: titleBar
+            windowTarget: root
+            appState: root.appState
+            titleText: root.activeTitleText
+            showBackButton: (root.appState === "gateway" && viewFlowLoader.item) ? viewFlowLoader.item.showTitleBackButton : false
+            anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
+
+            onBackClicked: {
+                if (root.appState === "gateway" && viewFlowLoader.item) {
+                    viewFlowLoader.item.goBack();
+                }
+            }
+        }
+
         Loader {
             id: viewFlowLoader
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.top: titleBar.bottom
-
+            anchors.top: titleBar.bottom; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
             source: root.appState === "gateway" ? "entrypage/entry.qml" : ""
             sourceComponent: root.appState === "authenticated" ? chatDashboardComponent : null
 
@@ -43,364 +52,112 @@ Window {
                 ignoreUnknownSignals: true
                 function onRequestTitleChange(newTitle) { root.activeTitleText = newTitle }
                 function onAuthenticationSuccess(token, serverUrl) {
-                    root.sessionToken = token
-                    root.verifiedServerUrl = serverUrl
                     root.appState = "authenticated"
                 }
             }
         }
 
-        // ===========================================================
-        // SYSTEM TITLE BAR
-        // ===========================================================
-        Rectangle {
-            id: titleBar
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            height: 45
-            z: 100
-            color: root.appState === "gateway" ? Qt.darker(ThemeData.mainWindowBackground, 1.15) : "transparent"
-
-            MouseArea {
-                anchors.fill: parent
-                property point clickPos: Qt.point(0, 0)
-                onPressed: (mouse) => { clickPos = Qt.point(mouse.x, mouse.y) }
-                onPositionChanged: (mouse) => {
-                    if (root.visibility === Window.Maximized) {
-                        let ratioX = mouse.x / root.width
-                        root.visibility = Window.Windowed
-                        clickPos.x = root.width * ratioX
-                        clickPos.y = mouse.y
-                        return;
-                    }
-                    let delta = Qt.point(mouse.x - clickPos.x, mouse.y - clickPos.y)
-                    root.x += delta.x; root.y += delta.y
-                }
-                onDoubleClicked: { if (root.appState === "authenticated") root.visibility = (root.visibility === Window.Maximized) ? Window.Windowed : Window.Maximized }
-            }
-
-            // STATE A: ENTRY SECURITY GATEWAY
-            RowLayout {
-                anchors.fill: parent
-                visible: root.appState === "gateway"
-                spacing: 0
-
-                Rectangle {
-                    Layout.leftMargin: 10; Layout.alignment: Qt.AlignVCenter
-                    width: 35; height: 35; radius: 4
-                    color: backMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
-                    visible: viewFlowLoader.item && viewFlowLoader.item.currentSubScreen !== "address_entry"
-                    Image { anchors.centerIn: parent; width: 18; height: 18; source: "../assets/icons/arrow-back.svg"; fillMode: Image.PreserveAspectFit }
-                    MouseArea { id: backMouseArea; anchors.fill: parent; hoverEnabled: true; onClicked: { viewFlowLoader.item.currentSubScreen = "address_entry" } }
-                }
-                Text { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: root.activeTitleText; color: "gray"; font.pointSize: 11 }
-                Rectangle {
-                    Layout.rightMargin: 10; Layout.alignment: Qt.AlignVCenter
-                    width: 35; height: 35; radius: 4
-                    color: closeMouseArea.containsMouse ? "#e81123" : "transparent"
-                    Text { anchors.centerIn: parent; text: "✕"; color: closeMouseArea.containsMouse ? "white" : "gray"; font.pointSize: 12 }
-                    MouseArea { id: closeMouseArea; anchors.fill: parent; hoverEnabled: true; onClicked: root.close() }
-                }
-            }
-
-            // STATE B: AUTHENTICATED
-            Item {
-                anchors.fill: parent
-                visible: root.appState === "authenticated"
-
-                Item {
-                    id: brandingContainer
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    implicitHeight: 60
-                    width: logoRow.implicitWidth + 16
-                    z: 105
-
-                    Rectangle {
-                        id: gradientBorderLayer; anchors.fill: parent
-                        topLeftRadius: 0; bottomLeftRadius: 0; topRightRadius: 16; bottomRightRadius: 16
-                        opacity: brandingMouseArea.containsMouse ? 1.0 : 0.0
-                        Behavior on opacity { NumberAnimation { duration: 200 } }
-                        gradient: Gradient {
-                            orientation: Gradient.Diagonal
-                            GradientStop { position: 0.0; color: "#FFFFFF" }
-                            GradientStop { position: 1.0; color: "#3A3A3A" }
-                        }
-                    }
-
-                    Rectangle {
-                        id: innerSolidBackground; anchors.fill: parent
-                        anchors.topMargin: 1; anchors.rightMargin: 1; anchors.bottomMargin: 1
-                        topLeftRadius: 0; bottomLeftRadius: 0; topRightRadius: 15; bottomRightRadius: 15
-                        color: "#101210"
-                    }
-
-                    Row {
-                        id: logoRow; anchors.bottom: parent.bottom; anchors.bottomMargin: 2; anchors.left: parent.left; anchors.leftMargin: 8; spacing: 2
-                        Item {
-                            width: 48; height: 48; anchors.verticalCenter: parent.verticalCenter
-                            Image {
-                                id: chatLogo; anchors.fill: parent; source: "../assets/logo.png"; fillMode: Image.PreserveAspectFit; antialiasing: true
-                                scale: brandingMouseArea.containsMouse ? 1.06 : 1.0; opacity: brandingMouseArea.containsMouse ? 1.0 : 0.88
-                                Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-                            }
-                        }
-                        Text { text: "Avila"; color: "#FFFFFF"; font.family: "Segoe UI"; font.pixelSize: 18; font.weight: Font.DemiBold; anchors.verticalCenter: parent.verticalCenter }
-                    }
-                    MouseArea { id: brandingMouseArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor }
-                }
-
-                RowLayout {
-                    anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.rightMargin: 8; spacing: 4
-                    Rectangle {
-                        Layout.preferredWidth: 38; Layout.preferredHeight: 32; radius: 4
-                        color: minM.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
-                        Text { anchors.centerIn: parent; text: "—"; color: "white"; font.pointSize: 10 }
-                        MouseArea { id: minM; anchors.fill: parent; hoverEnabled: true; onClicked: root.visibility = Window.Minimized }
-                    }
-                    Rectangle {
-                        Layout.preferredWidth: 38; Layout.preferredHeight: 32; radius: 4
-                        color: maxM.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
-                        Text { anchors.centerIn: parent; text: root.visibility === Window.Maximized ? "🗗" : "🗖"; color: "white"; font.pointSize: 11 }
-                        MouseArea { id: maxM; anchors.fill: parent; hoverEnabled: true; onClicked: root.visibility = (root.visibility === Window.Maximized) ? Window.Windowed : Window.Maximized }
-                    }
-                    Rectangle {
-                        Layout.preferredWidth: 38; Layout.preferredHeight: 32; radius: 4
-                        color: chatCloseM.containsMouse ? "#e81123" : "transparent"
-                        Text { anchors.centerIn: parent; text: "✕"; color: "white"; font.pointSize: 11 }
-                        MouseArea { id: chatCloseM; anchors.fill: parent; hoverEnabled: true; onClicked: root.close() }
-                    }
-                }
-            }
-        }
-
-        // ===========================================================
-        // AUTHENTICATED CHAT WORKSPACE ARCHITECTURE
-        // ===========================================================
         Component {
             id: chatDashboardComponent
-
             Item {
-                anchors.top: titleBar.bottom
-                anchors.bottom: parent.bottom
-                anchors.left: parent.left
-                anchors.right: parent.right
-
                 RowLayout {
-                    anchors.top: parent.top
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    spacing: 0
-
-                    SidebarCanvas {
-                        Layout.fillHeight: true
-                        Layout.preferredWidth: 60
-                    }
+                    anchors.fill: parent; spacing: 0
+                    SidebarCanvas { Layout.fillHeight: true; Layout.preferredWidth: 60 }
 
                     Rectangle {
-                        id: chatViewWrapperContainer
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        color: "transparent"
-                        border.color: "#232523"
-                        border.width: 1
+                        Layout.fillWidth: true; Layout.fillHeight: true
+                        color: "transparent"; border.color: "#232523"; border.width: 1
 
                         SplitView {
-                            anchors.fill: parent
-                            anchors.margins: 1
-                            orientation: Qt.Horizontal
-                            handle: Rectangle { implicitWidth: 3; color: ThemeData.mainWindowBackground }
+                            anchors.fill: parent; anchors.margins: 1; orientation: Qt.Horizontal
+                            handle: Rectangle { implicitWidth: 3; color: ThemeData.windowBackground }
 
-                            // Middle Channels View Column
-                            Rectangle {
-                                id: channelSidebarSpace
-                                SplitView.minimumWidth: 180
-                                SplitView.preferredWidth: 240
-                                SplitView.maximumWidth: 350
-                                Layout.fillHeight: true
-                                color: "#101210"
-
-                                ScrollView {
-                                    id: channelScrollView
-                                    anchors.fill: parent
-                                    clip: true
-
-                                    ColumnLayout {
-                                        width: channelScrollView.availableWidth
-                                        spacing: 2
-                                        anchors.leftMargin: 8
-                                        anchors.rightMargin: 8
-                                        anchors.topMargin: 8
-                                        anchors.bottomMargin: 60
-
-                                        Text {
-                                            text: "TEXT CHANNELS"
-                                            color: "#949BA4"
-                                            font.family: "Segoe UI"; font.pixelSize: 12; font.weight: Font.Bold
-                                            Layout.fillWidth: true; Layout.leftMargin: 4; Layout.topMargin: 8
-                                            visible: root.currentSelectedServer !== "dms"
-                                        }
-                                        ChannelListItem {
-                                            name: "welcome-rules"; type: "channel"; Layout.fillWidth: true; visible: root.currentSelectedServer !== "dms"
-                                            isSelected: root.currentActiveChannel === "welcome-rules"; onClicked: root.currentActiveChannel = "welcome-rules"
-                                        }
-                                        ChannelListItem {
-                                            name: "announcements"; type: "channel"; Layout.fillWidth: true; visible: root.currentSelectedServer !== "dms"; hasUnread: true; notificationCount: 3
-                                            isSelected: root.currentActiveChannel === "announcements"; onClicked: root.currentActiveChannel = "announcements"
-                                        }
-                                        ChannelListItem {
-                                            name: "general"; type: "channel"; Layout.fillWidth: true; visible: root.currentSelectedServer !== "dms"
-                                            isSelected: root.currentActiveChannel === "general"; onClicked: root.currentActiveChannel = "general"
-                                        }
-
-                                        Text {
-                                            text: "DIRECT MESSAGES"
-                                            color: "#949BA4"
-                                            font.family: "Segoe UI"; font.pixelSize: 12; font.weight: Font.Bold
-                                            Layout.fillWidth: true; Layout.leftMargin: 4; Layout.topMargin: 8
-                                            visible: root.currentSelectedServer === "dms"
-                                        }
-                                        ChannelListItem {
-                                            name: "Alex (Core)"; type: "dm"; Layout.fillWidth: true; visible: root.currentSelectedServer === "dms"
-                                            isSelected: root.currentActiveChannel === "dm-alex"; onClicked: root.currentActiveChannel = "dm-alex"
-                                        }
-                                        ChannelListItem {
-                                            name: "Sarah_Dev"; type: "dm"; Layout.fillWidth: true; visible: root.currentSelectedServer === "dms"; hasUnread: true
-                                            isSelected: root.currentActiveChannel === "dm-sarah"; onClicked: root.currentActiveChannel = "dm-sarah"
-                                        }
-                                    }
-                                }
+                            ChannelSidebarPanel {
+                                id: channelsPanel
+                                selectedServer: root.currentSelectedServer
+                                activeChannel: root.currentActiveChannel
+                                onChannelChanged: (chan) => root.currentActiveChannel = chan
                             }
-
-                            // Conversation Area Viewport Panel
                             MainPanel {
+                                selectedServer: root.currentSelectedServer
+                                activeChannel: root.currentActiveChannel
                                 SplitView.fillWidth: true
                                 Layout.fillHeight: true
                             }
                         }
                     }
                 }
-
-                // ===========================================================
-                // FLOATING CONTIGUOUS USER PROFILE CARD
-                // ===========================================================
-                Rectangle {
-                    id: unifiedProfileFooterCard
-                    anchors.bottom: parent.bottom
-                    anchors.left: parent.left
-
-                    width: 60 + channelSidebarSpace.width
-                    height: 52
-                    z: 10
-
-                    color: "#0F1110"
-                    topLeftRadius: 12
-                    topRightRadius: 12
-                    bottomLeftRadius: 0
-                    bottomRightRadius: 0
-
-                    border.color: "#232523"
-                    border.width: 1
-
-                    RowLayout {
-                        anchors.fill: parent
-                        spacing: 0
-
-                        // Sidebar Region Anchor (Avatar)
-                        Item {
-                            width: 60
-                            Layout.preferredWidth: 60
-                            Layout.fillHeight: true
-
-                            Rectangle {
-                                anchors.centerIn: parent
-                                width: 36; height: 36; radius: 18; color: "#1E201E"
-                                Text { anchors.centerIn: parent; text: "👤"; font.pixelSize: 16 }
-
-                                Rectangle {
-                                    anchors.bottom: parent.bottom; anchors.right: parent.right
-                                    width: 10; height: 10; radius: 5; color: "#00A36C"
-                                    border.color: "#0F1110"; border.width: 1.5
-                                }
-                            }
-                        }
-
-                        // Channels Alignment Panel (Meta & Controls)
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            Layout.leftMargin: 4
-                            Layout.rightMargin: 10
-
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 0
-                                Layout.alignment: Qt.AlignVCenter
-
-                                Text {
-                                    text: "UserAccount"
-                                    color: "#FFFFFF"
-                                    font.family: "Segoe UI"; font.pixelSize: 13; font.weight: Font.DemiBold
-                                    elide: Text.ElideRight; Layout.fillWidth: true
-                                }
-                                Text {
-                                    text: "Online"
-                                    color: "#A2A4A2"
-                                    font.family: "Segoe UI"; font.pixelSize: 11
-                                    elide: Text.ElideRight; Layout.fillWidth: true
-                                }
-                            }
-
-                            Row {
-                                spacing: 4
-                                Layout.alignment: Qt.AlignVCenter
-
-                                Rectangle {
-                                    width: 28; height: 28; radius: 6
-                                    color: micMouse.containsMouse ? "#1E201E" : "transparent"
-                                    border.color: micMouse.containsMouse ? "#2A2C2A" : "transparent"
-                                    Text { anchors.centerIn: parent; text: "🎙️"; font.pixelSize: 11 }
-                                    MouseArea { id: micMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor }
-                                }
-                                Rectangle {
-                                    width: 28; height: 28; radius: 6
-                                    color: audioMouse.containsMouse ? "#1E201E" : "transparent"
-                                    border.color: audioMouse.containsMouse ? "#2A2C2A" : "transparent"
-                                    Text { anchors.centerIn: parent; text: "🎧"; font.pixelSize: 11 }
-                                    MouseArea { id: audioMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor }
-                                }
-                                Rectangle {
-                                    width: 28; height: 28; radius: 6
-                                    color: settingsMouse.containsMouse ? "#1E201E" : "transparent"
-                                    border.color: settingsMouse.containsMouse ? "#2A2C2A" : "transparent"
-                                    Text { anchors.centerIn: parent; text: "⚙️"; font.pixelSize: 11 }
-                                    MouseArea { id: settingsMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor }
-                                }
-                            }
-                        }
-                    }
+                UserProfileFooter {
+                    anchors.bottom: parent.bottom; anchors.left: parent.left
+                    channelOffsetWidth: channelsPanel.width
                 }
             }
         }
 
-        // ===========================================================
-        // RESIZE HITBOXES
-        // ===========================================================
+        // Framework Frameless Window Geometry Sizing hitboxes
         Item {
-            anchors.fill: parent
-            z: 101
+            anchors.fill: parent; z: 101
             visible: root.appState === "authenticated" && root.visibility !== Window.Maximized
+            MouseArea { width: 4; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; cursorShape: Qt.SizeHorCursor; onPressed: root.startSystemResize(Qt.LeftEdge) }
+            MouseArea { width: 4; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; cursorShape: Qt.SizeHorCursor; onPressed: root.startSystemResize(Qt.RightEdge) }
+            MouseArea { height: 4; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; cursorShape: Qt.SizeVerCursor; onPressed: root.startSystemResize(Qt.BottomEdge) }
+            MouseArea { height: 4; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; cursorShape: Qt.SizeVerCursor; onPressed: root.startSystemResize(Qt.TopEdge) }
+        }
+    }
 
-            MouseArea { width: 6; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; cursorShape: Qt.SizeHorCursor; onPressed: root.startSystemResize(Qt.LeftEdge) }
-            MouseArea { width: 6; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; cursorShape: Qt.SizeHorCursor; onPressed: root.startSystemResize(Qt.RightEdge) }
-            MouseArea { height: 6; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; cursorShape: Qt.SizeVerCursor; onPressed: root.startSystemResize(Qt.BottomEdge) }
-            MouseArea { height: 6; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; cursorShape: Qt.SizeVerCursor; onPressed: root.startSystemResize(Qt.TopEdge) }
-            MouseArea { width: 10; height: 10; anchors.right: parent.right; anchors.bottom: parent.bottom; cursorShape: Qt.SizeFDiagCursor; onPressed: root.startSystemResize(Qt.RightEdge | Qt.BottomEdge) }
-            MouseArea { width: 10; height: 10; anchors.left: parent.left; anchors.bottom: parent.bottom; cursorShape: Qt.SizeBDiagCursor; onPressed: root.startSystemResize(Qt.LeftEdge | Qt.BottomEdge) }
-            MouseArea { width: 10; height: 10; anchors.right: parent.right; anchors.top: parent.top; cursorShape: Qt.SizeBDiagCursor; onPressed: root.startSystemResize(Qt.RightEdge | Qt.TopEdge) }
-            MouseArea { width: 10; height: 10; anchors.left: parent.left; anchors.top: parent.top; cursorShape: Qt.SizeFDiagCursor; onPressed: root.startSystemResize(Qt.LeftEdge | Qt.TopEdge) }
+    // =========================================================================
+    // ─── DEVELOPER CHEAT KERNEL ──────────────────────────────────────────────
+    // =========================================================================
+
+    // ➔ CHEAT WAY 1: GLOBAL KEYBOARD SHORTCUTS
+    Shortcut { sequence: "Ctrl+1"; onActivated: devBypass("gateway", "server") }
+    Shortcut { sequence: "Ctrl+2"; onActivated: devBypass("gateway", "login") }
+    Shortcut { sequence: "Ctrl+3"; onActivated: devBypass("gateway", "signup") }
+    Shortcut { sequence: "Ctrl+4"; onActivated: devBypass("authenticated", "") }
+
+    function devBypass(targetState, targetSubScreen) {
+        root.devDeepLink = targetSubScreen
+        root.appState = targetState
+        if (targetState === "gateway" && viewFlowLoader.item) {
+            viewFlowLoader.item.currentScreen = targetSubScreen
+        }
+    }
+
+    // ➔ CHEAT WAY 2: FLOATING INTERACTIVE HUD PANEL
+    Rectangle {
+        id: devHud
+        anchors.right: parent.right; anchors.bottom: parent.bottom
+        anchors.margins: 16; z: 99999
+        width: expanded ? 460 : 40; height: 40
+        radius: 8; color: "#d91e1e24"; border.color: "#ff3366"; border.width: 1
+        clip: true
+
+        property bool expanded: true
+
+        Behavior on width { NumberAnimation { duration: 180; easing.type: Easing.InOutQuad } }
+
+        RowLayout {
+            anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10
+            spacing: 8
+
+            // Toggle Expand Button
+            Text {
+                text: devHud.expanded ? "❌" : "🛠️"
+                color: "#ff3366"; font.bold: true; font.pointSize: 12
+                MouseArea { anchors.fill: parent; onClicked: devHud.expanded = !devHud.expanded }
+            }
+
+            Row {
+                Layout.fillWidth: true; spacing: 6
+                visible: devHud.expanded
+
+                Text { text: "DEV HUD:"; color: "#ff3366"; font.bold: true; verticalAlignment: Text.AlignVCenter; height: 24 }
+
+                Button { text: "Server (Ctrl+1)"; onClicked: root.devBypass("gateway", "server") }
+                Button { text: "Login (Ctrl+2)"; onClicked: root.devBypass("gateway", "login") }
+                Button { text: "Signup (Ctrl+3)"; onClicked: root.devBypass("gateway", "signup") }
+                Button { text: "🔥 Bypass Main App (Ctrl+4)"; onClicked: root.devBypass("authenticated", "") }
+            }
         }
     }
 }
