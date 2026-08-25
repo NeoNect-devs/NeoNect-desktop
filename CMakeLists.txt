@@ -165,6 +165,7 @@ target_link_libraries(AvilaApp PRIVATE
 # =====================================================================
 if(WIN32)
     set(OPENSSL_BIN_DIR "${OPENSSL_ROOT_DIR}/bin")
+    set(MINGW_BIN_DIR "C:/Qt/Tools/mingw1310_64/bin")
     find_program(WINDEPLOYQT_EXEC windeployqt HINTS "C:/Qt/6.11.2/mingw_64/bin")
 
     if(WINDEPLOYQT_EXEC)
@@ -172,17 +173,24 @@ if(WIN32)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${OPENSSL_BIN_DIR}/libcrypto-4-x64.dll"
                 "${OPENSSL_BIN_DIR}/libssl-4-x64.dll"
+                "${MINGW_BIN_DIR}/libstdc++-6.dll"
+                "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
+                "${MINGW_BIN_DIR}/libwinpthread-1.dll"
                 $<TARGET_FILE_DIR:AvilaApp>
-            COMMAND "${WINDEPLOYQT_EXEC}" --no-compiler-runtime --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" "$<TARGET_FILE:AvilaApp>"
-            COMMENT "➔ Deploying OpenSSL and Qt runtime DLLs via windeployqt..."
+            COMMAND "${WINDEPLOYQT_EXEC}" --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" "$<TARGET_FILE:AvilaApp>"
+            COMMENT "➔ Deploying OpenSSL, MinGW C++ runtime, and Qt DLLs via windeployqt..."
         )
     else()
         add_custom_command(TARGET AvilaApp POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${OPENSSL_BIN_DIR}/libcrypto-4-x64.dll"
                 "${OPENSSL_BIN_DIR}/libssl-4-x64.dll"
+                "${MINGW_BIN_DIR}/libstdc++-6.dll"
+                "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
+                "${MINGW_BIN_DIR}/libwinpthread-1.dll"
                 $<TARGET_FILE_DIR:AvilaApp>
-            COMMENT "➔ Automatically deploying OpenSSL 4 runtime DLLs to target execution directory..."
+            COMMENT "➔ Deploying OpenSSL and MinGW C++ runtime DLLs..."
         )
     endif()
-endif()
+endif()
+
