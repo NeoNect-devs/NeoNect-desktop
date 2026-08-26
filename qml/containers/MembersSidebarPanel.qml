@@ -183,11 +183,7 @@ Rectangle {
 
             ScrollBar.vertical: ScrollBar {
                 id: membersScrollBar
-                parent: membersListView
-                anchors.top: membersListView.top
-                anchors.right: membersListView.right
-                anchors.bottom: membersListView.bottom
-                width: 5
+                width: 6
                 policy: ScrollBar.AsNeeded
 
                 background: Rectangle {
@@ -195,8 +191,8 @@ Rectangle {
                 }
 
                 contentItem: Rectangle {
-                    implicitWidth: 5
-                    radius: 2.5
+                    implicitWidth: 6
+                    radius: 3
                     color: membersScrollBar.pressed ? "#6E727A" : (membersScrollBar.hovered ? "#4E5058" : "#2B2D31")
                     opacity: membersScrollBar.active || membersScrollBar.hovered ? 1.0 : 0.0
                     Behavior on opacity { NumberAnimation { duration: 150 } }

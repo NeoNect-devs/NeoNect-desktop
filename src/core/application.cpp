@@ -29,6 +29,7 @@ static void customLogHandler(QtMsgType type, const QMessageLogContext &context, 
 Application::Application(int &argc, char **argv) {
     setupLogging();
 
+    qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
 #ifdef _WIN32
     qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "none");
     qputenv("QT_FFMPEG_ENCODING_HW_DEVICE_TYPES", "none");
