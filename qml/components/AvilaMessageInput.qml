@@ -34,6 +34,45 @@ Rectangle {
         return (bytes / (1024 * 1024)).toFixed(1) + " MB";
     }
 
+    function detectMediaType(url, fileName) {
+        var path = (fileName || url || "").toLowerCase();
+        if (path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") ||
+            path.endsWith(".webp") || path.endsWith(".gif") || path.endsWith(".bmp") ||
+            path.endsWith(".svg") || path.endsWith(".ico") || path.endsWith(".tiff")) {
+            return "image";
+        }
+        if (path.endsWith(".mp4") || path.endsWith(".webm") || path.endsWith(".mov") ||
+            path.endsWith(".mkv") || path.endsWith(".avi") || path.endsWith(".m4v") ||
+            path.endsWith(".flv") || path.endsWith(".wmv") || path.endsWith(".3gp")) {
+            return "video";
+        }
+        if (path.endsWith(".mp3") || path.endsWith(".wav") || path.endsWith(".ogg") ||
+            path.endsWith(".flac") || path.endsWith(".m4a") || path.endsWith(".aac") ||
+            path.endsWith(".opus") || path.endsWith(".wma")) {
+            return "audio";
+        }
+        return "file";
+    }
+
+    function handleSelectedFileUrl(fileUrlStr) {
+        if (!fileUrlStr) return;
+        var url = fileUrlStr.toString();
+        var path = url.replace("file:///", "").replace("file://", "");
+        var fileName = path.substring(path.lastIndexOf('/') + 1);
+        if (!fileName || fileName.indexOf('\\') !== -1) {
+            fileName = path.substring(path.lastIndexOf('\\') + 1);
+        }
+        var detectedType = detectMediaType(url, fileName);
+        inputRoot.draftAttachment = {
+            type: detectedType,
+            url: url,
+            name: fileName,
+            size: (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000))),
+            duration: (detectedType === "video" ? 30 : (detectedType === "audio" ? 180 : 0))
+        };
+        inputArea.forceActiveFocus();
+    }
+
     implicitHeight: isRecordingMode ? 52 : (draftAttachment ? Math.min(Math.max(104, inputArea.contentHeight + 76), 220) : Math.min(Math.max(52, inputArea.contentHeight + 24), 160))
     color: ThemeData.inputBackgroundInactive
     radius: 10
@@ -200,7 +239,7 @@ Rectangle {
             Layout.fillHeight: true
             spacing: 8
 
-            // Attachment '+' Button
+            // Attachment '+' Button (Directly opens system file picker with automatic content type detection)
             Rectangle {
                 width: 32; height: 32
                 radius: 16
@@ -219,261 +258,7 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: attachPopup.open()
-                }
-
-                Popup {
-                    id: attachPopup
-                    y: -224
-                    x: 0
-                    width: 240
-                    padding: 6
-                    modal: true
-                    focus: true
-                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-                    background: Rectangle {
-                        radius: 12
-                        color: ThemeData.panelBackground
-                        border.color: Qt.rgba(255, 255, 255, 0.12)
-                        border.width: 1
-                    }
-
-                    contentItem: ColumnLayout {
-                        spacing: 4
-
-                        // 1. Photo / Image
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 48
-                            radius: 8
-                            color: imgOptMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8; anchors.rightMargin: 8
-                                spacing: 10
-
-                                Rectangle {
-                                    width: 32; height: 32
-                                    radius: 8
-                                    color: Qt.rgba(10, 132, 255, 0.2)
-
-                                    IconImage {
-                                        anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/Avila/assets/icons/image.svg"
-                                        width: 16; height: 16
-                                        color: ThemeData.accentColor
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 1
-
-                                    Text {
-                                        text: "Photo or Image"
-                                        color: ThemeData.textPrimary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 12
-                                        font.bold: true
-                                    }
-
-                                    Text {
-                                        text: "PNG, JPG, WebP, GIF"
-                                        color: ThemeData.textSecondary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 10
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: imgOptMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    attachPopup.close();
-                                    imageFileDialog.open();
-                                }
-                            }
-                        }
-
-                        // 2. Video File
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 48
-                            radius: 8
-                            color: vidOptMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8; anchors.rightMargin: 8
-                                spacing: 10
-
-                                Rectangle {
-                                    width: 32; height: 32
-                                    radius: 8
-                                    color: Qt.rgba(6, 182, 212, 0.2)
-
-                                    IconImage {
-                                        anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/Avila/assets/icons/video.svg"
-                                        width: 16; height: 16
-                                        color: "#06B6D4"
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 1
-
-                                    Text {
-                                        text: "Video File"
-                                        color: ThemeData.textPrimary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 12
-                                        font.bold: true
-                                    }
-
-                                    Text {
-                                        text: "MP4, MKV, WebM"
-                                        color: ThemeData.textSecondary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 10
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: vidOptMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    attachPopup.close();
-                                    videoFileDialog.open();
-                                }
-                            }
-                        }
-
-                        // 3. Audio & Music
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 48
-                            radius: 8
-                            color: audOptMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8; anchors.rightMargin: 8
-                                spacing: 10
-
-                                Rectangle {
-                                    width: 32; height: 32
-                                    radius: 8
-                                    color: Qt.rgba(35, 165, 90, 0.2)
-
-                                    IconImage {
-                                        anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/Avila/assets/icons/music.svg"
-                                        width: 16; height: 16
-                                        color: "#23A55A"
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 1
-
-                                    Text {
-                                        text: "Audio & Music"
-                                        color: ThemeData.textPrimary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 12
-                                        font.bold: true
-                                    }
-
-                                    Text {
-                                        text: "MP3, WAV, FLAC, OGG"
-                                        color: ThemeData.textSecondary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 10
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: audOptMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    attachPopup.close();
-                                    audioFileDialog.open();
-                                }
-                            }
-                        }
-
-                        // 4. Document / File
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 48
-                            radius: 8
-                            color: docOptMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 8; anchors.rightMargin: 8
-                                spacing: 10
-
-                                Rectangle {
-                                    width: 32; height: 32
-                                    radius: 8
-                                    color: Qt.rgba(0, 168, 252, 0.2)
-
-                                    IconImage {
-                                        anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/Avila/assets/icons/file.svg"
-                                        width: 16; height: 16
-                                        color: "#00A8FC"
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 1
-
-                                    Text {
-                                        text: "Document or File"
-                                        color: ThemeData.textPrimary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 12
-                                        font.bold: true
-                                    }
-
-                                    Text {
-                                        text: "PDF, ZIP, Archives, Code"
-                                        color: ThemeData.textSecondary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 10
-                                    }
-                                }
-                            }
-
-                            MouseArea {
-                                id: docOptMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    attachPopup.close();
-                                    docFileDialog.open();
-                                }
-                            }
-                        }
-                    }
+                    onClicked: universalFileDialog.open()
                 }
             }
 
@@ -682,70 +467,37 @@ Rectangle {
         }
     }
 
-    // File Pickers
+    // Universal System File Picker (Auto-detects content type on selection)
     FileDialog {
-        id: imageFileDialog
-        title: "Select Image / Photo"
-        nameFilters: ["Image files (*.png *.jpg *.jpeg *.gif *.webp *.bmp)"]
+        id: universalFileDialog
+        title: "Select File or Media to Send"
+        nameFilters: [
+            "All Files (*.*)",
+            "Images (*.png *.jpg *.jpeg *.webp *.gif *.bmp *.svg)",
+            "Videos (*.mp4 *.webm *.mkv *.mov *.avi *.m4v)",
+            "Audio & Music (*.mp3 *.wav *.ogg *.flac *.m4a *.aac *.opus)",
+            "Documents & Archives (*.pdf *.zip *.rar *.7z *.txt *.docx *.xlsx *.pptx)"
+        ]
         onAccepted: {
-            var path = selectedFile.toString().replace("file:///", "");
-            var fileName = path.substring(path.lastIndexOf('/') + 1);
-            inputRoot.draftAttachment = {
-                type: "image",
-                url: selectedFile.toString(),
-                name: fileName,
-                size: 1540000
-            };
+            inputRoot.handleSelectedFileUrl(selectedFile.toString());
         }
     }
 
-    FileDialog {
-        id: videoFileDialog
-        title: "Select Video File"
-        nameFilters: ["Video files (*.mp4 *.webm *.mkv *.avi *.mov)"]
-        onAccepted: {
-            var path = selectedFile.toString().replace("file:///", "");
-            var fileName = path.substring(path.lastIndexOf('/') + 1);
-            inputRoot.draftAttachment = {
-                type: "video",
-                url: selectedFile.toString(),
-                name: fileName,
-                size: 8500000,
-                duration: 45
-            };
+    // Drag & Drop Area on Input Box
+    DropArea {
+        id: inputDropArea
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        onEntered: (drag) => {
+            if (drag.hasUrls) {
+                drag.acceptProposedAction();
+            }
         }
-    }
-
-    FileDialog {
-        id: audioFileDialog
-        title: "Select Music / Audio File"
-        nameFilters: ["Audio files (*.mp3 *.wav *.ogg *.flac *.m4a *.aac)"]
-        onAccepted: {
-            var path = selectedFile.toString().replace("file:///", "");
-            var fileName = path.substring(path.lastIndexOf('/') + 1);
-            inputRoot.draftAttachment = {
-                type: "audio",
-                url: selectedFile.toString(),
-                name: fileName,
-                size: 4200000,
-                duration: 180
-            };
-        }
-    }
-
-    FileDialog {
-        id: docFileDialog
-        title: "Select Document / File"
-        nameFilters: ["All files (*.*)"]
-        onAccepted: {
-            var path = selectedFile.toString().replace("file:///", "");
-            var fileName = path.substring(path.lastIndexOf('/') + 1);
-            inputRoot.draftAttachment = {
-                type: "file",
-                url: selectedFile.toString(),
-                name: fileName,
-                size: 2800000
-            };
+        onDropped: (drop) => {
+            if (drop.hasUrls && drop.urls.length > 0) {
+                inputRoot.handleSelectedFileUrl(drop.urls[0].toString());
+                drop.acceptProposedAction();
+            }
         }
     }
 }

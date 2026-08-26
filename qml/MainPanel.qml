@@ -49,6 +49,26 @@ Item {
         return "FILE";
     }
 
+    function detectMediaType(url, fileName) {
+        var path = (fileName || url || "").toLowerCase();
+        if (path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") ||
+            path.endsWith(".webp") || path.endsWith(".gif") || path.endsWith(".bmp") ||
+            path.endsWith(".svg") || path.endsWith(".ico") || path.endsWith(".tiff")) {
+            return "image";
+        }
+        if (path.endsWith(".mp4") || path.endsWith(".webm") || path.endsWith(".mov") ||
+            path.endsWith(".mkv") || path.endsWith(".avi") || path.endsWith(".m4v") ||
+            path.endsWith(".flv") || path.endsWith(".wmv") || path.endsWith(".3gp")) {
+            return "video";
+        }
+        if (path.endsWith(".mp3") || path.endsWith(".wav") || path.endsWith(".ogg") ||
+            path.endsWith(".flac") || path.endsWith(".m4a") || path.endsWith(".aac") ||
+            path.endsWith(".opus") || path.endsWith(".wma")) {
+            return "audio";
+        }
+        return "file";
+    }
+
     Connections {
         target: NetworkManager
 
@@ -834,6 +854,108 @@ Item {
                                             onClicked: root.retryMessage(model.messageId)
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    // ─── DRAG & DROP FOR SENDING FILES & MEDIA ───
+                    DropArea {
+                        id: chatDropArea
+                        anchors.fill: parent
+                        keys: ["text/uri-list"]
+
+                        onEntered: (drag) => {
+                            if (drag.hasUrls) {
+                                drag.acceptProposedAction();
+                            }
+                        }
+
+                        onDropped: (drop) => {
+                            if (drop.hasUrls && drop.urls.length > 0) {
+                                for (var i = 0; i < drop.urls.length; ++i) {
+                                    var url = drop.urls[i].toString();
+                                    var path = url.replace("file:///", "").replace("file://", "");
+                                    var fileName = path.substring(path.lastIndexOf('/') + 1);
+                                    if (!fileName || fileName.indexOf('\\') !== -1) {
+                                        fileName = path.substring(path.lastIndexOf('\\') + 1);
+                                    }
+                                    var detectedType = root.detectMediaType(url, fileName);
+                                    var itemObj = {
+                                        messageId: "msg_" + Date.now() + "_" + i,
+                                        text: "",
+                                        fromMe: true,
+                                        senderName: "Me",
+                                        senderAvatar: "",
+                                        messageType: detectedType,
+                                        mediaUrl: url,
+                                        fileName: fileName,
+                                        fileSize: (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000))),
+                                        duration: (detectedType === "video" ? 30 : (detectedType === "audio" ? 180 : 0)),
+                                        waveform: (detectedType === "voice" ? [0.3, 0.6, 0.9, 0.5, 0.2] : []),
+                                        status: "sending",
+                                        timestamp: Math.floor(Date.now() / 1000)
+                                    };
+                                    root.sendMessagePayload(itemObj);
+                                }
+                                drop.acceptProposedAction();
+                            }
+                        }
+                    }
+
+                    // Drag & Drop visual feedback overlay
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        radius: 12
+                        color: Qt.rgba(10, 132, 255, 0.12)
+                        border.color: "#00E5FF"
+                        border.width: 2
+                        visible: chatDropArea.containsDrag
+                        z: 999
+
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            radius: 10
+                            color: Qt.rgba(15, 18, 24, 0.92)
+
+                            ColumnLayout {
+                                anchors.centerIn: parent
+                                spacing: 10
+
+                                Rectangle {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    width: 56; height: 56
+                                    radius: 28
+                                    color: Qt.rgba(10, 132, 255, 0.25)
+                                    border.color: "#00E5FF"
+                                    border.width: 2
+
+                                    IconImage {
+                                        anchors.centerIn: parent
+                                        source: "qrc:/qt/qml/Avila/assets/icons/download.svg"
+                                        width: 26; height: 26
+                                        color: "#00E5FF"
+                                        rotation: 180
+                                    }
+                                }
+
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "Drop files to send to " + (root.selectedServer === "dms" ? ("@" + root.activeChannel) : ("#" + root.activeChannel))
+                                    color: "#FFFFFF"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 16
+                                    font.bold: true
+                                }
+
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "Images, videos, music, and documents will be automatically recognized and sent"
+                                    color: ThemeData.textSecondary
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 12
                                 }
                             }
                         }
