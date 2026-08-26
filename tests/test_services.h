@@ -11,4 +11,5 @@ private slots:
     void testRelayServiceFlowAndDeduplication();
     void testFriendServiceFlow();
     void testNetworkManagerFacadeIntegration();
+    void testTwoClientChatExchange();
 };

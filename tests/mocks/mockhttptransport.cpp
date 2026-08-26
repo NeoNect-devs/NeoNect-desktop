@@ -5,18 +5,121 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QUuid>
-#include <QTimer>
+#include <QFile>
+#include <QDir>
+#include <QSaveFile>
 
 namespace Avila {
 namespace Testing {
 
-MockHttpTransport::MockHttpTransport(bool enableEchoBot, QObject *parent)
-    : QObject(parent), m_enableEchoBot(enableEchoBot) {
+static QString sharedStateFilePath() {
+    return QDir::tempPath() + "/avila_mock_shared_state.json";
+}
+
+MockHttpTransport::MockHttpTransport(bool enableSharedStorage, bool enableEchoBot, QObject *parent)
+    : QObject(parent), m_enableSharedStorage(enableSharedStorage), m_enableEchoBot(enableEchoBot) {
+    if (m_enableSharedStorage) {
+        loadSharedState();
+    }
+
     seedUser("alex", "password123");
     seedUser("beatrice", "password123");
     seedUser("charlie", "password123");
     seedUser("alice", "password123");
     seedUser("bob", "password123");
+
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+}
+
+void MockHttpTransport::loadSharedState() {
+    if (!m_enableSharedStorage) return;
+    QFile file(sharedStateFilePath());
+    if (!file.open(QIODevice::ReadOnly)) return;
+
+    auto doc = QJsonDocument::fromJson(file.readAll());
+    if (doc.isNull() || !doc.isObject()) return;
+
+    auto root = doc.object();
+    m_nextUserId = root.value("next_user_id").toInteger(100);
+    m_nextMessageId = root.value("next_message_id").toInteger(1000);
+
+    // Load users
+    auto usersObj = root.value("users").toObject();
+    for (auto it = usersObj.begin(); it != usersObj.end(); ++it) {
+        auto uObj = it.value().toObject();
+        MockUser u;
+        u.id = uObj.value("id").toInteger();
+        u.username = it.key();
+        u.password = uObj.value("password").toString();
+        u.sessionToken = uObj.value("session_token").toString();
+
+        auto devObj = uObj.value("devices").toObject();
+        for (auto dit = devObj.begin(); dit != devObj.end(); ++dit) {
+            u.devices[dit.key()] = dit.value().toString();
+        }
+        m_users[u.username] = u;
+        if (!u.sessionToken.isEmpty()) {
+            m_tokenToUser[u.sessionToken] = u.username;
+        }
+    }
+
+    // Load delivery queue
+    m_deliveryQueue.clear();
+    auto queueArr = root.value("delivery_queue").toArray();
+    for (const auto &val : queueArr) {
+        auto qObj = val.toObject();
+        MockQueuedMessage item;
+        item.id = qObj.value("id").toInteger();
+        item.deviceId = qObj.value("device_id").toString();
+        item.toUsername = qObj.value("to_username").toString();
+        item.ciphertextBase64 = qObj.value("ciphertext").toString();
+        item.timestamp = qObj.value("timestamp").toInteger();
+        m_deliveryQueue.push_back(item);
+    }
+}
+
+void MockHttpTransport::saveSharedState() {
+    if (!m_enableSharedStorage) return;
+
+    QJsonObject root;
+    root["next_user_id"] = m_nextUserId;
+    root["next_message_id"] = m_nextMessageId;
+
+    QJsonObject usersObj;
+    for (auto it = m_users.begin(); it != m_users.end(); ++it) {
+        QJsonObject uObj;
+        uObj["id"] = it.value().id;
+        uObj["password"] = it.value().password;
+        uObj["session_token"] = it.value().sessionToken;
+
+        QJsonObject devObj;
+        for (auto dit = it.value().devices.begin(); dit != it.value().devices.end(); ++dit) {
+            devObj[dit.key()] = dit.value();
+        }
+        uObj["devices"] = devObj;
+        usersObj[it.key()] = uObj;
+    }
+    root["users"] = usersObj;
+
+    QJsonArray queueArr;
+    for (const auto &item : m_deliveryQueue) {
+        QJsonObject qObj;
+        qObj["id"] = item.id;
+        qObj["device_id"] = item.deviceId;
+        qObj["to_username"] = item.toUsername;
+        qObj["ciphertext"] = item.ciphertextBase64;
+        qObj["timestamp"] = item.timestamp;
+        queueArr.append(qObj);
+    }
+    root["delivery_queue"] = queueArr;
+
+    QSaveFile saveFile(sharedStateFilePath());
+    if (saveFile.open(QIODevice::WriteOnly)) {
+        saveFile.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+        saveFile.commit();
+    }
 }
 
 void MockHttpTransport::setBaseUrl(const QString &url) {
@@ -31,6 +134,9 @@ QString MockHttpTransport::baseUrl() const {
 
 void MockHttpTransport::setAuthToken(const QString &token) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_enableSharedStorage) {
+        loadSharedState();
+    }
     m_activeToken = token;
     if (!token.isEmpty()) {
         for (const auto &user : m_users) {
@@ -39,7 +145,6 @@ void MockHttpTransport::setAuthToken(const QString &token) {
                 return;
             }
         }
-        // If unknown token, associate with first user
         if (!m_users.isEmpty()) {
             m_tokenToUser[token] = m_users.first().username;
         }
@@ -90,6 +195,9 @@ int MockHttpTransport::queuedMessageCount(const QString &deviceId) const {
 void MockHttpTransport::clearAllQueues() {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     m_deliveryQueue.clear();
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
 }
 
 void MockHttpTransport::get(const QString &endpoint, const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback) {
@@ -97,6 +205,9 @@ void MockHttpTransport::get(const QString &endpoint, const QMap<QString, QString
 
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        if (m_enableSharedStorage) {
+            loadSharedState();
+        }
         if (m_simulateNetworkError) {
             callback(0, QByteArray(), QNetworkReply::ConnectionRefusedError, "Simulated network failure");
             return;
@@ -127,6 +238,9 @@ void MockHttpTransport::post(const QString &endpoint, const QByteArray &jsonData
 
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        if (m_enableSharedStorage) {
+            loadSharedState();
+        }
         if (m_simulateNetworkError) {
             callback(0, QByteArray(), QNetworkReply::ConnectionRefusedError, "Simulated network failure");
             return;
@@ -174,7 +288,6 @@ void MockHttpTransport::handleAvailability(const QMap<QString, QString> &queryPa
     bool exists = m_users.contains(username);
 
     QJsonObject res;
-    // available == true means username is free to register (i.e. does not exist)
     res["available"] = !exists;
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
@@ -207,6 +320,10 @@ void MockHttpTransport::handleUsers(const QByteArray &data, Transport::HttpRespo
     m_users[username] = user;
     m_tokenToUser[user.sessionToken] = username;
 
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
     QJsonObject res;
     res["status"] = "success";
     res["user_id"] = user.id;
@@ -233,6 +350,10 @@ void MockHttpTransport::handleAuth(const QByteArray &data, Transport::HttpRespon
     m_tokenToUser[user.sessionToken] = username;
     m_activeToken = user.sessionToken;
 
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
     QJsonObject res;
     res["status"] = "success";
     res["token"] = user.sessionToken;
@@ -244,6 +365,9 @@ void MockHttpTransport::handleAuthDelete(Transport::HttpResponseCallback callbac
     if (!m_activeToken.isEmpty()) {
         m_tokenToUser.remove(m_activeToken);
         m_activeToken.clear();
+        if (m_enableSharedStorage) {
+            saveSharedState();
+        }
     }
     QJsonObject res;
     res["status"] = "success";
@@ -280,6 +404,10 @@ void MockHttpTransport::handleDeviceRegister(const QByteArray &data, Transport::
     QString publicKey = doc.object().value("public_key").toString();
 
     m_users[username].devices[deviceId] = publicKey;
+
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
 
     QJsonObject res;
     res["status"] = "success";
@@ -319,6 +447,33 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
     QString toUsername = doc.object().value("to_username").toString().trimmed().toLower();
     QString ciphertext = doc.object().value("ciphertext").toString();
     qint64 timestamp = doc.object().value("timestamp").toInteger();
+    QString senderUser = m_tokenToUser[m_activeToken];
+
+    // Handle channel broadcast (e.g. general)
+    if (toUsername == "general") {
+        for (const auto &user : m_users) {
+            for (auto it = user.devices.cbegin(); it != user.devices.cend(); ++it) {
+                if (it.key() != fromDeviceId) {
+                    MockQueuedMessage item;
+                    item.id = m_nextMessageId++;
+                    item.deviceId = it.key();
+                    item.toUsername = user.username;
+                    item.ciphertextBase64 = ciphertext;
+                    item.timestamp = timestamp;
+                    m_deliveryQueue.push_back(std::move(item));
+                }
+            }
+        }
+
+        if (m_enableSharedStorage) {
+            saveSharedState();
+        }
+
+        QJsonObject res;
+        res["status"] = "success";
+        callback(201, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+        return;
+    }
 
     if (!m_users.contains(toUsername)) {
         QJsonObject err;
@@ -346,9 +501,8 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
         m_deliveryQueue.push_back(std::move(item));
     }
 
-    // Interactive echo bot response simulation
-    if (m_enableEchoBot && fromDeviceId.length() > 0) {
-        QString senderUser = m_tokenToUser[m_activeToken];
+    // Interactive echo bot response simulation (only if receiver is not an active profile)
+    if (m_enableEchoBot && fromDeviceId.length() > 0 && recipient.devices.size() <= 1 && recipient.devices.contains("mock-dev-" + toUsername)) {
         QByteArray plainJsonBytes = QByteArray::fromBase64(ciphertext.toLatin1());
         auto parsedDoc = QJsonDocument::fromJson(plainJsonBytes);
         QString incomingContent = parsedDoc.isObject() ? parsedDoc.object().value("content").toString() : "hello";
@@ -368,6 +522,10 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
         echoReply.ciphertextBase64 = QString::fromLatin1(replyBytes.toBase64());
         echoReply.timestamp = QDateTime::currentSecsSinceEpoch();
         m_deliveryQueue.push_back(std::move(echoReply));
+    }
+
+    if (m_enableSharedStorage) {
+        saveSharedState();
     }
 
     QJsonObject res;
@@ -414,6 +572,10 @@ void MockHttpTransport::handleRelayAck(const QByteArray &data, Transport::HttpRe
         } else {
             ++it;
         }
+    }
+
+    if (m_enableSharedStorage) {
+        saveSharedState();
     }
 
     QJsonObject res;

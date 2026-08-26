@@ -169,3 +169,59 @@ void TestServices::testNetworkManagerFacadeIntegration() {
 
     storage->clearSession();
 }
+
+void TestServices::testTwoClientChatExchange() {
+    // 1. Shared mock transport simulating network backbone
+    auto sharedTransport = std::make_shared<Avila::Testing::MockHttpTransport>(false, false);
+    sharedTransport->seedUser("alice", "pass123");
+    sharedTransport->seedUser("bob", "pass123");
+
+    auto cryptoAlice = std::make_shared<Avila::Crypto::CryptoService>();
+    auto cryptoBob = std::make_shared<Avila::Crypto::CryptoService>();
+
+    auto storageAlice = std::make_shared<Avila::Storage::SettingsRepository>("client_alice");
+    storageAlice->clearSession();
+    storageAlice->setUsername("alice");
+    storageAlice->setAuthToken("mock-token-alice");
+    storageAlice->setDeviceId("mock-dev-alice");
+
+    auto storageBob = std::make_shared<Avila::Storage::SettingsRepository>("client_bob");
+    storageBob->clearSession();
+    storageBob->setUsername("bob");
+    storageBob->setDeviceId("mock-dev-bob");
+    storageBob->setAuthToken("mock-token-bob");
+
+    Avila::Services::RelayService relayAlice(sharedTransport, storageAlice, cryptoAlice);
+    Avila::Services::RelayService relayBob(sharedTransport, storageBob, cryptoBob);
+
+    QSignalSpy spyBobRecv(&relayBob, &Avila::Services::RelayService::incomingRelayMessageReceived);
+    QSignalSpy spyAliceRecv(&relayAlice, &Avila::Services::RelayService::incomingRelayMessageReceived);
+
+    // 2. Alice sends a direct message to Bob
+    sharedTransport->setAuthToken("mock-token-alice");
+    relayAlice.sendRelayMessage("bob", "Hey Bob, greetings from client Alice!");
+
+    // 3. Bob polls and receives Alice's message
+    sharedTransport->setAuthToken("mock-token-bob");
+    relayBob.pollPendingMessages();
+
+    QCOMPARE(spyBobRecv.count(), 1);
+    auto bobMsg = spyBobRecv.takeFirst();
+    QCOMPARE(bobMsg.at(0).toString(), "alice");
+    QCOMPARE(bobMsg.at(1).toString(), "Hey Bob, greetings from client Alice!");
+
+    // 4. Bob sends reply back to Alice
+    relayBob.sendRelayMessage("alice", "Hey Alice, message received loud and clear!");
+
+    // 5. Alice polls and receives Bob's reply
+    sharedTransport->setAuthToken("mock-token-alice");
+    relayAlice.pollPendingMessages();
+
+    QCOMPARE(spyAliceRecv.count(), 1);
+    auto aliceMsg = spyAliceRecv.takeFirst();
+    QCOMPARE(aliceMsg.at(0).toString(), "bob");
+    QCOMPARE(aliceMsg.at(1).toString(), "Hey Alice, message received loud and clear!");
+
+    storageAlice->clearSession();
+    storageBob->clearSession();
+}

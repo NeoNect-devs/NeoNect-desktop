@@ -28,13 +28,13 @@ struct MockUser {
 };
 
 /**
- * @brief In-memory mock HTTP transport simulating the Danisa / Avila REST API.
- * Provides instant in-process responses for testing without running a network server.
+ * @brief In-memory / File-backed mock HTTP transport simulating the Danisa REST API.
+ * Supports multi-process communication across separate client instances via shared state.
  */
 class MockHttpTransport : public QObject, public Transport::IHttpTransport {
     Q_OBJECT
 public:
-    explicit MockHttpTransport(bool enableEchoBot = false, QObject *parent = nullptr);
+    explicit MockHttpTransport(bool enableSharedStorage = false, bool enableEchoBot = false, QObject *parent = nullptr);
     ~MockHttpTransport() override = default;
 
     void setBaseUrl(const QString &url) override;
@@ -58,6 +58,9 @@ signals:
     void requestHandled(const QString &method, const QString &endpoint);
 
 private:
+    void loadSharedState();
+    void saveSharedState();
+
     void handleHealth(Transport::HttpResponseCallback callback);
     void handleUsers(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleAvailability(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
@@ -73,6 +76,7 @@ private:
     mutable std::recursive_mutex m_mutex;
     QString m_baseUrl{"http://mock.avila.local"};
     QString m_activeToken;
+    bool m_enableSharedStorage{false};
     bool m_enableEchoBot{false};
     bool m_simulateNetworkError{false};
     int m_simulateHttpError{0};
