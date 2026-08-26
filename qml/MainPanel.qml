@@ -421,11 +421,13 @@ Item {
                         Layout.alignment: Qt.AlignVCenter
                     }
 
-                    // Saved Messages Ribbon Icon
-                    Text {
+                    // Saved Messages Vector Icon
+                    IconImage {
                         visible: root.selectedServer === "dms" && root.activeChannel === "saved-messages"
-                        text: "🔖"
-                        font.pixelSize: 18
+                        source: "qrc:/qt/qml/Avila/assets/icons/bookmark.svg"
+                        width: 20; height: 20
+                        color: "#00E5FF"
+                        Layout.alignment: Qt.AlignVCenter
                     }
 
                     // DM Contact @ Prefix

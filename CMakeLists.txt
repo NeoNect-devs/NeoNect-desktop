@@ -174,6 +174,7 @@ qt_add_qml_module(AvilaApp
         assets/logo.png
         assets/icons/arrow-back.svg
         assets/icons/friends.svg
+        assets/icons/bookmark.svg
         assets/icons/hash.svg
         assets/icons/headphones.svg
         assets/icons/mic.svg

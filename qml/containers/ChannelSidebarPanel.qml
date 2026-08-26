@@ -153,10 +153,11 @@ Rectangle {
         ColumnLayout {
             visible: sidebarRoot.selectedServer === "dms"
             Layout.fillWidth: true
-            spacing: 2
+            spacing: 3
 
             // 1. Friends Dashboard Navigation
             ChannelListItem {
+                Layout.fillWidth: true
                 channelName: "Friends"
                 isSpecialNav: true
                 specialType: "friends"
@@ -171,6 +172,7 @@ Rectangle {
 
             // 2. Saved Messages (Cloud Bookmark / Notes to Self)
             ChannelListItem {
+                Layout.fillWidth: true
                 channelName: "Saved Messages"
                 isSpecialNav: true
                 specialType: "saved-messages"
