@@ -114,7 +114,8 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     QCOMPARE(spyRecv.count(), 1);
     auto recvArgs = spyRecv.takeFirst();
     QCOMPARE(recvArgs.at(0).toString(), "alice");
-    QCOMPARE(recvArgs.at(1).toString(), "Hello Bob from Alice!");
+    QCOMPARE(recvArgs.at(1).toString(), "bob");
+    QCOMPARE(recvArgs.at(2).toString(), "Hello Bob from Alice!");
 
     // 4. Test Deduplication: second poll immediately should not emit duplicate
     relayService.pollPendingMessages();
@@ -208,7 +209,8 @@ void TestServices::testTwoClientChatExchange() {
     QCOMPARE(spyBobRecv.count(), 1);
     auto bobMsg = spyBobRecv.takeFirst();
     QCOMPARE(bobMsg.at(0).toString(), "alice");
-    QCOMPARE(bobMsg.at(1).toString(), "Hey Bob, greetings from client Alice!");
+    QCOMPARE(bobMsg.at(1).toString(), "bob");
+    QCOMPARE(bobMsg.at(2).toString(), "Hey Bob, greetings from client Alice!");
 
     // 4. Bob sends reply back to Alice
     relayBob.sendRelayMessage("alice", "Hey Alice, message received loud and clear!");
@@ -220,7 +222,8 @@ void TestServices::testTwoClientChatExchange() {
     QCOMPARE(spyAliceRecv.count(), 1);
     auto aliceMsg = spyAliceRecv.takeFirst();
     QCOMPARE(aliceMsg.at(0).toString(), "bob");
-    QCOMPARE(aliceMsg.at(1).toString(), "Hey Alice, message received loud and clear!");
+    QCOMPARE(aliceMsg.at(1).toString(), "alice");
+    QCOMPARE(aliceMsg.at(2).toString(), "Hey Alice, message received loud and clear!");
 
     storageAlice->clearSession();
     storageBob->clearSession();

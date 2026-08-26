@@ -93,7 +93,7 @@ Rectangle {
         function onFriendsChanged() {
             sidebarRoot.syncFriendsModel();
         }
-        function onIncomingRelayMessageReceived(fromUsername, text, timestamp) {
+        function onIncomingRelayMessageReceived(fromUsername, target, text, timestamp) {
             sidebarRoot.friendStatusMap[fromUsername.toLowerCase()] = "online";
             sidebarRoot.syncFriendsModel();
         }

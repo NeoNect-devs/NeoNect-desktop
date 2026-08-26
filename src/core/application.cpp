@@ -65,9 +65,9 @@ void Application::parseCommandLine() {
 void Application::initializeServices() {
     CryptoManager::instance()->setProfile(m_profile);
     if (m_isMockMode) {
-        auto mockTransport = std::make_shared<Testing::MockHttpTransport>(true, true);
+        auto mockTransport = std::make_shared<Testing::MockHttpTransport>(true, false);
         NetworkManager::instance()->initializeCustom(mockTransport);
-        std::cout << "➔ [MOCK MODE ACTIVATED] Running with embedded multi-client server & virtual echo bots." << std::endl;
+        std::cout << "➔ [MOCK MODE ACTIVATED] Running with embedded multi-client server." << std::endl;
     }
     NetworkManager::instance()->setProfile(m_profile);
 }

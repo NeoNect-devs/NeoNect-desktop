@@ -107,11 +107,11 @@ void NetworkManager::setupServiceSignals() {
     connect(m_deviceService.get(), &Avila::Services::DeviceService::deviceKeyFetched, this, &NetworkManager::deviceKeyFetched);
 
     // Relay Service Connections
-    connect(m_relayService.get(), &Avila::Services::RelayService::incomingRelayMessageReceived, this, [this](const QString &fromUsername, const QString &text, qint64 timestamp) {
+    connect(m_relayService.get(), &Avila::Services::RelayService::incomingRelayMessageReceived, this, [this](const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp) {
         if (fromUsername.toLower() != currentUsername().toLower() && fromUsername != "Anonymous") {
             m_friendService->updateLastSeen(fromUsername);
         }
-        emit incomingRelayMessageReceived(fromUsername, text, timestamp);
+        emit incomingRelayMessageReceived(fromUsername, target, text, timestamp);
     });
 
     connect(m_relayService.get(), &Avila::Services::RelayService::secureMessageTransmitted, this, [this](const QString &targetUser, bool success) {

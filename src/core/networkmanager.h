@@ -74,7 +74,7 @@ signals:
     void userProfileFetched(bool success, const QString &username);
     void secureMessageTransmitted(const QString &channelId, bool success);
 
-    void incomingRelayMessageReceived(const QString &fromUsername, const QString &text, qint64 timestamp);
+    void incomingRelayMessageReceived(const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp);
     void addFriendResult(bool success, const QString &message, const QString &username);
     void friendStatusUpdated(const QString &username, const QString &status);
 

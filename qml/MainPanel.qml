@@ -20,26 +20,36 @@ Item {
     Connections {
         target: NetworkManager
 
-        function onIncomingRelayMessageReceived(fromUsername, text, timestamp) {
+        function onIncomingRelayMessageReceived(fromUsername, target, text, timestamp) {
             var senderLower = fromUsername.toLowerCase()
-            var dmKey = "dms:" + senderLower
-            if (!chatHistories[dmKey]) {
-                chatHistories[dmKey] = []
-            }
-            chatHistories[dmKey].push({ text: text, fromMe: false, sender: fromUsername, avatar: fromUsername.charAt(0).toUpperCase() })
+            var targetLower = (target || "").toLowerCase()
+            var isChannelMsg = (targetLower === "general" || targetLower.startsWith("channel:"));
+            var targetChannelName = targetLower.startsWith("channel:") ? targetLower.replace("channel:", "") : targetLower;
+            var key = isChannelMsg ? ("server1:" + targetChannelName) : ("dms:" + senderLower);
 
-            // Auto add friend to Direct Messages list if not already in friends list
-            if (NetworkManager && NetworkManager.friends && NetworkManager.friends.indexOf(senderLower) === -1) {
+            if (!chatHistories[key]) {
+                chatHistories[key] = []
+            }
+            chatHistories[key].push({ text: text, fromMe: false, sender: fromUsername, avatar: fromUsername.charAt(0).toUpperCase() })
+
+            // Auto add friend to Direct Messages list ONLY for direct messages
+            if (!isChannelMsg && NetworkManager && NetworkManager.friends && NetworkManager.friends.indexOf(senderLower) === -1) {
                 NetworkManager.addFriend(senderLower)
             }
 
-            // Insert message into active model only if currently viewing this direct message channel
-            if (root.selectedServer === "dms" && root.activeChannel.toLowerCase() === senderLower) {
-                nativeMessageModel.insertMessage(text, false, fromUsername, fromUsername.charAt(0).toUpperCase())
-                scrollTimer.restart()
+            // Insert message into active model if currently viewing this channel/DM
+            if (isChannelMsg) {
+                if (root.selectedServer === "server1" && root.activeChannel.toLowerCase() === targetChannelName) {
+                    nativeMessageModel.insertMessage(text, false, fromUsername, fromUsername.charAt(0).toUpperCase())
+                    scrollTimer.restart()
+                }
+            } else {
+                if (root.selectedServer === "dms" && root.activeChannel.toLowerCase() === senderLower) {
+                    nativeMessageModel.insertMessage(text, false, fromUsername, fromUsername.charAt(0).toUpperCase())
+                    scrollTimer.restart()
+                }
             }
         }
-
     }
 
     signal navigateRequested(string server, string channel)

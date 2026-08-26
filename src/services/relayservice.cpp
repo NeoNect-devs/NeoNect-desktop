@@ -148,6 +148,7 @@ void RelayService::pollPendingMessages() {
             QByteArray decodedBytes = QByteArray::fromBase64(base64Cipher.toLatin1());
             QString textContent = QString::fromUtf8(decodedBytes);
             QString sender = "Anonymous";
+            QString target = "general";
 
             // Parse structured JSON packet if present
             auto packetDoc = QJsonDocument::fromJson(decodedBytes);
@@ -156,12 +157,15 @@ void RelayService::pollPendingMessages() {
                 if (packetObj.contains("sender")) {
                     sender = packetObj.value("sender").toString();
                 }
+                if (packetObj.contains("target")) {
+                    target = packetObj.value("target").toString();
+                }
                 if (packetObj.contains("content")) {
                     textContent = packetObj.value("content").toString();
                 }
             }
 
-            emit incomingRelayMessageReceived(sender, textContent, timestamp);
+            emit incomingRelayMessageReceived(sender, target, textContent, timestamp);
 
             // Acknowledge receipt to remove message from server queue
             acknowledgeMessage(msgId);

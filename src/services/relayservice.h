@@ -29,7 +29,7 @@ public:
     void acknowledgeMessage(qint64 messageId);
 
 signals:
-    void incomingRelayMessageReceived(const QString &fromUsername, const QString &text, qint64 timestamp);
+    void incomingRelayMessageReceived(const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp);
     void secureMessageTransmitted(const QString &targetUser, bool success);
     void sessionUnauthorized(const QString &message);
     void deviceRegistrationRequested();
