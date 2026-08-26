@@ -29,6 +29,8 @@ public:
                             QObject *parent = nullptr);
     ~NetworkManager() override = default;
 
+    void initializeCustom(std::shared_ptr<Avila::Transport::IHttpTransport> transport);
+
     QString serverUrl() const;
     QString token() const;
     QString currentUsername() const;

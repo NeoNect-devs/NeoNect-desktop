@@ -25,10 +25,10 @@ NetworkManager::NetworkManager(std::shared_ptr<Avila::Transport::IHttpTransport>
     m_transport->setAuthToken(m_storage->authToken());
 
     // Instantiate domain services with dependency injection
-    m_authService = std::make_shared<Avila::Services::AuthService>(m_transport, m_storage, this);
-    m_deviceService = std::make_shared<Avila::Services::DeviceService>(m_transport, m_storage, this);
-    m_relayService = std::make_shared<Avila::Services::RelayService>(m_transport, m_storage, m_cryptoService, this);
-    m_friendService = std::make_shared<Avila::Services::FriendService>(m_transport, m_storage, this);
+    m_authService = std::make_shared<Avila::Services::AuthService>(m_transport, m_storage, nullptr);
+    m_deviceService = std::make_shared<Avila::Services::DeviceService>(m_transport, m_storage, nullptr);
+    m_relayService = std::make_shared<Avila::Services::RelayService>(m_transport, m_storage, m_cryptoService, nullptr);
+    m_friendService = std::make_shared<Avila::Services::FriendService>(m_transport, m_storage, nullptr);
 
     setupServiceSignals();
 
@@ -38,6 +38,26 @@ NetworkManager::NetworkManager(std::shared_ptr<Avila::Transport::IHttpTransport>
     if (!m_storage->authToken().isEmpty()) {
         emit tokenChanged();
         emit currentUsernameChanged();
+        m_relayService->startPolling();
+        autoRegisterDevice();
+    }
+}
+
+void NetworkManager::initializeCustom(std::shared_ptr<Avila::Transport::IHttpTransport> transport) {
+    if (!transport) return;
+    m_transport = transport;
+    m_transport->setBaseUrl(m_storage->serverUrl());
+    m_transport->setAuthToken(m_storage->authToken());
+
+    m_authService = std::make_shared<Avila::Services::AuthService>(m_transport, m_storage, nullptr);
+    m_deviceService = std::make_shared<Avila::Services::DeviceService>(m_transport, m_storage, nullptr);
+    m_relayService = std::make_shared<Avila::Services::RelayService>(m_transport, m_storage, m_cryptoService, nullptr);
+    m_friendService = std::make_shared<Avila::Services::FriendService>(m_transport, m_storage, nullptr);
+
+    setupServiceSignals();
+    m_friendService->loadFriends();
+
+    if (!m_storage->authToken().isEmpty()) {
         m_relayService->startPolling();
         autoRegisterDevice();
     }

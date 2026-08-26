@@ -7,12 +7,10 @@ project(Avila VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-
-
 # =====================================================================
 # 1. Find and load the Qt6 package natively
 # =====================================================================
-find_package(Qt6 REQUIRED COMPONENTS Gui Qml Quick Concurrent Network)
+find_package(Qt6 REQUIRED COMPONENTS Gui Qml Quick Concurrent Network Test)
 
 # =====================================================================
 # 2. Fix Qt 6.9+ Infinite Recursion Policy Bug
@@ -109,6 +107,7 @@ qt_add_executable(AvilaApp
     # Transport
     src/transport/ihttptransport.h
     src/transport/httptransport.h src/transport/httptransport.cpp
+    tests/mocks/mockhttptransport.h tests/mocks/mockhttptransport.cpp
 
     # Services
     src/services/authservice.h src/services/authservice.cpp
@@ -171,7 +170,7 @@ qt_add_qml_module(AvilaApp
         assets/icons/users.svg
 )
 
-target_include_directories(AvilaApp PRIVATE src)
+target_include_directories(AvilaApp PRIVATE src tests)
 
 # =====================================================================
 # 6. Pipeline Linking Operations
@@ -219,4 +218,62 @@ if(WIN32)
         )
     endif()
 endif()
-
+
+# =====================================================================
+# 8. Automated Test Suites (QtTest + CTest)
+# =====================================================================
+enable_testing()
+
+add_executable(AvilaTests
+    tests/main_test.cpp
+    tests/test_crypto.h tests/test_crypto.cpp
+    tests/test_storage.h tests/test_storage.cpp
+    tests/test_models.h tests/test_models.cpp
+    tests/test_services.h tests/test_services.cpp
+    tests/mocks/mockhttptransport.h tests/mocks/mockhttptransport.cpp
+
+    # Common
+    src/common/types.h
+    src/common/constants.h
+    src/common/openssl_raii.h
+
+    # Cryptography
+    src/crypto/icryptoservice.h
+    src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
+
+    # Storage
+    src/storage/isettingsrepository.h
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp
+
+    # Transport
+    src/transport/ihttptransport.h
+    src/transport/httptransport.h src/transport/httptransport.cpp
+
+    # Services
+    src/services/authservice.h src/services/authservice.cpp
+    src/services/deviceservice.h src/services/deviceservice.cpp
+    src/services/relayservice.h src/services/relayservice.cpp
+    src/services/friendservice.h src/services/friendservice.cpp
+
+    # Core & Facade
+    src/core/networkmanager.h src/core/networkmanager.cpp
+    src/core/cryptomanager.h src/core/cryptomanager.cpp
+    src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
+)
+
+set_target_properties(AvilaTests PROPERTIES AUTOMOC ON)
+target_include_directories(AvilaTests PRIVATE src tests)
+target_link_libraries(AvilaTests PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Network
+    Qt6::Concurrent
+    Qt6::Test
+    OpenSSL::SSL
+    OpenSSL::Crypto
+)
+
+add_test(NAME AvilaTestSuite COMMAND AvilaTests)
+if(WIN32)
+    set_tests_properties(AvilaTestSuite PROPERTIES ENVIRONMENT "PATH=C:/Qt/6.11.2/mingw_64/bin;C:/Qt/Tools/mingw1310_64/bin;${OPENSSL_ROOT_DIR}/bin;$ENV{PATH}")
+endif()

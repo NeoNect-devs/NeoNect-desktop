@@ -4,6 +4,7 @@
 #include "cryptomanager.h"
 #include "chatmessagemodel.h"
 #include "../themedata.h"
+#include "../../tests/mocks/mockhttptransport.h"
 
 #include <QQmlContext>
 #include <QCommandLineParser>
@@ -51,13 +52,23 @@ void Application::parseCommandLine() {
                                      "Set active client profile namespace.",
                                      "profile");
     parser.addOption(profileOption);
+
+    QCommandLineOption mockOption("mock", "Run in standalone mock server mode with interactive virtual echo bots.");
+    parser.addOption(mockOption);
+
     parser.process(*m_app);
 
     m_profile = parser.value(profileOption);
+    m_isMockMode = parser.isSet(mockOption);
 }
 
 void Application::initializeServices() {
     CryptoManager::instance()->setProfile(m_profile);
+    if (m_isMockMode) {
+        auto mockTransport = std::make_shared<Testing::MockHttpTransport>(true);
+        NetworkManager::instance()->initializeCustom(mockTransport);
+        std::cout << "➔ [MOCK MODE ACTIVATED] Running with embedded in-memory server & virtual echo bots." << std::endl;
+    }
     NetworkManager::instance()->setProfile(m_profile);
 }
 

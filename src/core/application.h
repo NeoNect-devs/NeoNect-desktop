@@ -33,6 +33,7 @@ private:
     std::unique_ptr<QGuiApplication> m_app;
     std::unique_ptr<QQmlApplicationEngine> m_engine;
     QString m_profile;
+    bool m_isMockMode{false};
 };
 
 } // namespace Avila
