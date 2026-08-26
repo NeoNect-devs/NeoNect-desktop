@@ -43,10 +43,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (!profile.isEmpty()) {
-        CryptoManager::instance()->setProfile(profile);
-        NetworkManager::instance()->setProfile(profile);
-    }
+    CryptoManager::instance()->setProfile(profile);
+    NetworkManager::instance()->setProfile(profile);
 
 
     QQmlApplicationEngine engine;

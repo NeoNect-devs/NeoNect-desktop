@@ -198,6 +198,7 @@ Item {
                         id: serverInput
                         width: parent.width
                         placeholderText: "e.g., http://localhost:8080 or avila.chat"
+                        text: NetworkManager.serverUrl
 
                         onTextChanged: {
                             entryRoot.isServerReady = false;
@@ -566,21 +567,25 @@ Item {
 
     Connections {
         target: NetworkManager
+        ignoreUnknownSignals: true
 
-        function onVerificationResult(success, message) {
-            entryRoot.isServerReady = success;
-            entryRoot.serverStatusText = success ? "🟢 " + message : "🔴 " + message;
+        onVerificationResult: (success, message) => {
+            if (entryRoot) {
+                entryRoot.isServerReady = success;
+                entryRoot.serverStatusText = success ? "🟢 " + message : "🔴 " + message;
+            }
         }
 
-        function onAvailabilityResult(username, available, message) {
-            if (regUser.text.trim() === username) {
+        onAvailabilityResult: (username, available, message) => {
+            if (entryRoot && regUser.text.trim() === username) {
                 entryRoot.isCheckingAvailability = false;
                 entryRoot.isUsernameAvailable = available;
                 entryRoot.usernameStatusText = available ? "✔ Username is available" : "❌ " + message;
             }
         }
 
-        function onRegistrationResult(success, message) {
+        onRegistrationResult: (success, message) => {
+            if (!entryRoot) return;
             if (success) {
                 entryRoot.regSuccessText = "Account created! Signing in...";
                 var u = regUser.text.trim() !== "" ? regUser.text.trim() : (entryRoot.pendingQuickConnectUser !== "" ? entryRoot.pendingQuickConnectUser : (typeof appProfile !== "undefined" && appProfile !== "" ? appProfile : "alice"));
@@ -592,7 +597,8 @@ Item {
             }
         }
 
-        function onLoginResult(success, tokenOrError) {
+        onLoginResult: (success, tokenOrError) => {
+            if (!entryRoot) return;
             if (success) {
                 entryRoot.quickConnectUser = "";
                 entryRoot.pendingQuickConnectUser = "";
@@ -604,10 +610,11 @@ Item {
                     NetworkManager.registerUser(u, "password123");
                     return;
                 }
+                var errStr = tokenOrError ? tokenOrError : "Error occurred";
                 if (entryRoot.currentScreen === "signup") {
-                    entryRoot.regErrorText = tokenOrError ? tokenOrError : "Registration error";
+                    entryRoot.regErrorText = errStr;
                 } else {
-                    entryRoot.loginErrorText = tokenOrError ? tokenOrError : "Login error";
+                    entryRoot.loginErrorText = errStr;
                 }
             }
         }

@@ -18,10 +18,12 @@ Window {
     property string activeTitleText: "Server Connection"
     property string currentActiveChannel: "general"
     property string currentSelectedServer: "server1"
+    property string devDeepLink: ""
 
     Connections {
         target: NetworkManager
-        function onTokenChanged() {
+        ignoreUnknownSignals: true
+        onTokenChanged: () => {
             if (NetworkManager && NetworkManager.token && NetworkManager.token !== "") {
                 root.appState = "authenticated";
             } else {
@@ -31,10 +33,15 @@ Window {
     }
 
     onAppStateChanged: {
-        if (appState === "gateway" && typeof viewFlowLoader !== "undefined") {
-            viewFlowLoader.sourceComponent = null;
-            viewFlowLoader.source = "";
-            viewFlowLoader.source = "entrypage/entry.qml";
+        if (typeof viewFlowLoader !== "undefined") {
+            if (appState === "gateway") {
+                viewFlowLoader.sourceComponent = null;
+                viewFlowLoader.source = "";
+                viewFlowLoader.source = "entrypage/entry.qml";
+            } else if (appState === "authenticated") {
+                viewFlowLoader.source = "";
+                viewFlowLoader.sourceComponent = chatDashboardComponent;
+            }
         }
     }
 

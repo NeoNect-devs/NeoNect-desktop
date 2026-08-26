@@ -55,8 +55,10 @@ void NetworkManager::saveFriends() {
 void NetworkManager::loadSettings() {
     QString group = m_profile.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + m_profile.trimmed());
     QSettings settings("Avila", group);
+    m_serverUrl = settings.value("server_url", "http://localhost:8080").toString();
     m_token = settings.value("auth_token").toString();
     m_currentUsername = settings.value("username").toString();
+    emit serverUrlChanged();
     if (!m_token.isEmpty()) {
         emit tokenChanged();
         emit currentUsernameChanged();
@@ -67,6 +69,7 @@ void NetworkManager::loadSettings() {
 void NetworkManager::saveSettings() {
     QString group = m_profile.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + m_profile.trimmed());
     QSettings settings("Avila", group);
+    settings.setValue("server_url", m_serverUrl);
     settings.setValue("auth_token", m_token);
     settings.setValue("username", m_currentUsername);
 }
