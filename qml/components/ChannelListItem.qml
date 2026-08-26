@@ -17,8 +17,8 @@ Rectangle {
     signal clicked()
 
     width: ListView.view ? ListView.view.width : (parent ? parent.width : 200)
-    height: 38
-    radius: 6
+    height: itemRoot.isDM ? 48 : 36
+    radius: 8
     color: isActive ? Qt.rgba(255, 255, 255, 0.1) : (mouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.05) : "transparent")
 
     Behavior on color { ColorAnimation { duration: 100 } }
@@ -29,9 +29,10 @@ Rectangle {
         anchors.rightMargin: 8
         spacing: 10
 
+        // Channel Icon OR Large DM Avatar with Status Pill
         Item {
-            width: itemRoot.isDM ? 22 : 20
-            height: itemRoot.isDM ? 29 : 20
+            width: itemRoot.isDM ? 34 : 20
+            height: itemRoot.isDM ? 40 : 20
             Layout.alignment: Qt.AlignVCenter
 
             IconImage {
@@ -48,27 +49,29 @@ Rectangle {
 
                 Rectangle {
                     id: dmAvatarBox
-                    width: 22; height: 22
+                    width: 34; height: 34
                     anchors.top: parent.top
                     anchors.horizontalCenter: parent.horizontalCenter
-                    radius: 6
-                    color: itemRoot.isActive ? ThemeData.accentColor : Qt.rgba(255, 255, 255, 0.12)
+                    radius: 8
+                    color: itemRoot.isActive ? ThemeData.accentColor : Qt.rgba(10, 132, 255, 0.25)
+                    border.color: itemRoot.isActive ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(255, 255, 255, 0.08)
+                    border.width: 1
 
                     Text {
                         anchors.centerIn: parent
                         text: itemRoot.channelName ? itemRoot.channelName.charAt(0).toUpperCase() : "@"
                         color: "#FFFFFF"
                         font.bold: true
-                        font.pixelSize: 11
+                        font.pixelSize: 15
                     }
                 }
 
                 // Horizontal Status Pill Under DM Avatar
                 Rectangle {
                     id: dmStatusPill
-                    width: 16
-                    height: 5.5
-                    radius: 2.75
+                    width: 24
+                    height: 7
+                    radius: 3.5
                     color: {
                         var st = (itemRoot.userStatus || "").toLowerCase();
                         if (st === "online") return "#23A55A";
@@ -77,21 +80,49 @@ Rectangle {
                         return "#80848E";
                     }
                     border.color: ThemeData.panelBackground
-                    border.width: 0.8
+                    border.width: 1.2
                     anchors.bottom: parent.bottom
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
             }
         }
 
-        Text {
+        ColumnLayout {
             Layout.fillWidth: true
-            text: itemRoot.channelName
-            color: itemRoot.isActive ? ThemeData.textPrimary : ThemeData.textSecondary
-            font.family: "Segoe UI"
-            font.pixelSize: 14
-            font.weight: itemRoot.isActive ? Font.Bold : Font.Normal
-            elide: Text.ElideRight
+            spacing: 1
+            Layout.alignment: Qt.AlignVCenter
+
+            Text {
+                Layout.fillWidth: true
+                text: itemRoot.isDM ? itemRoot.channelName.replace(/^\w/, c => c.toUpperCase()) : itemRoot.channelName
+                color: itemRoot.isActive ? ThemeData.textPrimary : ThemeData.textSecondary
+                font.family: "Segoe UI"
+                font.pixelSize: 14
+                font.weight: itemRoot.isActive ? Font.DemiBold : Font.Normal
+                elide: Text.ElideRight
+            }
+
+            Text {
+                visible: itemRoot.isDM
+                Layout.fillWidth: true
+                text: {
+                    var st = (itemRoot.userStatus || "").toLowerCase();
+                    if (st === "online") return "Online";
+                    if (st === "afk" || st === "idle") return "Idle / AFK";
+                    if (st === "dnd") return "Do Not Disturb";
+                    return "Offline";
+                }
+                color: {
+                    var st = (itemRoot.userStatus || "").toLowerCase();
+                    if (st === "online") return "#23A55A";
+                    if (st === "afk" || st === "idle") return "#FAA81A";
+                    if (st === "dnd") return "#F23F43";
+                    return ThemeData.textMuted;
+                }
+                font.family: "Segoe UI"
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
         }
     }
 
