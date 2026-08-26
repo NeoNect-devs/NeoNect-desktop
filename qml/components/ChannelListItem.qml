@@ -17,7 +17,7 @@ Rectangle {
     signal clicked()
 
     width: ListView.view ? ListView.view.width : (parent ? parent.width : 200)
-    height: 36
+    height: 38
     radius: 6
     color: isActive ? Qt.rgba(255, 255, 255, 0.1) : (mouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.05) : "transparent")
 
@@ -31,7 +31,7 @@ Rectangle {
 
         Item {
             width: itemRoot.isDM ? 22 : 20
-            height: itemRoot.isDM ? 26 : 20
+            height: itemRoot.isDM ? 29 : 20
             Layout.alignment: Qt.AlignVCenter
 
             IconImage {
@@ -63,12 +63,12 @@ Rectangle {
                     }
                 }
 
-                // Small Horizontal Status Pill Under DM Avatar
+                // Horizontal Status Pill Under DM Avatar
                 Rectangle {
                     id: dmStatusPill
-                    width: 14
-                    height: 3.5
-                    radius: 1.75
+                    width: 16
+                    height: 5.5
+                    radius: 2.75
                     color: {
                         var st = (itemRoot.userStatus || "").toLowerCase();
                         if (st === "online") return "#23A55A";
@@ -77,7 +77,7 @@ Rectangle {
                         return "#80848E";
                     }
                     border.color: ThemeData.panelBackground
-                    border.width: 0.5
+                    border.width: 0.8
                     anchors.bottom: parent.bottom
                     anchors.horizontalCenter: parent.horizontalCenter
                 }

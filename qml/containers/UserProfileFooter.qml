@@ -52,7 +52,7 @@ Rectangle {
             Item {
                 id: avatarWrapper
                 anchors.centerIn: parent
-                width: 34; height: 38
+                width: 34; height: 40
 
                 Rectangle {
                     id: avatarBox
@@ -72,15 +72,15 @@ Rectangle {
                     }
                 }
 
-                // ─── SMALL HORIZONTAL STATUS PILL UNDER PROFILE PIC ───
+                // ─── HORIZONTAL STATUS PILL UNDER PROFILE PIC ───
                 Rectangle {
                     id: statusPill
-                    width: 22
-                    height: 5
-                    radius: 2.5
+                    width: 24
+                    height: 7
+                    radius: 3.5
                     color: root.getStatusColor(root.userStatus)
                     border.color: "#0F1110"
-                    border.width: 1
+                    border.width: 1.2
                     anchors.bottom: parent.bottom
                     anchors.horizontalCenter: parent.horizontalCenter
 

@@ -200,7 +200,7 @@ Rectangle {
 
             delegate: Rectangle {
                 width: membersListView.width - 6
-                height: 40
+                height: 42
                 radius: 6
                 color: itemMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.05) : "transparent"
 
@@ -210,7 +210,7 @@ Rectangle {
                     spacing: 8
 
                     Item {
-                        width: 28; height: 32
+                        width: 28; height: 35
                         Layout.alignment: Qt.AlignVCenter
 
                         Rectangle {
@@ -230,12 +230,12 @@ Rectangle {
                             }
                         }
 
-                        // Small Horizontal Status Pill Under Member Avatar
+                        // Horizontal Status Pill Under Member Avatar
                         Rectangle {
                             id: memberStatusPill
-                            width: 18
-                            height: 4
-                            radius: 2
+                            width: 20
+                            height: 6
+                            radius: 3
                             color: getStatusColor(model.status)
                             border.color: ThemeData.panelBackground
                             border.width: 1
