@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-
+set(CMAKE_AUTOMOC_COMPILER_PREDEFS OFF CACHE BOOL "Disable predefs" FORCE)
 set(CMAKE_AUTOMOC_COMPILER_PREDEFS OFF)
 
 project(Avila VERSION 1.0 LANGUAGES CXX)
@@ -16,6 +16,9 @@ find_package(Qt6 REQUIRED COMPONENTS Gui Qml Quick Concurrent Network Test)
 # 2. Fix Qt 6.9+ Infinite Recursion Policy Bug
 # =====================================================================
 qt_standard_project_setup(REQUIRES 6.9)
+set(CMAKE_CXX_COMPILER_PREDEFINES_COMMAND "")
+set(CMAKE_C_COMPILER_PREDEFINES_COMMAND "")
+set(CMAKE_AUTOMOC_COMPILER_PREDEFS OFF)
 
 # =====================================================================
 # 3. OpenSSL 4.0.0 Windows Multi-Path Discovery & Target Bypass
@@ -120,6 +123,7 @@ qt_add_executable(AvilaApp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
+    src/core/audiomanager.h src/core/audiomanager.cpp
 )
 set_target_properties(AvilaApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
 
@@ -149,6 +153,15 @@ qt_add_qml_module(AvilaApp
         qml/components/CircularImage.qml
         qml/components/ScrollableArea.qml
         qml/components/AvilaBrandButton.qml
+        qml/components/StickerPickerPanel.qml
+        qml/components/VoiceRecorderBar.qml
+        qml/components/VoiceMessagePlayer.qml
+        qml/components/AudioMusicPlayer.qml
+        qml/components/VideoPlayerItem.qml
+        qml/components/MediaLightboxModal.qml
+        qml/components/VolumeController.qml
+        qml/components/ToastNotification.qml
+
         # --- Entrypage Folder ---
         qml/entrypage/entry.qml
 
@@ -168,8 +181,46 @@ qt_add_qml_module(AvilaApp
         assets/icons/smile.svg
         assets/icons/sticker.svg
         assets/icons/users.svg
+        assets/icons/play.svg
+        assets/icons/pause.svg
+        assets/icons/trash.svg
+        assets/icons/file.svg
+        assets/icons/image.svg
+        assets/icons/video.svg
+        assets/icons/music.svg
+        assets/icons/download.svg
+        assets/icons/alert-circle.svg
+        assets/icons/refresh.svg
+        assets/icons/volume-2.svg
+        assets/icons/volume-x.svg
+        # Stickers: Duck Pack
+        assets/stickers/duck/duck_happy.svg
+        assets/stickers/duck/duck_love.svg
+        assets/stickers/duck/duck_cool.svg
+        assets/stickers/duck/duck_party.svg
+        assets/stickers/duck/duck_thinking.svg
+        assets/stickers/duck/duck_angry.svg
+        assets/stickers/duck/duck_sad.svg
+        assets/stickers/duck/duck_thumbsup.svg
+        # Stickers: Crypto Pack
+        assets/stickers/crypto/crypto_rocket.svg
+        assets/stickers/crypto/crypto_hodl.svg
+        assets/stickers/crypto/crypto_fire.svg
+        assets/stickers/crypto/crypto_diamond.svg
+        assets/stickers/crypto/crypto_popcorn.svg
+        assets/stickers/crypto/crypto_cheers.svg
+        assets/stickers/crypto/crypto_brain.svg
+        assets/stickers/crypto/crypto_hacker.svg
+        # Stickers: Pepe Pack
+        assets/stickers/pepe/pepe_coffee.svg
+        assets/stickers/pepe/pepe_ok.svg
+        assets/stickers/pepe/pepe_sunglasses.svg
+        assets/stickers/pepe/pepe_smart.svg
+        assets/stickers/pepe/pepe_gamer.svg
+        assets/stickers/pepe/pepe_cry.svg
 )
 
+set_target_properties(AvilaApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
 target_include_directories(AvilaApp PRIVATE src tests)
 
 # =====================================================================
@@ -183,6 +234,7 @@ target_link_libraries(AvilaApp PRIVATE
     Qt6::Network
     OpenSSL::SSL
     OpenSSL::Crypto
+    winmm
 )
 
 # =====================================================================
@@ -259,9 +311,10 @@ add_executable(AvilaTests
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
+    src/core/audiomanager.h src/core/audiomanager.cpp
 )
 
-set_target_properties(AvilaTests PROPERTIES AUTOMOC ON)
+set_target_properties(AvilaTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
 target_include_directories(AvilaTests PRIVATE src tests)
 target_link_libraries(AvilaTests PRIVATE
     Qt6::Core
@@ -271,7 +324,17 @@ target_link_libraries(AvilaTests PRIVATE
     Qt6::Test
     OpenSSL::SSL
     OpenSSL::Crypto
+    winmm
 )
+
+if(WIN32)
+    add_custom_command(TARGET AvilaTests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "C:/Qt/6.11.2/mingw_64/bin/Qt6Test.dll"
+            $<TARGET_FILE_DIR:AvilaTests>
+        COMMENT "➔ Deploying Qt6Test.dll for test runner..."
+    )
+endif()
 
 add_test(NAME AvilaTestSuite COMMAND AvilaTests)
 if(WIN32)

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="duckGradSad" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFF59D"/>
+      <stop offset="60%" stop-color="#FBC02D"/>
+      <stop offset="100%" stop-color="#F57F17"/>
+    </radialGradient>
+  </defs>
+  <!-- Body & Head -->
+  <ellipse cx="60" cy="65" rx="42" ry="38" fill="url(#duckGradSad)"/>
+  <circle cx="60" cy="45" r="32" fill="url(#duckGradSad)"/>
+  <!-- Sad Eyes with Tear -->
+  <circle cx="44" cy="42" r="5" fill="#212121"/>
+  <circle cx="76" cy="42" r="5" fill="#212121"/>
+  <circle cx="43" cy="40" r="2" fill="#FFFFFF"/>
+  <circle cx="75" cy="40" r="2" fill="#FFFFFF"/>
+  <!-- Tear drop -->
+  <path d="M84 46 C84 46 88 56 84 58 C80 58 80 52 84 46 Z" fill="#29B6F6"/>
+  <!-- Sad Beak (downwards) -->
+  <path d="M46 56 Q60 50 74 56 Q60 62 46 56 Z" fill="#FF9800"/>
+  <!-- Sad Eyebrows -->
+  <path d="M38 32 Q44 36 50 32" fill="none" stroke="#212121" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M70 32 Q76 36 82 32" fill="none" stroke="#212121" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

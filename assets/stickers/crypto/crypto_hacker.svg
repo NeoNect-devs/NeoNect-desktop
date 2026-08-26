@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="matrixGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00E676"/>
+      <stop offset="100%" stop-color="#004D40"/>
+    </linearGradient>
+  </defs>
+  <!-- Dark Hood -->
+  <path d="M60 18 C40 18 30 35 30 55 C30 75 35 90 60 90 C85 90 90 75 90 55 C90 35 80 18 60 18 Z" fill="#1B1D20"/>
+  <!-- Shadow under hood -->
+  <ellipse cx="60" cy="55" rx="22" ry="24" fill="#000000"/>
+  <!-- Glowing Green Terminal Eyes -->
+  <text x="46" y="58" font-family="Courier New, monospace" font-size="12" font-weight="bold" fill="#00FF66">&gt;_</text>
+  <text x="66" y="58" font-family="Courier New, monospace" font-size="12" font-weight="bold" fill="#00FF66">&lt;/&gt;</text>
+  <!-- Laptop Keyboard Glow -->
+  <polygon points="25,95 95,95 85,108 35,108" fill="#263238" stroke="#00E676" stroke-width="1.5"/>
+  <text x="60" y="117" font-family="Segoe UI, Courier New" font-size="10" font-weight="900" fill="#00E676" text-anchor="middle">I'M IN 💻</text>
+</svg>

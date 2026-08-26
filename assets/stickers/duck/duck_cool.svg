@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="duckGradCool" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFF176"/>
+      <stop offset="60%" stop-color="#FBC02D"/>
+      <stop offset="100%" stop-color="#F57F17"/>
+    </radialGradient>
+  </defs>
+  <!-- Body & Head -->
+  <ellipse cx="60" cy="65" rx="42" ry="38" fill="url(#duckGradCool)"/>
+  <circle cx="60" cy="45" r="32" fill="url(#duckGradCool)"/>
+  <!-- Sunglasses -->
+  <path d="M30 38 L54 38 L52 50 L34 50 Z" fill="#212121"/>
+  <path d="M66 38 L90 38 L86 50 L68 50 Z" fill="#212121"/>
+  <line x1="54" y1="42" x2="66" y2="42" stroke="#212121" stroke-width="4"/>
+  <line x1="28" y1="40" x2="32" y2="40" stroke="#212121" stroke-width="3"/>
+  <line x1="88" y1="40" x2="92" y2="40" stroke="#212121" stroke-width="3"/>
+  <!-- Glasses Glare -->
+  <line x1="36" y1="40" x2="42" y2="48" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/>
+  <line x1="72" y1="40" x2="78" y2="48" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/>
+  <!-- Smirk Beak -->
+  <path d="M46 54 Q64 48 76 52 Q66 64 46 54 Z" fill="#FF9800"/>
+  <!-- Gold Chain -->
+  <path d="M40 76 Q60 88 80 76" fill="none" stroke="#FFD700" stroke-width="5" stroke-dasharray="6,2"/>
+</svg>

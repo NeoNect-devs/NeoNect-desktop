@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="pepeGreenSun" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#8BC34A"/>
+      <stop offset="60%" stop-color="#689F38"/>
+      <stop offset="100%" stop-color="#33691E"/>
+    </radialGradient>
+  </defs>
+  <!-- Pepe Head -->
+  <path d="M25 60 C20 40 40 20 60 22 C80 20 100 40 95 60 C90 85 85 92 60 92 C35 92 30 85 25 60 Z" fill="url(#pepeGreenSun)"/>
+  <!-- Sunglasses -->
+  <path d="M28 28 L56 28 L52 48 L32 48 Z" fill="#111111"/>
+  <path d="M64 28 L92 28 L88 48 L68 48 Z" fill="#111111"/>
+  <line x1="56" y1="32" x2="64" y2="32" stroke="#111111" stroke-width="4"/>
+  <line x1="34" y1="32" x2="44" y2="44" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/>
+  <line x1="70" y1="32" x2="80" y2="44" stroke="#FFFFFF" stroke-width="2" opacity="0.6"/>
+  <!-- Smug Lips -->
+  <path d="M35 62 Q60 55 85 62 Q75 75 60 72 Q45 75 35 62 Z" fill="#D32F2F"/>
+  <text x="60" y="112" font-family="Segoe UI, Impact" font-size="12" font-weight="900" fill="#212121" text-anchor="middle">DEAL WITH IT 😎</text>
+</svg>

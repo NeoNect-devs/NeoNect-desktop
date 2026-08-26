@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Popcorn Bucket -->
+  <polygon points="35,55 85,55 78,105 42,105" fill="#E53935"/>
+  <!-- White stripes -->
+  <polygon points="46,55 52,55 50,105 46,105" fill="#FFFFFF"/>
+  <polygon points="58,55 64,55 62,105 58,105" fill="#FFFFFF"/>
+  <polygon points="70,55 76,55 72,105 70,105" fill="#FFFFFF"/>
+  <!-- Popcorn Pieces on top -->
+  <circle cx="45" cy="50" r="10" fill="#FFF59D"/>
+  <circle cx="60" cy="45" r="12" fill="#FFF176"/>
+  <circle cx="75" cy="50" r="10" fill="#FFF59D"/>
+  <circle cx="52" cy="36" r="9" fill="#FFEE58"/>
+  <circle cx="68" cy="36" r="9" fill="#FFEE58"/>
+  <circle cx="60" cy="28" r="8" fill="#FFF59D"/>
+  <!-- Text -->
+  <rect x="42" y="72" width="36" height="16" rx="4" fill="#212121"/>
+  <text x="60" y="84" font-family="Segoe UI, Impact" font-size="10" font-weight="900" fill="#FFEB3B" text-anchor="middle">AVILA</text>
+  <text x="60" y="116" font-family="Segoe UI, Arial" font-size="10" font-weight="bold" fill="#FF7043" text-anchor="middle">CHILL & WATCH 🍿</text>
+</svg>

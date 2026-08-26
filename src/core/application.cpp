@@ -3,6 +3,7 @@
 #include "networkmanager.h"
 #include "cryptomanager.h"
 #include "chatmessagemodel.h"
+#include "audiomanager.h"
 #include "../themedata.h"
 #include "../storage/settingsrepository.h"
 #include "../../tests/mocks/mockhttptransport.h"
@@ -27,6 +28,13 @@ static void customLogHandler(QtMsgType type, const QMessageLogContext &context, 
 
 Application::Application(int &argc, char **argv) {
     setupLogging();
+
+#ifdef _WIN32
+    qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "none");
+    qputenv("QT_FFMPEG_ENCODING_HW_DEVICE_TYPES", "none");
+    qputenv("QT_DISABLE_HW_TEXTURES_CONVERSION", "1");
+    qputenv("QT_MEDIA_BACKEND", "ffmpeg");
+#endif
 
     m_app = std::make_unique<QGuiApplication>(argc, argv);
     QGuiApplication::setApplicationName("Avila");
@@ -88,6 +96,7 @@ void Application::registerQmlTypes() {
 
     qmlRegisterSingletonInstance("Avila.Core", 1, 0, "NetworkManager", NetworkManager::instance());
     qmlRegisterSingletonInstance("Avila.Core", 1, 0, "CryptoManager", CryptoManager::instance());
+    qmlRegisterSingletonInstance("Avila.Core", 1, 0, "AudioManager", AudioManager::instance());
     qmlRegisterType<ChatMessageModel>("Avila.Core", 1, 0, "ChatMessageModel");
 }
 

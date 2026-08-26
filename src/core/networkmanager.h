@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVariantMap>
 #include <memory>
 
 #include "../transport/ihttptransport.h"
@@ -50,7 +51,8 @@ public:
     Q_INVOKABLE void sendSecurePayload(const QString &channelId, const QString &cipher, const QString &nonce);
 
     // E2EE Relay & Direct Chat
-    Q_INVOKABLE void sendRelayMessage(const QString &toUsername, const QString &plainText);
+    Q_INVOKABLE void sendRelayMessage(const QString &toUsername, const QString &plainText, const QString &messageId = "");
+    Q_INVOKABLE void sendRichRelayMessage(const QString &toUsername, const QVariantMap &messageData);
     Q_INVOKABLE void pollPendingMessages();
     Q_INVOKABLE void acknowledgeMessage(qint64 messageId);
 
@@ -73,8 +75,10 @@ signals:
     void deviceKeyFetched(const QString &deviceId, const QString &publicKey);
     void userProfileFetched(bool success, const QString &username);
     void secureMessageTransmitted(const QString &channelId, bool success);
+    void messageTransmissionStatus(const QString &targetUser, const QString &messageId, bool success, const QString &errorMessage);
 
     void incomingRelayMessageReceived(const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp);
+    void incomingRichMessageReceived(const QVariantMap &messageData);
     void addFriendResult(bool success, const QString &message, const QString &username);
     void friendStatusUpdated(const QString &username, const QString &status);
 

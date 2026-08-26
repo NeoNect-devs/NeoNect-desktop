@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="pepeGreenOk" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#8BC34A"/>
+      <stop offset="60%" stop-color="#689F38"/>
+      <stop offset="100%" stop-color="#33691E"/>
+    </radialGradient>
+  </defs>
+  <!-- Pepe Head -->
+  <path d="M25 60 C20 40 40 20 60 22 C80 20 100 40 95 60 C90 85 85 92 60 92 C35 92 30 85 25 60 Z" fill="url(#pepeGreenOk)"/>
+  <!-- Pepe Eyes -->
+  <ellipse cx="44" cy="35" rx="14" ry="12" fill="#FFFFFF" stroke="#33691E" stroke-width="2"/>
+  <ellipse cx="76" cy="35" rx="14" ry="12" fill="#FFFFFF" stroke="#33691E" stroke-width="2"/>
+  <ellipse cx="46" cy="36" rx="5" ry="6" fill="#795548"/>
+  <ellipse cx="78" cy="36" rx="5" ry="6" fill="#795548"/>
+  <!-- Smug Smile -->
+  <path d="M36 62 Q60 52 86 58 Q70 76 36 62 Z" fill="#D32F2F"/>
+  <!-- OK Hand Sign -->
+  <g transform="translate(10, 60)">
+    <circle cx="20" cy="20" r="14" fill="#689F38" stroke="#33691E" stroke-width="2"/>
+    <circle cx="20" cy="20" r="6" fill="#1B5E20"/>
+  </g>
+  <text x="60" y="112" font-family="Segoe UI, Arial" font-size="11" font-weight="900" fill="#2E7D32" text-anchor="middle">FEELS GOOD MAN 👌</text>
+</svg>

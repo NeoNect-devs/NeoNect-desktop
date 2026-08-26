@@ -2,6 +2,7 @@
 #pragma once
 #include <QObject>
 #include <QTimer>
+#include <QVariantMap>
 #include <memory>
 #include <unordered_set>
 #include "../transport/ihttptransport.h"
@@ -24,13 +25,16 @@ public:
     void stopPolling();
     bool isPolling() const;
 
-    void sendRelayMessage(const QString &toUsername, const QString &plainText);
+    void sendRelayMessage(const QString &toUsername, const QString &plainText, const QString &messageId = "");
+    void sendRichRelayMessage(const QString &toUsername, const QVariantMap &messageData);
     void pollPendingMessages();
     void acknowledgeMessage(qint64 messageId);
 
 signals:
     void incomingRelayMessageReceived(const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp);
+    void incomingRichMessageReceived(const QVariantMap &messageData);
     void secureMessageTransmitted(const QString &targetUser, bool success);
+    void messageTransmissionStatus(const QString &targetUser, const QString &messageId, bool success, const QString &errorMessage);
     void sessionUnauthorized(const QString &message);
     void deviceRegistrationRequested();
 

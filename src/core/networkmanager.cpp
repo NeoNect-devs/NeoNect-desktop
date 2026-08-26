@@ -114,12 +114,22 @@ void NetworkManager::setupServiceSignals() {
         emit incomingRelayMessageReceived(fromUsername, target, text, timestamp);
     });
 
+    connect(m_relayService.get(), &Avila::Services::RelayService::incomingRichMessageReceived, this, [this](const QVariantMap &messageData) {
+        QString fromUsername = messageData.value("sender").toString();
+        if (fromUsername.toLower() != currentUsername().toLower() && fromUsername != "Anonymous") {
+            m_friendService->updateLastSeen(fromUsername);
+        }
+        emit incomingRichMessageReceived(messageData);
+    });
+
     connect(m_relayService.get(), &Avila::Services::RelayService::secureMessageTransmitted, this, [this](const QString &targetUser, bool success) {
         if (success) {
             m_friendService->updateLastSeen(targetUser);
         }
         emit secureMessageTransmitted(targetUser, success);
     });
+
+    connect(m_relayService.get(), &Avila::Services::RelayService::messageTransmissionStatus, this, &NetworkManager::messageTransmissionStatus);
 
     connect(m_relayService.get(), &Avila::Services::RelayService::sessionUnauthorized, this, [this](const QString &message) {
         emit tokenChanged();
@@ -225,8 +235,12 @@ void NetworkManager::sendSecurePayload(const QString &channelId, const QString &
     sendRelayMessage(channelId, cipher);
 }
 
-void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &plainText) {
-    m_relayService->sendRelayMessage(toUsername, plainText);
+void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &plainText, const QString &messageId) {
+    m_relayService->sendRelayMessage(toUsername, plainText, messageId);
+}
+
+void NetworkManager::sendRichRelayMessage(const QString &toUsername, const QVariantMap &messageData) {
+    m_relayService->sendRichRelayMessage(toUsername, messageData);
 }
 
 void NetworkManager::pollPendingMessages() {

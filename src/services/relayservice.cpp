@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QDateTime>
+#include <QUuid>
 #include <QDebug>
 
 namespace Avila {
@@ -58,22 +59,41 @@ void RelayService::handle401Error() {
     emit sessionUnauthorized("Session expired or unauthorized. Please log in again.");
 }
 
-void RelayService::sendRelayMessage(const QString &toUsername, const QString &plainText) {
+void RelayService::sendRelayMessage(const QString &toUsername, const QString &plainText, const QString &messageId) {
+    QVariantMap data;
+    data["content"] = plainText;
+    data["text"] = plainText;
+    data["type"] = "text";
+    data["messageId"] = messageId.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : messageId;
+    sendRichRelayMessage(toUsername, data);
+}
+
+void RelayService::sendRichRelayMessage(const QString &toUsername, const QVariantMap &messageData) {
     QString targetUser = toUsername.trimmed().toLower();
     QString token = m_storage->authToken();
     QString currentUsername = m_storage->username();
     QString deviceId = m_storage->deviceId();
+    QString msgId = messageData.value("messageId").toString();
+    if (msgId.isEmpty()) {
+        msgId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    }
 
-    if (token.isEmpty() || targetUser.isEmpty() || plainText.isEmpty()) {
+    if (token.isEmpty() || targetUser.isEmpty()) {
         emit secureMessageTransmitted(targetUser, false);
+        emit messageTransmissionStatus(targetUser, msgId, false, "Missing session token or recipient");
         return;
     }
 
-    QJsonObject packet;
+    QJsonObject packet = QJsonObject::fromVariantMap(messageData);
     packet["sender"] = currentUsername;
     packet["target"] = targetUser;
-    packet["content"] = plainText;
-    packet["timestamp"] = QDateTime::currentSecsSinceEpoch();
+    packet["messageId"] = msgId;
+    if (!packet.contains("timestamp") || packet.value("timestamp").toInteger() == 0) {
+        packet["timestamp"] = QDateTime::currentSecsSinceEpoch();
+    }
+    if (!packet.contains("content") && packet.contains("text")) {
+        packet["content"] = packet.value("text");
+    }
 
     QByteArray packetBytes = QJsonDocument(packet).toJson(QJsonDocument::Compact);
 
@@ -85,8 +105,9 @@ void RelayService::sendRelayMessage(const QString &toUsername, const QString &pl
 
     QByteArray postData = QJsonDocument(payload).toJson(QJsonDocument::Compact);
 
-    m_transport->post(Constants::EP_RELAY_SEND, postData, [this, targetUser](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->post(Constants::EP_RELAY_SEND, postData, [this, targetUser, msgId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         bool ok = (error == QNetworkReply::NoError);
+        QString errorMsg = ok ? "" : (errStr.isEmpty() ? "Network relay transmission failed" : errStr);
         if (!ok) {
             qDebug() << "[RelayService] sendRelayMessage failed for" << targetUser << "Error:" << errStr << "Status:" << statusCode << "Response:" << data;
             if (statusCode == 401 || data.contains("unauthorized")) {
@@ -94,6 +115,7 @@ void RelayService::sendRelayMessage(const QString &toUsername, const QString &pl
             }
         }
         emit secureMessageTransmitted(targetUser, ok);
+        emit messageTransmissionStatus(targetUser, msgId, ok, errorMsg);
     });
 }
 
@@ -149,11 +171,20 @@ void RelayService::pollPendingMessages() {
             QString textContent = QString::fromUtf8(decodedBytes);
             QString sender = "Anonymous";
             QString target = "general";
+            QString type = "text";
+            QString mediaUrl = "";
+            QString fileName = "";
+            qint64 fileSize = 0;
+            int duration = 0;
+            QVariantList waveform;
+            QString messageUuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
 
             // Parse structured JSON packet if present
             auto packetDoc = QJsonDocument::fromJson(decodedBytes);
+            QVariantMap richMap;
             if (!packetDoc.isNull() && packetDoc.isObject()) {
                 QJsonObject packetObj = packetDoc.object();
+                richMap = packetObj.toVariantMap();
                 if (packetObj.contains("sender")) {
                     sender = packetObj.value("sender").toString();
                 }
@@ -162,10 +193,55 @@ void RelayService::pollPendingMessages() {
                 }
                 if (packetObj.contains("content")) {
                     textContent = packetObj.value("content").toString();
+                } else if (packetObj.contains("text")) {
+                    textContent = packetObj.value("text").toString();
                 }
+                if (packetObj.contains("type")) {
+                    type = packetObj.value("type").toString();
+                }
+                if (packetObj.contains("mediaUrl")) {
+                    mediaUrl = packetObj.value("mediaUrl").toString();
+                }
+                if (packetObj.contains("fileName")) {
+                    fileName = packetObj.value("fileName").toString();
+                }
+                if (packetObj.contains("fileSize")) {
+                    fileSize = packetObj.value("fileSize").toInteger();
+                }
+                if (packetObj.contains("duration")) {
+                    duration = static_cast<int>(packetObj.value("duration").toInteger());
+                }
+                if (packetObj.contains("waveform")) {
+                    waveform = packetObj.value("waveform").toArray().toVariantList();
+                }
+                if (packetObj.contains("messageId")) {
+                    messageUuid = packetObj.value("messageId").toString();
+                }
+                if (packetObj.contains("timestamp") && packetObj.value("timestamp").toInteger() > 0) {
+                    timestamp = packetObj.value("timestamp").toInteger();
+                }
+            } else {
+                richMap["content"] = textContent;
+                richMap["text"] = textContent;
+                richMap["type"] = "text";
+                richMap["sender"] = sender;
+                richMap["target"] = target;
             }
 
+            richMap["sender"] = sender;
+            richMap["target"] = target;
+            richMap["text"] = textContent;
+            richMap["type"] = type;
+            richMap["mediaUrl"] = mediaUrl;
+            richMap["fileName"] = fileName;
+            richMap["fileSize"] = fileSize;
+            richMap["duration"] = duration;
+            richMap["waveform"] = waveform;
+            richMap["messageId"] = messageUuid;
+            richMap["timestamp"] = timestamp;
+
             emit incomingRelayMessageReceived(sender, target, textContent, timestamp);
+            emit incomingRichMessageReceived(richMap);
 
             // Acknowledge receipt to remove message from server queue
             acknowledgeMessage(msgId);

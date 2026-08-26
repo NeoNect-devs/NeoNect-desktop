@@ -11,4 +11,7 @@ private slots:
     void testConsecutiveMessageBlockGrouping();
     void testClearViewportStore();
     void testRoleNames();
+    void testRichMessageInsertion();
+    void testMessageStatusAndRetry();
+    void testAudioManagerRecordingAndPlayback();
 };

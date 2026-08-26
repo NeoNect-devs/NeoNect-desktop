@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="duckGradThink" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFF176"/>
+      <stop offset="60%" stop-color="#FBC02D"/>
+      <stop offset="100%" stop-color="#F57F17"/>
+    </radialGradient>
+  </defs>
+  <!-- Body & Head -->
+  <ellipse cx="60" cy="65" rx="42" ry="38" fill="url(#duckGradThink)"/>
+  <circle cx="60" cy="45" r="32" fill="url(#duckGradThink)"/>
+  <!-- Eyes looking up-right -->
+  <ellipse cx="44" cy="38" rx="5" ry="6" fill="#212121"/>
+  <ellipse cx="72" cy="38" rx="5" ry="6" fill="#212121"/>
+  <circle cx="46" cy="36" r="2" fill="#FFFFFF"/>
+  <circle cx="74" cy="36" r="2" fill="#FFFFFF"/>
+  <!-- Eyebrows raised -->
+  <path d="M38 28 Q44 24 50 28" fill="none" stroke="#212121" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M66 26 Q72 22 78 26" fill="none" stroke="#212121" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Beak shifted -->
+  <path d="M48 48 Q62 44 76 48 Q64 58 48 48 Z" fill="#FF9800"/>
+  <!-- Hand on Chin -->
+  <ellipse cx="40" cy="58" rx="8" ry="6" fill="#F9A825"/>
+  <circle cx="44" cy="56" r="4" fill="#F57F17"/>
+  <!-- Thinking gear / bubbles -->
+  <circle cx="92" cy="22" r="5" fill="#B3E5FC"/>
+  <circle cx="82" cy="28" r="3" fill="#B3E5FC"/>
+  <circle cx="76" cy="32" r="2" fill="#B3E5FC"/>
+  <text x="90" y="25" font-family="Arial" font-size="7" font-weight="bold" fill="#0288D1">?</text>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="fireOuter" cx="50%" cy="80%" r="70%">
+      <stop offset="0%" stop-color="#FFD600"/>
+      <stop offset="45%" stop-color="#FF6D00"/>
+      <stop offset="90%" stop-color="#D50000"/>
+    </radialGradient>
+    <radialGradient id="fireInner" cx="50%" cy="85%" r="60%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="40%" stop-color="#FFF59D"/>
+      <stop offset="90%" stop-color="#FFAB00"/>
+    </radialGradient>
+  </defs>
+  <!-- Flame Silhouette -->
+  <path d="M60 10 C60 10 75 35 70 50 C75 42 85 45 88 55 C98 70 90 95 75 105 C60 115 40 112 32 100 C20 85 24 60 42 45 C45 55 52 50 50 40 C48 30 60 10 60 10 Z" fill="url(#fireOuter)"/>
+  <!-- Inner Flame -->
+  <path d="M60 40 C60 40 68 55 65 65 C68 60 74 62 76 68 C82 78 76 92 68 98 C58 104 46 102 42 94 C34 84 38 70 48 60 C50 66 55 64 54 58 C52 50 60 40 60 40 Z" fill="url(#fireInner)"/>
+  <!-- Sunglasses on Fire -->
+  <path d="M38 65 L56 65 L54 75 L42 75 Z" fill="#212121"/>
+  <path d="M66 65 L84 65 L82 75 L70 75 Z" fill="#212121"/>
+  <line x1="56" y1="68" x2="66" y2="68" stroke="#212121" stroke-width="3"/>
+  <text x="60" y="116" font-family="Segoe UI, Impact" font-size="12" font-weight="900" fill="#FF5252" text-anchor="middle">LIT 🔥</text>
+</svg>

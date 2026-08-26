@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="duckGrad" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFF176"/>
+      <stop offset="60%" stop-color="#FBC02D"/>
+      <stop offset="100%" stop-color="#F57F17"/>
+    </radialGradient>
+    <linearGradient id="beakGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF9800"/>
+      <stop offset="100%" stop-color="#E65100"/>
+    </linearGradient>
+    <linearGradient id="blushGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF8A80"/>
+      <stop offset="100%" stop-color="#FF5252"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <g filter="url(#shadow)">
+    <!-- Body -->
+    <ellipse cx="60" cy="65" rx="42" ry="38" fill="url(#duckGrad)"/>
+    <!-- Head -->
+    <circle cx="60" cy="45" r="32" fill="url(#duckGrad)"/>
+    <!-- Cute Tuft -->
+    <path d="M55 14 Q60 6 65 14 Q60 18 55 14" fill="#FBC02D"/>
+    <!-- Happy curved eyes -->
+    <path d="M42 42 Q50 34 54 44" fill="none" stroke="#212121" stroke-width="4" stroke-linecap="round"/>
+    <path d="M66 44 Q70 34 78 42" fill="none" stroke="#212121" stroke-width="4" stroke-linecap="round"/>
+    <!-- Cheeks -->
+    <ellipse cx="38" cy="48" rx="7" ry="5" fill="url(#blushGrad)" opacity="0.6"/>
+    <ellipse cx="82" cy="48" rx="7" ry="5" fill="url(#blushGrad)" opacity="0.6"/>
+    <!-- Big Happy Beak -->
+    <path d="M44 50 Q60 44 76 50 Q60 70 44 50 Z" fill="url(#beakGrad)"/>
+    <ellipse cx="60" cy="56" rx="6" ry="3" fill="#BF360C" opacity="0.4"/>
+    <!-- Wings -->
+    <path d="M22 62 Q15 75 30 80 Q35 70 28 62 Z" fill="#F9A825"/>
+    <path d="M98 62 Q105 75 90 80 Q85 70 92 62 Z" fill="#F9A825"/>
+    <!-- Sparkles -->
+    <polygon points="98,25 101,31 107,34 101,37 98,43 95,37 89,34 95,31" fill="#FFD54F"/>
+    <polygon points="22,30 24,35 29,37 24,39 22,44 20,39 15,37 20,35" fill="#FFD54F"/>
+  </g>
+</svg>

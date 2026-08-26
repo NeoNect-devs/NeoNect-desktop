@@ -17,37 +17,102 @@ Item {
         id: nativeMessageModel
     }
 
+    function isRTL(text) {
+        if (!text) return false;
+        return /[\u0600-\u06FF\u0750-\u077F\u0590-\u05FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+    }
+
+    function formatTime(secs) {
+        if (!secs || secs <= 0) return Qt.formatTime(new Date(), "hh:mm AP");
+        var d = new Date(secs * 1000);
+        return Qt.formatTime(d, "hh:mm AP");
+    }
+
+    function formatBytes(bytes) {
+        if (!bytes || bytes <= 0) return "File";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    function isPlayableVideo(url, fileName) {
+        var path = (fileName || url || "").toLowerCase();
+        return path.endsWith(".mp4") || path.endsWith(".webm") || path.endsWith(".mov") || path.endsWith(".m4v") || path.endsWith(".avi");
+    }
+
+    function getFileExtension(fileName, url) {
+        var name = fileName || url || "FILE";
+        var idx = name.lastIndexOf('.');
+        if (idx !== -1 && idx < name.length - 1) {
+            return name.substring(idx + 1).toUpperCase();
+        }
+        return "FILE";
+    }
+
     Connections {
         target: NetworkManager
 
-        function onIncomingRelayMessageReceived(fromUsername, target, text, timestamp) {
-            var senderLower = fromUsername.toLowerCase()
-            var targetLower = (target || "").toLowerCase()
+        function onIncomingRichMessageReceived(messageData) {
+            var fromUsername = messageData.sender || "Anonymous";
+            var target = messageData.target || "general";
+            var senderLower = fromUsername.toLowerCase();
+            var targetLower = (target || "").toLowerCase();
             var isChannelMsg = (targetLower === "general" || targetLower.startsWith("channel:"));
             var targetChannelName = targetLower.startsWith("channel:") ? targetLower.replace("channel:", "") : targetLower;
             var key = isChannelMsg ? ("server1:" + targetChannelName) : ("dms:" + senderLower);
 
             if (!chatHistories[key]) {
-                chatHistories[key] = []
+                chatHistories[key] = [];
             }
-            chatHistories[key].push({ text: text, fromMe: false, sender: fromUsername, avatar: fromUsername.charAt(0).toUpperCase() })
+
+            var itemObj = {
+                messageId: messageData.messageId || ("msg_" + Date.now()),
+                text: messageData.text || messageData.content || "",
+                fromMe: false,
+                senderName: fromUsername,
+                senderAvatar: fromUsername.charAt(0).toUpperCase(),
+                messageType: messageData.type || "text",
+                mediaUrl: messageData.mediaUrl || "",
+                fileName: messageData.fileName || "",
+                fileSize: messageData.fileSize || 0,
+                duration: messageData.duration || 0,
+                waveform: messageData.waveform || [],
+                status: "sent",
+                timestamp: messageData.timestamp || Math.floor(Date.now() / 1000)
+            };
+
+            chatHistories[key].push(itemObj);
 
             // Auto add friend to Direct Messages list ONLY for direct messages
             if (!isChannelMsg && NetworkManager && NetworkManager.friends && NetworkManager.friends.indexOf(senderLower) === -1) {
-                NetworkManager.addFriend(senderLower)
+                NetworkManager.addFriend(senderLower);
             }
 
-            // Insert message into active model if currently viewing this channel/DM
+            // Insert into active model if currently viewing this channel/DM
             if (isChannelMsg) {
                 if (root.selectedServer === "server1" && root.activeChannel.toLowerCase() === targetChannelName) {
-                    nativeMessageModel.insertMessage(text, false, fromUsername, fromUsername.charAt(0).toUpperCase())
-                    scrollTimer.restart()
+                    nativeMessageModel.insertMessageItem(itemObj);
+                    scrollTimer.restart();
                 }
             } else {
                 if (root.selectedServer === "dms" && root.activeChannel.toLowerCase() === senderLower) {
-                    nativeMessageModel.insertMessage(text, false, fromUsername, fromUsername.charAt(0).toUpperCase())
-                    scrollTimer.restart()
+                    nativeMessageModel.insertMessageItem(itemObj);
+                    scrollTimer.restart();
                 }
+            }
+        }
+
+        function onIncomingRelayMessageReceived(fromUsername, target, text, timestamp) {
+            // Handled via onIncomingRichMessageReceived if structured, but fallback here if needed
+        }
+
+        function onMessageTransmissionStatus(targetUser, messageId, success, errorMessage) {
+            var newStatus = success ? "sent" : "failed";
+            nativeMessageModel.updateMessageStatus(messageId, newStatus, errorMessage);
+
+            if (!success) {
+                var targetName = root.selectedServer === "dms" ? ("@" + root.activeChannel) : ("#" + root.activeChannel);
+                toast.show("Message delivery failed to " + targetName + ": " + (errorMessage || "Network error"), "error", "Retry");
             }
         }
     }
@@ -72,16 +137,18 @@ Item {
 
     property var defaultHistories: ({
         "server1:welcome-rules": [
-            { text: "Welcome to Danisa / Avila secure E2EE node server!", fromMe: false, sender: "System", avatar: "🛠️" },
-            { text: "All conversations here are relayed client-side using OpenSSL 4.0.0 AES-256-GCM.", fromMe: false, sender: "System", avatar: "🛠️" }
+            { messageId: "d1", text: "Welcome to Danisa / Avila secure E2EE node server!", fromMe: false, senderName: "System", senderAvatar: "🛠️", messageType: "text", status: "sent", timestamp: 1620000000 },
+            { messageId: "d2", text: "All conversations here are relayed client-side using OpenSSL 4.0.0 AES-256-GCM.", fromMe: false, senderName: "System", senderAvatar: "🛠️", messageType: "text", status: "sent", timestamp: 1620000010 }
         ],
         "server1:general": [
-            { text: "Hello! Is anyone online?", fromMe: false, sender: "Alex", avatar: "A" },
-            { text: "Hey Alex! Yes, testing live E2EE relay messaging.", fromMe: false, sender: "Beatrice", avatar: "B" }
+            { messageId: "d3", text: "Hello! Is anyone online?", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "text", status: "sent", timestamp: 1620000020 },
+            { messageId: "d4", text: "Hey Alex! Yes, testing live E2EE relay messaging.", fromMe: false, senderName: "Beatrice", senderAvatar: "B", messageType: "text", status: "sent", timestamp: 1620000030 },
+            { messageId: "d5", text: "", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "sticker", mediaUrl: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_happy.svg", fileName: "Happy", status: "sent", timestamp: 1620000040 }
         ],
         "dms:alex": [
-            { text: "Hey Alex, are you available for a quick sync later today?", fromMe: true, sender: "Me", avatar: "" },
-            { text: "Sure! Just ping me here when you're ready.", fromMe: false, sender: "Alex", avatar: "A" }
+            { messageId: "d6", text: "Hey Alex, are you available for a quick sync later today?", fromMe: true, senderName: "Me", senderAvatar: "", messageType: "text", status: "sent", timestamp: 1620000050 },
+            { messageId: "d7", text: "Sure! Just ping me here when you're ready.", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "text", status: "sent", timestamp: 1620000060 },
+            { messageId: "d8", text: "", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "voice", duration: 8, waveform: [0.3, 0.5, 0.8, 0.9, 0.6, 0.4, 0.7, 0.85, 0.95, 0.6, 0.3, 0.5, 0.8, 0.9, 0.6, 0.4, 0.7, 0.85, 0.95, 0.6, 0.4, 0.5, 0.6, 0.7, 0.8, 0.5, 0.3, 0.2], status: "sent", timestamp: 1620000070 }
         ]
     })
 
@@ -97,21 +164,43 @@ Item {
     }
 
     function switchChannel() {
-        var key = selectedServer + ":" + activeChannel
-        nativeMessageModel.clearActiveViewportStore()
+        var key = selectedServer + ":" + activeChannel;
+        nativeMessageModel.clearActiveViewportStore();
 
         if (!chatHistories[key]) {
-            var defaults = defaultHistories[key] || []
-            chatHistories[key] = JSON.parse(JSON.stringify(defaults))
+            var defaults = defaultHistories[key] || [];
+            chatHistories[key] = JSON.parse(JSON.stringify(defaults));
         }
 
-        var history = chatHistories[key]
+        var history = chatHistories[key];
         for (var i = 0; i < history.length; ++i) {
-            var msg = history[i]
-            nativeMessageModel.insertMessage(msg.text, msg.fromMe, msg.sender, msg.avatar)
+            nativeMessageModel.insertMessageItem(history[i]);
         }
 
-        scrollTimer.restart()
+        scrollTimer.restart();
+    }
+
+    function sendMessagePayload(itemObj) {
+        var key = root.selectedServer + ":" + root.activeChannel;
+        if (!root.chatHistories[key]) {
+            root.chatHistories[key] = [];
+        }
+        root.chatHistories[key].push(itemObj);
+        nativeMessageModel.insertMessageItem(itemObj);
+        messageListView.positionViewAtEnd();
+
+        var target = root.selectedServer === "dms" ? root.activeChannel : "general";
+        NetworkManager.sendRichRelayMessage(target, itemObj);
+    }
+
+    function retryMessage(messageId) {
+        var item = nativeMessageModel.getMessageById(messageId);
+        if (!item || !item.messageId) return;
+
+        nativeMessageModel.updateMessageStatus(messageId, "sending", "");
+        var target = root.selectedServer === "dms" ? root.activeChannel : "general";
+        NetworkManager.sendRichRelayMessage(target, item);
+        toast.show("Retrying message transmission to " + (root.selectedServer === "dms" ? "@" + root.activeChannel : "#" + root.activeChannel), "info", "");
     }
 
     Timer {
@@ -128,6 +217,24 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: ThemeData.windowBackground
+    }
+
+    // Top Slide-Down Toast Notification
+    ToastNotification {
+        id: toast
+        anchors.top: parent.top
+        anchors.topMargin: 56
+        onActionClicked: {
+            // Retry the last failed message if any
+            for (var i = nativeMessageModel.rowCount() - 1; i >= 0; --i) {
+                var idx = nativeMessageModel.index(i, 0);
+                if (nativeMessageModel.data(idx, ChatMessageModel.StatusRole) === "failed") {
+                    var mid = nativeMessageModel.data(idx, ChatMessageModel.MessageIdRole);
+                    root.retryMessage(mid);
+                    break;
+                }
+            }
+        }
     }
 
     ColumnLayout {
@@ -170,7 +277,7 @@ Item {
                     color: ThemeData.textPrimary
                     font.family: "Segoe UI"
                     font.pixelSize: 15
-                    font.weight: Font.Bold
+                    font.bold: true
                 }
 
                 Rectangle {
@@ -233,6 +340,7 @@ Item {
                         model: nativeMessageModel
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
+                        spacing: root.selectedServer === "dms" ? 6 : 2
 
                         ScrollBar.vertical: ScrollBar {
                             id: chatScrollBar
@@ -254,10 +362,23 @@ Item {
                             background: Item {}
                         }
 
-                        delegate: Rectangle {
+                        // Message Item Delegate
+                        delegate: Item {
+                            id: delegateRoot
                             width: messageListView.width - 12
-                            height: model.isFirstInBlock ? Math.max(50, messageTextLabel.implicitHeight + 36) : Math.max(22, messageTextLabel.implicitHeight + 6)
-                            color: itemMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.04) : "transparent"
+                            height: messageContentColumn.implicitHeight + (model.isFirstInBlock ? 12 : 4)
+
+                            readonly property bool isDM: root.selectedServer === "dms"
+                            readonly property bool isMe: model.fromMe
+                            readonly property bool isSticker: model.messageType === "sticker"
+                            readonly property bool isFailed: model.status === "failed"
+
+                            // Hover background for server stream
+                            Rectangle {
+                                anchors.fill: parent
+                                visible: !delegateRoot.isDM
+                                color: itemMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.04) : "transparent"
+                            }
 
                             MouseArea {
                                 id: itemMouseArea
@@ -266,66 +387,434 @@ Item {
                                 acceptedButtons: Qt.NoButton
                             }
 
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 16; anchors.rightMargin: 16
-                                spacing: 12
+                            // ─── FLOATING / STICKY AVATAR (on the left for others in DMs and all in Servers) ───
+                            Item {
+                                id: avatarContainer
+                                width: 38; height: 38
+                                visible: (!delegateRoot.isDM || !delegateRoot.isMe) && model.isFirstInBlock
+                                anchors.left: parent.left
+                                anchors.leftMargin: 16
 
-                                Item {
-                                    Layout.preferredWidth: 38; Layout.preferredHeight: 38
-                                    Layout.alignment: Qt.AlignTop
-                                    Layout.topMargin: model.isFirstInBlock ? 6 : 0
-                                    visible: model.isFirstInBlock
+                                // Floating sticky calculation: smooth offset tracking scroll position within message block
+                                y: {
+                                    if (!messageListView) return 6;
+                                    var topInView = delegateRoot.mapToItem(messageListView, 0, 0).y;
+                                    if (topInView < 0) {
+                                        // Block top scrolled above viewport -> float avatar down
+                                        return Math.max(6, Math.min(delegateRoot.height - 44, -topInView + 6));
+                                    }
+                                    return 6;
+                                }
 
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        radius: 19
-                                        color: getAvatarColor(model.senderName)
+                                Behavior on y {
+                                    NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
+                                }
 
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: model.senderAvatar !== "" ? model.senderAvatar : model.senderName.charAt(0).toUpperCase()
-                                            color: "#ffffff"
-                                            font.bold: true
-                                        }
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 19
+                                    color: getAvatarColor(model.senderName)
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: model.senderAvatar !== "" ? model.senderAvatar : model.senderName.charAt(0).toUpperCase()
+                                        color: "#FFFFFF"
+                                        font.bold: true
                                     }
                                 }
+                            }
 
-                                Item {
-                                    Layout.preferredWidth: 38; Layout.preferredHeight: 1
-                                    visible: !model.isFirstInBlock
-                                }
+                            // ─── MESSAGE CONTENT COLUMN ───
+                            ColumnLayout {
+                                id: messageContentColumn
+                                anchors.top: parent.top
+                                anchors.topMargin: model.isFirstInBlock ? 6 : 2
+                                anchors.left: (!delegateRoot.isDM || !delegateRoot.isMe) ? parent.left : undefined
+                                anchors.leftMargin: (!delegateRoot.isDM || !delegateRoot.isMe) ? 66 : 0
+                                anchors.right: (delegateRoot.isDM && delegateRoot.isMe) ? parent.right : (!delegateRoot.isDM ? parent.right : undefined)
+                                anchors.rightMargin: (delegateRoot.isDM && delegateRoot.isMe) ? 16 : (!delegateRoot.isDM ? 16 : 0)
+                                width: (!delegateRoot.isDM) ? (delegateRoot.width - 82) : undefined
+                                spacing: 4
 
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 2
-                                    Layout.alignment: Qt.AlignTop
-                                    Layout.topMargin: model.isFirstInBlock ? 4 : 2
+                                // Sender Name & Timestamp (Server view OR first in block)
+                                RowLayout {
+                                    visible: !delegateRoot.isDM && model.isFirstInBlock
+                                    spacing: 8
 
-                                    RowLayout {
-                                        spacing: 8
-                                        visible: model.isFirstInBlock
-
-                                        Text {
-                                            text: model.senderName
-                                            color: model.fromMe ? ThemeData.accentColor : ThemeData.textPrimary
-                                            font.bold: true
-                                        }
-
-                                        Text {
-                                            text: "Today at " + Qt.formatTime(new Date(), "hh:mm AP")
-                                            color: ThemeData.textSecondary
-                                            font.pixelSize: 11
-                                        }
+                                    Text {
+                                        text: model.senderName
+                                        color: model.fromMe ? ThemeData.accentColor : ThemeData.textPrimary
+                                        font.family: "Segoe UI"
+                                        font.bold: true
+                                        font.pixelSize: 14
                                     }
 
                                     Text {
-                                        id: messageTextLabel
-                                        Layout.fillWidth: true
-                                        text: model.text
-                                        color: ThemeData.textPrimary
-                                        font.pixelSize: 14
-                                        wrapMode: Text.WordWrap
+                                        text: "Today at " + root.formatTime(model.timestamp)
+                                        color: ThemeData.textSecondary
+                                        font.family: "Segoe UI"
+                                        font.pixelSize: 11
+                                    }
+                                }
+
+                                // ─── MESSAGE BODY (BUBBLE IN DM VS FLAT STREAM IN SERVER) ───
+                                RowLayout {
+                                    Layout.alignment: (delegateRoot.isDM && delegateRoot.isMe) ? Qt.AlignRight : Qt.AlignLeft
+                                    spacing: 6
+
+                                    // Retry button on left of sent failed bubble
+                                    Rectangle {
+                                        visible: delegateRoot.isDM && delegateRoot.isMe && delegateRoot.isFailed
+                                        width: 26; height: 26
+                                        radius: 13
+                                        color: retryMouse1.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.2)
+
+                                        IconImage {
+                                            anchors.centerIn: parent
+                                            source: "qrc:/qt/qml/Avila/assets/icons/refresh.svg"
+                                            width: 14; height: 14
+                                            color: "#FFFFFF"
+                                        }
+
+                                        MouseArea {
+                                            id: retryMouse1
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.retryMessage(model.messageId)
+                                        }
+                                    }
+
+                                    // Main Bubble / Media Container
+                                    Rectangle {
+                                        id: bubbleBox
+                                        // For stickers: transparent container without bubble background
+                                        color: {
+                                            if (delegateRoot.isSticker) return "transparent";
+                                            if (!delegateRoot.isDM) return "transparent";
+                                            return delegateRoot.isMe ? ThemeData.accentColor : "#232527";
+                                        }
+
+                                        // Subtle gradient for Sent DM bubbles
+                                        gradient: (delegateRoot.isDM && delegateRoot.isMe && !delegateRoot.isSticker) ? bubbleGrad : null
+
+                                        Gradient {
+                                            id: bubbleGrad
+                                            orientation: Gradient.Horizontal
+                                            GradientStop { position: 0.0; color: delegateRoot.isFailed ? "#992D22" : "#5865F2" }
+                                            GradientStop { position: 1.0; color: delegateRoot.isFailed ? "#C0392B" : "#6B74E6" }
+                                        }
+
+                                        border.color: {
+                                            if (delegateRoot.isSticker || !delegateRoot.isDM) return "transparent";
+                                            if (delegateRoot.isFailed) return "#E53935";
+                                            return delegateRoot.isMe ? "transparent" : Qt.rgba(255, 255, 255, 0.08);
+                                        }
+                                        border.width: (delegateRoot.isDM && !delegateRoot.isSticker) ? 1 : 0
+
+                                        // Tailored corner radii for Telegram/iMessage style bubbles
+                                        radius: (delegateRoot.isDM && !delegateRoot.isSticker) ? 16 : 0
+
+                                        implicitWidth: bubbleInnerContent.implicitWidth + (delegateRoot.isDM && !delegateRoot.isSticker ? 24 : 0)
+                                        implicitHeight: bubbleInnerContent.implicitHeight + (delegateRoot.isDM && !delegateRoot.isSticker ? 16 : 0)
+
+                                        ColumnLayout {
+                                            id: bubbleInnerContent
+                                            anchors.fill: parent
+                                            anchors.margins: (delegateRoot.isDM && !delegateRoot.isSticker) ? 8 : 0
+                                            spacing: 6
+
+                                            // 1. TEXT MESSAGE
+                                            Text {
+                                                visible: model.messageType === "text" && model.text !== ""
+                                                Layout.fillWidth: !delegateRoot.isDM
+                                                Layout.maximumWidth: delegateRoot.isDM ? 360 : -1
+                                                text: model.text
+                                                color: (delegateRoot.isDM && delegateRoot.isMe) ? "#FFFFFF" : ThemeData.textPrimary
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: 14
+                                                wrapMode: Text.Wrap
+                                                textFormat: Text.PlainText
+                                                // Dynamic LTR vs RTL alignment
+                                                horizontalAlignment: root.isRTL(model.text) ? Text.AlignRight : Text.AlignLeft
+                                            }
+
+                                            // 2. STICKER MESSAGE (Telegram Style)
+                                            Item {
+                                                visible: model.messageType === "sticker"
+                                                implicitWidth: 130; implicitHeight: 130
+                                                Layout.preferredWidth: 130; Layout.preferredHeight: 130
+                                                width: 130; height: 130
+
+                                                Image {
+                                                    anchors.centerIn: parent
+                                                    width: 120; height: 120
+                                                    source: model.messageType === "sticker" ? (model.mediaUrl || "") : ""
+                                                    sourceSize: Qt.size(240, 240)
+                                                    fillMode: Image.PreserveAspectFit
+                                                    smooth: true
+                                                }
+                                            }
+
+                                            // 3. IMAGE MESSAGE (Dynamically Scaled)
+                                            Item {
+                                                id: imgDelegateItem
+                                                visible: model.messageType === "image"
+
+                                                readonly property real naturalW: (chatImg.sourceSize && chatImg.sourceSize.width > 0) ? chatImg.sourceSize.width : (chatImg.implicitWidth > 0 ? chatImg.implicitWidth : 320)
+                                                readonly property real naturalH: (chatImg.sourceSize && chatImg.sourceSize.height > 0) ? chatImg.sourceSize.height : (chatImg.implicitHeight > 0 ? chatImg.implicitHeight : 200)
+                                                readonly property real ratio: (naturalW > 0 && naturalH > 0) ? (naturalW / naturalH) : 1.6
+
+                                                readonly property real calcWidth: {
+                                                    var maxW = 420;
+                                                    var maxH = 340;
+                                                    var minW = 160;
+                                                    var w = naturalW;
+                                                    var h = naturalH;
+                                                    if (w > maxW) {
+                                                        h = maxW / ratio;
+                                                        w = maxW;
+                                                    }
+                                                    if (h > maxH) {
+                                                        w = maxH * ratio;
+                                                        h = maxH;
+                                                    }
+                                                    return Math.max(minW, Math.min(maxW, w));
+                                                }
+                                                readonly property real calcHeight: Math.max(100, Math.min(340, calcWidth / ratio))
+
+                                                implicitWidth: calcWidth
+                                                implicitHeight: calcHeight
+                                                Layout.preferredWidth: calcWidth
+                                                Layout.preferredHeight: calcHeight
+                                                width: calcWidth
+                                                height: calcHeight
+
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    radius: 10
+                                                    color: "#18191D"
+                                                    clip: true
+
+                                                    Image {
+                                                        id: chatImg
+                                                        anchors.fill: parent
+                                                        source: model.messageType === "image" ? (model.mediaUrl || "") : ""
+                                                        fillMode: Image.PreserveAspectFit
+                                                        smooth: true
+                                                        asynchronous: true
+                                                    }
+
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: lightboxModal.open(model.mediaUrl, "image", model.fileName || "Image")
+                                                    }
+                                                }
+                                            }
+
+                                            // 4. VIDEO MESSAGE (In-App Player for supported formats)
+                                            VideoPlayerItem {
+                                                visible: model.messageType === "video" && root.isPlayableVideo(model.mediaUrl, model.fileName)
+                                                messageId: model.messageId
+                                                videoUrl: model.mediaUrl
+                                                fileName: model.fileName || "Video"
+                                                fileSize: model.fileSize
+                                                duration: model.duration || 30
+                                                fromMe: model.fromMe
+                                                onOpenFullscreenRequested: (url, name) => lightboxModal.open(url, "video", name)
+                                            }
+
+                                            // 5. MUSIC AUDIO MESSAGE
+                                            AudioMusicPlayer {
+                                                visible: model.messageType === "audio"
+                                                messageId: model.messageId
+                                                audioUrl: model.mediaUrl
+                                                fileName: model.fileName || "Audio"
+                                                fileSize: model.fileSize
+                                                duration: model.duration || 180
+                                                fromMe: model.fromMe
+                                            }
+
+                                            // 6. VOICE NOTE MESSAGE (Telegram Style)
+                                            VoiceMessagePlayer {
+                                                visible: model.messageType === "voice"
+                                                messageId: model.messageId
+                                                audioUrl: model.mediaUrl
+                                                duration: model.duration || 6
+                                                waveform: model.waveform
+                                                fromMe: model.fromMe
+                                            }
+
+                                            // 7. FILE / DOCUMENT / NON-PLAYABLE MEDIA MESSAGE (Rich Card with External Open)
+                                            Rectangle {
+                                                visible: model.messageType === "file" || (model.messageType === "video" && !root.isPlayableVideo(model.mediaUrl, model.fileName))
+                                                implicitWidth: 320; implicitHeight: 64
+                                                Layout.preferredWidth: 320; Layout.preferredHeight: 64
+                                                width: 320; height: 64
+                                                radius: 10
+                                                color: delegateRoot.isMe ? Qt.rgba(0, 0, 0, 0.25) : Qt.rgba(255, 255, 255, 0.06)
+                                                border.color: fileCardMouse.containsMouse ? ThemeData.accentColor : (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(255, 255, 255, 0.1))
+                                                border.width: 1
+
+                                                Behavior on border.color { ColorAnimation { duration: 150 } }
+
+                                                RowLayout {
+                                                    anchors.fill: parent
+                                                    anchors.margins: 10
+                                                    spacing: 12
+
+                                                    // File Extension Badge Box
+                                                    Rectangle {
+                                                        width: 44; height: 44
+                                                        radius: 8
+                                                        color: delegateRoot.isMe ? "#FFFFFF" : Qt.rgba(88, 101, 242, 0.2)
+                                                        border.color: delegateRoot.isMe ? "transparent" : Qt.rgba(88, 101, 242, 0.4)
+                                                        border.width: 1
+
+                                                        ColumnLayout {
+                                                            anchors.centerIn: parent
+                                                            spacing: 1
+
+                                                            IconImage {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                source: "qrc:/qt/qml/Avila/assets/icons/file.svg"
+                                                                width: 16; height: 16
+                                                                color: delegateRoot.isMe ? ThemeData.accentColor : "#5865F2"
+                                                            }
+
+                                                            Text {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                text: root.getFileExtension(model.fileName, model.mediaUrl)
+                                                                color: delegateRoot.isMe ? ThemeData.accentColor : "#FFFFFF"
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 9
+                                                                font.bold: true
+                                                            }
+                                                        }
+                                                    }
+
+                                                    ColumnLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: 2
+
+                                                        Text {
+                                                            Layout.fillWidth: true
+                                                            text: model.fileName || "File Attachment"
+                                                            color: delegateRoot.isMe ? "#FFFFFF" : ThemeData.textPrimary
+                                                            font.family: "Segoe UI"
+                                                            font.pixelSize: 13
+                                                            font.bold: true
+                                                            elide: Text.ElideRight
+                                                        }
+
+                                                        RowLayout {
+                                                            spacing: 6
+
+                                                            Text {
+                                                                text: root.formatBytes(model.fileSize)
+                                                                color: delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.75) : ThemeData.textSecondary
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 10
+                                                            }
+
+                                                            Text {
+                                                                text: "•  Click to open ↗"
+                                                                color: delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.6) : "#5865F2"
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 10
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Open Icon
+                                                    Rectangle {
+                                                        width: 28; height: 28
+                                                        radius: 14
+                                                        color: fileCardMouse.containsMouse ? (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.3) : Qt.rgba(255, 255, 255, 0.15)) : "transparent"
+
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: "↗"
+                                                            color: delegateRoot.isMe ? "#FFFFFF" : ThemeData.textSecondary
+                                                            font.family: "Segoe UI"
+                                                            font.pixelSize: 14
+                                                            font.bold: true
+                                                        }
+                                                    }
+                                                }
+
+                                                MouseArea {
+                                                    id: fileCardMouse
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: AudioManager.openMediaFile(model.mediaUrl)
+                                                }
+                                            }
+
+                                            // Caption for media messages
+                                            Text {
+                                                visible: (model.messageType === "image" || model.messageType === "video" || model.messageType === "file") && model.text !== ""
+                                                Layout.fillWidth: true
+                                                text: model.text
+                                                color: (delegateRoot.isDM && delegateRoot.isMe) ? "#FFFFFF" : ThemeData.textPrimary
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: 13
+                                                wrapMode: Text.Wrap
+                                                horizontalAlignment: root.isRTL(model.text) ? Text.AlignRight : Text.AlignLeft
+                                            }
+
+                                            // DM Bubble Footer: Timestamp & Delivery Status
+                                            RowLayout {
+                                                visible: delegateRoot.isDM
+                                                Layout.alignment: delegateRoot.isMe ? Qt.AlignRight : Qt.AlignLeft
+                                                spacing: 4
+
+                                                Text {
+                                                    text: root.formatTime(model.timestamp)
+                                                    color: delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.7) : ThemeData.textSecondary
+                                                    font.family: "Segoe UI"
+                                                    font.pixelSize: 10
+                                                }
+
+                                                // Status Icon for Sent Messages
+                                                Text {
+                                                    visible: delegateRoot.isMe
+                                                    text: {
+                                                        if (model.status === "sending") return "🕒";
+                                                        if (model.status === "failed") return "⚠️";
+                                                        return "✓";
+                                                    }
+                                                    color: model.status === "failed" ? "#FF8A80" : (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.8) : ThemeData.accentColor)
+                                                    font.pixelSize: 10
+                                                    font.bold: true
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Retry button on right of server failed message
+                                    Rectangle {
+                                        visible: !delegateRoot.isDM && delegateRoot.isFailed
+                                        width: 24; height: 24
+                                        radius: 12
+                                        color: retryMouse2.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.2)
+
+                                        IconImage {
+                                            anchors.centerIn: parent
+                                            source: "qrc:/qt/qml/Avila/assets/icons/refresh.svg"
+                                            width: 12; height: 12
+                                            color: "#FFFFFF"
+                                        }
+
+                                        MouseArea {
+                                            id: retryMouse2
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.retryMessage(model.messageId)
+                                        }
                                     }
                                 }
                             }
@@ -333,6 +822,7 @@ Item {
                     }
                 }
 
+                // ─── MESSAGE INPUT SECTION ───
                 AvilaMessageInput {
                     Layout.fillWidth: true
                     Layout.margins: 12
@@ -340,17 +830,69 @@ Item {
                     isDM: root.selectedServer === "dms"
 
                     onMessageSent: function(msgText) {
-                        var key = root.selectedServer + ":" + root.activeChannel
-                        if (!root.chatHistories[key]) {
-                            root.chatHistories[key] = []
-                        }
-                        root.chatHistories[key].push({ text: msgText, fromMe: true, sender: "Me", avatar: "" })
-                        nativeMessageModel.insertMessage(msgText, true, "Me", "")
-                        messageListView.positionViewAtEnd()
+                        var itemObj = {
+                            messageId: "msg_" + Date.now(),
+                            text: msgText,
+                            fromMe: true,
+                            senderName: "Me",
+                            senderAvatar: "",
+                            messageType: "text",
+                            status: "sending",
+                            timestamp: Math.floor(Date.now() / 1000)
+                        };
+                        root.sendMessagePayload(itemObj);
+                    }
 
-                        // Send E2EE Relay Message via Danisa REST API
-                        var target = root.selectedServer === "dms" ? root.activeChannel : "general"
-                        NetworkManager.sendRelayMessage(target, msgText)
+                    onStickerSent: function(stickerUrl, packId, stickerName) {
+                        var itemObj = {
+                            messageId: "msg_" + Date.now(),
+                            text: "",
+                            fromMe: true,
+                            senderName: "Me",
+                            senderAvatar: "",
+                            messageType: "sticker",
+                            mediaUrl: stickerUrl,
+                            fileName: stickerName,
+                            status: "sending",
+                            timestamp: Math.floor(Date.now() / 1000)
+                        };
+                        root.sendMessagePayload(itemObj);
+                    }
+
+                    onVoiceSent: function(voiceData) {
+                        var itemObj = {
+                            messageId: "msg_" + Date.now(),
+                            text: "",
+                            fromMe: true,
+                            senderName: "Me",
+                            senderAvatar: "",
+                            messageType: "voice",
+                            mediaUrl: voiceData.audioUrl,
+                            duration: voiceData.duration,
+                            waveform: voiceData.waveform,
+                            fileSize: voiceData.fileSize,
+                            status: "sending",
+                            timestamp: Math.floor(Date.now() / 1000)
+                        };
+                        root.sendMessagePayload(itemObj);
+                    }
+
+                    onMediaSent: function(mediaData) {
+                        var itemObj = {
+                            messageId: "msg_" + Date.now(),
+                            text: mediaData.caption || mediaData.text || "",
+                            fromMe: true,
+                            senderName: "Me",
+                            senderAvatar: "",
+                            messageType: mediaData.type,
+                            mediaUrl: mediaData.mediaUrl,
+                            fileName: mediaData.fileName,
+                            fileSize: mediaData.fileSize,
+                            duration: mediaData.duration || 0,
+                            status: "sending",
+                            timestamp: Math.floor(Date.now() / 1000)
+                        };
+                        root.sendMessagePayload(itemObj);
                     }
                 }
             }
@@ -361,6 +903,14 @@ Item {
                 selectedServer: root.selectedServer
                 expanded: root.selectedServer !== "dms" && userToggledExpanded
             }
+        }
+    }
+
+    // Media Fullscreen Lightbox Modal
+    MediaLightboxModal {
+        id: lightboxModal
+        onDownloadRequested: function(url, name) {
+            toast.show("Saved " + name + " to downloads", "success", "");
         }
     }
 
@@ -444,8 +994,8 @@ Item {
                         width: (parent.width - 12) / 2
                         highlighted: false
                         onClicked: {
-                            root.showAddFriendModal = false
-                            root.addFriendStatusMsg = ""
+                            root.showAddFriendModal = false;
+                            root.addFriendStatusMsg = "";
                         }
                     }
 
@@ -455,8 +1005,8 @@ Item {
                         enabled: friendInput.text.trim() !== ""
                         highlighted: true
                         onClicked: {
-                            root.addFriendStatusMsg = ""
-                            NetworkManager.addFriend(friendInput.text.trim())
+                            root.addFriendStatusMsg = "";
+                            NetworkManager.addFriend(friendInput.text.trim());
                         }
                     }
                 }

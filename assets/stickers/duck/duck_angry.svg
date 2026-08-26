@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="duckGradAngry" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFAB91"/>
+      <stop offset="60%" stop-color="#FF7043"/>
+      <stop offset="100%" stop-color="#D84315"/>
+    </radialGradient>
+  </defs>
+  <!-- Body & Head -->
+  <ellipse cx="60" cy="65" rx="42" ry="38" fill="url(#duckGradAngry)"/>
+  <circle cx="60" cy="45" r="32" fill="url(#duckGradAngry)"/>
+  <!-- Angry Eyes & Eyebrows -->
+  <path d="M36 30 L52 40" stroke="#212121" stroke-width="4" stroke-linecap="round"/>
+  <path d="M84 30 L68 40" stroke="#212121" stroke-width="4" stroke-linecap="round"/>
+  <ellipse cx="46" cy="42" rx="4" ry="4" fill="#212121"/>
+  <ellipse cx="74" cy="42" rx="4" ry="4" fill="#212121"/>
+  <!-- Angry Beak Gritting -->
+  <path d="M46 52 L74 52 L68 62 L52 62 Z" fill="#FF5722"/>
+  <line x1="48" y1="57" x2="72" y2="57" stroke="#BF360C" stroke-width="2"/>
+  <!-- Steam from head -->
+  <path d="M30 18 Q36 12 32 6" fill="none" stroke="#ECEFF1" stroke-width="3" stroke-linecap="round"/>
+  <path d="M90 18 Q84 12 88 6" fill="none" stroke="#ECEFF1" stroke-width="3" stroke-linecap="round"/>
+</svg>

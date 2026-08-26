@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="brainGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#E040FB"/>
+      <stop offset="100%" stop-color="#7C4DFF"/>
+    </radialGradient>
+  </defs>
+  <!-- Glowing Brain -->
+  <g filter="drop-shadow(0 0 8px #E040FB)">
+    <!-- Left lobe -->
+    <path d="M56 45 C45 35 32 45 34 58 C25 65 28 80 40 85 C45 92 56 90 56 80 Z" fill="url(#brainGlow)"/>
+    <!-- Right lobe -->
+    <path d="M64 45 C75 35 88 45 86 58 C95 65 92 80 80 85 C75 92 64 90 64 80 Z" fill="url(#brainGlow)"/>
+    <!-- Brain convolutions -->
+    <path d="M42 52 Q50 60 46 70" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.8"/>
+    <path d="M78 52 Q70 60 74 70" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.8"/>
+    <path d="M50 75 Q60 82 70 75" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.8"/>
+  </g>
+  <!-- Electric Sparks -->
+  <polygon points="30,30 25,40 32,38 28,48" fill="#00E5FF"/>
+  <polygon points="90,30 95,40 88,38 92,48" fill="#00E5FF"/>
+  <text x="60" y="112" font-family="Segoe UI, Impact" font-size="12" font-weight="900" fill="#E040FB" text-anchor="middle">GIGA BRAIN 🧠</text>
+</svg>

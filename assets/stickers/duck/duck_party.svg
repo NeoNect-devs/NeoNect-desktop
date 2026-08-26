@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="duckGradParty" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFF176"/>
+      <stop offset="60%" stop-color="#FBC02D"/>
+      <stop offset="100%" stop-color="#F57F17"/>
+    </radialGradient>
+  </defs>
+  <!-- Body & Head -->
+  <ellipse cx="60" cy="68" rx="40" ry="36" fill="url(#duckGradParty)"/>
+  <circle cx="60" cy="48" r="30" fill="url(#duckGradParty)"/>
+  <!-- Party Hat -->
+  <polygon points="60,6 44,34 76,34" fill="#9C27B0"/>
+  <circle cx="60" cy="6" r="4" fill="#FFEB3B"/>
+  <line x1="48" y1="26" x2="72" y2="26" stroke="#00BCD4" stroke-width="3"/>
+  <line x1="52" y1="18" x2="68" y2="18" stroke="#E91E63" stroke-width="3"/>
+  <!-- Wink Eye -->
+  <path d="M40 44 Q46 38 52 44" fill="none" stroke="#212121" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="72" cy="42" r="4.5" fill="#212121"/>
+  <!-- Cheeks -->
+  <circle cx="36" cy="50" r="6" fill="#FF5252" opacity="0.6"/>
+  <circle cx="84" cy="50" r="6" fill="#FF5252" opacity="0.6"/>
+  <!-- Beak with Party Horn -->
+  <path d="M46 52 Q60 48 74 52 Q60 66 46 52 Z" fill="#FF9800"/>
+  <path d="M68 56 Q85 54 100 48 Q96 60 76 60 Z" fill="#00E676"/>
+  <circle cx="102" cy="48" r="3" fill="#FFD600"/>
+  <!-- Confetti -->
+  <rect x="20" y="25" width="4" height="4" fill="#FF4081" transform="rotate(25 22 27)"/>
+  <rect x="95" y="28" width="5" height="3" fill="#00E5FF" transform="rotate(-15 97 29)"/>
+  <circle cx="28" cy="75" r="3" fill="#FFD600"/>
+  <circle cx="92" cy="78" r="2.5" fill="#E040FB"/>
+</svg>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="duckGradLove" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFF176"/>
+      <stop offset="60%" stop-color="#FBC02D"/>
+      <stop offset="100%" stop-color="#F57F17"/>
+    </radialGradient>
+    <linearGradient id="heartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF1744"/>
+      <stop offset="100%" stop-color="#D50000"/>
+    </linearGradient>
+    <linearGradient id="beakGradLove" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF9800"/>
+      <stop offset="100%" stop-color="#E65100"/>
+    </linearGradient>
+  </defs>
+  <!-- Body & Head -->
+  <ellipse cx="60" cy="65" rx="42" ry="38" fill="url(#duckGradLove)"/>
+  <circle cx="60" cy="45" r="32" fill="url(#duckGradLove)"/>
+  <!-- Heart Eyes -->
+  <path d="M42 34 C36 28 30 36 42 46 C54 36 48 28 42 34 Z" fill="url(#heartGrad)"/>
+  <path d="M74 34 C68 28 62 36 74 46 C86 36 80 28 74 34 Z" fill="url(#heartGrad)"/>
+  <!-- Cheeks -->
+  <ellipse cx="36" cy="48" rx="8" ry="6" fill="#FF8A80" opacity="0.7"/>
+  <ellipse cx="84" cy="48" rx="8" ry="6" fill="#FF8A80" opacity="0.7"/>
+  <!-- Beak -->
+  <path d="M46 50 Q60 46 74 50 Q60 64 46 50 Z" fill="url(#beakGradLove)"/>
+  <!-- Floating Hearts -->
+  <path d="M98 22 C94 18 90 24 98 30 C106 24 102 18 98 22 Z" fill="#FF4081"/>
+  <path d="M22 24 C19 20 15 25 22 30 C29 25 25 20 22 24 Z" fill="#FF4081"/>
+</svg>

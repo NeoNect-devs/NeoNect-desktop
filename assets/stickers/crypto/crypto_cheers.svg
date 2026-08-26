@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Clinking Beer Mugs -->
+  <g transform="rotate(-15 45 60)">
+    <rect x="25" y="40" width="28" height="42" rx="4" fill="#FFC107" stroke="#FFA000" stroke-width="2"/>
+    <path d="M25 50 L14 50 C11 50 11 72 25 72" fill="none" stroke="#FFA000" stroke-width="4" stroke-linecap="round"/>
+    <!-- Foam -->
+    <ellipse cx="39" cy="40" rx="16" ry="6" fill="#FFFFFF"/>
+    <circle cx="30" cy="38" r="6" fill="#FFFFFF"/>
+    <circle cx="48" cy="38" r="6" fill="#FFFFFF"/>
+  </g>
+  <g transform="rotate(15 75 60)">
+    <rect x="67" y="40" width="28" height="42" rx="4" fill="#FFC107" stroke="#FFA000" stroke-width="2"/>
+    <path d="M95 50 L106 50 C109 50 109 72 95 72" fill="none" stroke="#FFA000" stroke-width="4" stroke-linecap="round"/>
+    <!-- Foam -->
+    <ellipse cx="81" cy="40" rx="16" ry="6" fill="#FFFFFF"/>
+    <circle cx="72" cy="38" r="6" fill="#FFFFFF"/>
+    <circle cx="90" cy="38" r="6" fill="#FFFFFF"/>
+  </g>
+  <!-- Clink Sparkles -->
+  <polygon points="60,28 62,34 68,36 62,38 60,44 58,38 52,36 58,34" fill="#FFD700"/>
+  <text x="60" y="112" font-family="Segoe UI, Arial" font-size="12" font-weight="900" fill="#FF8F00" text-anchor="middle">CHEERS! 🍻</text>
+</svg>

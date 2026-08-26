@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="duckGradThumb" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#FFF176"/>
+      <stop offset="60%" stop-color="#FBC02D"/>
+      <stop offset="100%" stop-color="#F57F17"/>
+    </radialGradient>
+  </defs>
+  <!-- Body & Head -->
+  <ellipse cx="55" cy="65" rx="38" ry="36" fill="url(#duckGradThumb)"/>
+  <circle cx="55" cy="45" r="30" fill="url(#duckGradThumb)"/>
+  <!-- Wink & Eye -->
+  <circle cx="40" cy="42" r="4.5" fill="#212121"/>
+  <path d="M62 44 Q68 38 74 44" fill="none" stroke="#212121" stroke-width="3" stroke-linecap="round"/>
+  <!-- Happy Beak -->
+  <path d="M42 50 Q55 46 68 50 Q55 64 42 50 Z" fill="#FF9800"/>
+  <!-- Big Thumbs Up Glove -->
+  <g transform="translate(85, 45)">
+    <!-- Thumb -->
+    <rect x="0" y="0" width="10" height="16" rx="5" fill="#FFFFFF" stroke="#212121" stroke-width="2.5" transform="rotate(-15)"/>
+    <!-- Fist -->
+    <rect x="-4" y="10" width="18" height="18" rx="6" fill="#FFFFFF" stroke="#212121" stroke-width="2.5"/>
+    <line x1="0" y1="16" x2="10" y2="16" stroke="#BDBDBD" stroke-width="2"/>
+    <line x1="0" y1="22" x2="10" y2="22" stroke="#BDBDBD" stroke-width="2"/>
+  </g>
+</svg>
