@@ -49,7 +49,7 @@ Rectangle {
     radius: 10
 
     color: type === "error" ? "#1E1214" : (type === "warning" ? "#1E1A12" : (type === "success" ? "#121E15" : "#12151E"))
-    border.color: type === "error" ? "#E53935" : (type === "warning" ? "#FFA000" : (type === "success" ? "#23A55A" : "#5865F2"))
+    border.color: type === "error" ? "#E53935" : (type === "warning" ? "#FFA000" : (type === "success" ? "#23A55A" : "#0A84FF"))
     border.width: 1
 
     RowLayout {
@@ -62,13 +62,13 @@ Rectangle {
         Rectangle {
             width: 28; height: 28
             radius: 14
-            color: type === "error" ? Qt.rgba(229, 57, 53, 0.2) : (type === "warning" ? Qt.rgba(255, 160, 0, 0.2) : Qt.rgba(35, 165, 90, 0.2))
+            color: type === "error" ? Qt.rgba(229, 57, 53, 0.2) : (type === "warning" ? Qt.rgba(255, 160, 0, 0.2) : (type === "success" ? Qt.rgba(35, 165, 90, 0.2) : Qt.rgba(10, 132, 255, 0.2)))
 
             IconImage {
                 anchors.centerIn: parent
                 source: type === "error" ? "qrc:/qt/qml/Avila/assets/icons/alert-circle.svg" : "qrc:/qt/qml/Avila/assets/icons/refresh.svg"
                 width: 16; height: 16
-                color: type === "error" ? "#E53935" : (type === "warning" ? "#FFA000" : (type === "success" ? "#23A55A" : "#5865F2"))
+                color: type === "error" ? "#E53935" : (type === "warning" ? "#FFA000" : (type === "success" ? "#23A55A" : "#0A84FF"))
             }
         }
 

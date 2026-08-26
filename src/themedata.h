@@ -8,8 +8,8 @@ struct ThemeTokens {
     QColor panelBackground{"#08080a"};
     QColor headerBackground{"#0d0e11"};
     QColor sidebarBackground{"#000000"};
-    QColor accentColor{"#5865f2"};
-    QColor accentHover{"#4752c4"};
+    QColor accentColor{"#0A84FF"};
+    QColor accentHover{"#0066CC"};
     QColor textPrimary{"#f2f3f5"};
     QColor textSecondary{"#949ba4"};
     QColor textMuted{"#6d6f78"};
@@ -23,8 +23,8 @@ struct ThemeTokens {
     QColor statusOnline{"#23a55a"};
     QColor statusOffline{"#80848e"};
 
-    QColor inputGradientStart{"#5865f2"};
-    QColor inputGradientEnd{"#7289da"};
+    QColor inputGradientStart{"#0A84FF"};
+    QColor inputGradientEnd{"#00B4D8"};
     QColor inputSolidBorder{"#18191d"};
     QColor inputBackgroundActive{"#000000"};
     QColor inputBackgroundInactive{"#08080a"};

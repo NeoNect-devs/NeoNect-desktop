@@ -125,29 +125,23 @@ Rectangle {
                 }
             }
 
-            // Interactive Progress Bar
-            Rectangle {
-                id: progressBarContainer
+            // Interactive Gradient Progress Bar
+            GradientSeekBar {
+                id: musicScrubber
                 Layout.fillWidth: true
-                height: 6
-                radius: 3
-                color: musicRoot.fromMe ? Qt.rgba(255, 255, 255, 0.25) : Qt.rgba(255, 255, 255, 0.12)
-
-                Rectangle {
-                    width: parent.width * musicRoot.progress
-                    height: parent.height
-                    radius: 3
-                    color: musicRoot.fromMe ? "#FFFFFF" : ThemeData.accentColor
+                value: musicPlayer.duration > 0 ? (musicPlayer.position / musicPlayer.duration) : 0.0
+                duration: musicPlayer.duration > 0 ? musicPlayer.duration : (musicRoot.duration * 1000)
+                gradientStart: musicRoot.fromMe ? "#FFFFFF" : "#00E5FF"
+                gradientMid: musicRoot.fromMe ? "#E0F2FE" : "#0A84FF"
+                gradientEnd: musicRoot.fromMe ? "#BAE6FD" : "#0066FF"
+                onSeekMoved: (p) => {
+                    if (musicPlayer.duration > 0) {
+                        musicPlayer.position = p * musicPlayer.duration;
+                    }
                 }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: (mouse) => {
-                        var p = Math.max(0.0, Math.min(1.0, mouse.x / width));
-                        if (musicPlayer.duration > 0) {
-                            musicPlayer.position = p * musicPlayer.duration;
-                        }
+                onSeekFinished: (p) => {
+                    if (musicPlayer.duration > 0) {
+                        musicPlayer.position = p * musicPlayer.duration;
                     }
                 }
             }

@@ -79,12 +79,17 @@ Item {
                     radius: 2.5
                     color: Qt.rgba(255, 255, 255, 0.2)
 
-                    // Filled Active Portion (0% to 100%)
+                    // Filled Active Portion (0% to 100%) with Gradient
                     Rectangle {
                         width: parent.width * volControlRoot.effectiveVolume
                         height: parent.height
                         radius: 2.5
-                        color: volControlRoot.accentColor
+                        clip: true
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: "#00E5FF" }
+                            GradientStop { position: 1.0; color: "#0A84FF" }
+                        }
                     }
 
                     // Thumb Indicator Handle

@@ -160,6 +160,7 @@ qt_add_qml_module(AvilaApp
         qml/components/VideoPlayerItem.qml
         qml/components/MediaLightboxModal.qml
         qml/components/VolumeController.qml
+        qml/components/GradientSeekBar.qml
         qml/components/ToastNotification.qml
 
         # --- Entrypage Folder ---

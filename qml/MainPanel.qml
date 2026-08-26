@@ -668,8 +668,8 @@ Item {
                                                     Rectangle {
                                                         width: 44; height: 44
                                                         radius: 8
-                                                        color: delegateRoot.isMe ? "#FFFFFF" : Qt.rgba(88, 101, 242, 0.2)
-                                                        border.color: delegateRoot.isMe ? "transparent" : Qt.rgba(88, 101, 242, 0.4)
+                                                        color: delegateRoot.isMe ? "#FFFFFF" : Qt.rgba(10, 132, 255, 0.15)
+                                                        border.color: delegateRoot.isMe ? "transparent" : Qt.rgba(10, 132, 255, 0.35)
                                                         border.width: 1
 
                                                         ColumnLayout {
@@ -680,7 +680,7 @@ Item {
                                                                 Layout.alignment: Qt.AlignHCenter
                                                                 source: "qrc:/qt/qml/Avila/assets/icons/file.svg"
                                                                 width: 16; height: 16
-                                                                color: delegateRoot.isMe ? ThemeData.accentColor : "#5865F2"
+                                                                color: delegateRoot.isMe ? ThemeData.accentColor : ThemeData.accentColor
                                                             }
 
                                                             Text {
@@ -720,7 +720,7 @@ Item {
 
                                                             Text {
                                                                 text: "•  Click to open ↗"
-                                                                color: delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.6) : "#5865F2"
+                                                                color: delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.6) : ThemeData.accentColor
                                                                 font.family: "Segoe UI"
                                                                 font.pixelSize: 10
                                                             }

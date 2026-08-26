@@ -299,16 +299,20 @@ Rectangle {
                 font.bold: true
             }
 
-            // Interactive Progress Scrubber Slider
-            Slider {
+            // Interactive Gradient Progress Scrubber
+            GradientSeekBar {
                 id: videoScrubber
                 Layout.fillWidth: true
-                from: 0.0
-                to: 1.0
                 value: player.duration > 0 ? (player.position / player.duration) : 0.0
-                onMoved: {
+                duration: player.duration > 0 ? player.duration : (videoRoot.duration * 1000)
+                onSeekMoved: (p) => {
                     if (player.duration > 0) {
-                        player.position = videoScrubber.value * player.duration;
+                        player.position = p * player.duration;
+                    }
+                }
+                onSeekFinished: (p) => {
+                    if (player.duration > 0) {
+                        player.position = p * player.duration;
                     }
                 }
             }
@@ -405,7 +409,7 @@ Rectangle {
                 Layout.alignment: Qt.AlignHCenter
                 width: 160; height: 32
                 radius: 6
-                color: extBtnMouse.containsMouse ? "#4752C4" : ThemeData.accentColor
+                color: extBtnMouse.containsMouse ? "#0066CC" : ThemeData.accentColor
 
                 RowLayout {
                     anchors.centerIn: parent

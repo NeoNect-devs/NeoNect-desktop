@@ -30,23 +30,23 @@ Rectangle {
 
     property var serverMembersMap: ({
         "server1": [
-            { name: "Alex (Admin)", role: "ADMIN", status: "online", avatarColor: "#5865F2" },
-            { name: "Beatrice", role: "DEVELOPER", status: "online", avatarColor: "#EB459E" },
-            { name: "Charlie", role: "MEMBER", status: "online", avatarColor: "#9B59B6" },
-            { name: "David", role: "MEMBER", status: "offline", avatarColor: "#F1C40F" },
-            { name: "Eva", role: "MODERATOR", status: "online", avatarColor: "#E91E63" },
-            { name: "Frank", role: "MEMBER", status: "offline", avatarColor: "#3498DB" },
-            { name: "Grace", role: "MEMBER", status: "online", avatarColor: "#2ECC71" },
-            { name: "Henry", role: "MEMBER", status: "offline", avatarColor: "#E67E22" },
-            { name: "Ivy", role: "DESIGNER", status: "online", avatarColor: "#1ABC9C" },
-            { name: "Avila Bot", role: "BOT", status: "online", avatarColor: "#7289DA" }
+            { name: "Alex (Admin)", role: "ADMIN", status: "online", avatarColor: "#0A84FF" },
+            { name: "Beatrice", role: "DEVELOPER", status: "online", avatarColor: "#06B6D4" },
+            { name: "Charlie", role: "MEMBER", status: "online", avatarColor: "#10B981" },
+            { name: "David", role: "MEMBER", status: "offline", avatarColor: "#F59E0B" },
+            { name: "Eva", role: "MODERATOR", status: "online", avatarColor: "#EC4899" },
+            { name: "Frank", role: "MEMBER", status: "offline", avatarColor: "#3B82F6" },
+            { name: "Grace", role: "MEMBER", status: "online", avatarColor: "#22C55E" },
+            { name: "Henry", role: "MEMBER", status: "offline", avatarColor: "#F97316" },
+            { name: "Ivy", role: "DESIGNER", status: "online", avatarColor: "#14B8A6" },
+            { name: "Avila Bot", role: "BOT", status: "online", avatarColor: "#0284C7" }
         ],
         "server2": [
             { name: "Hannah", role: "OWNER", status: "online", avatarColor: "#FF5722" },
-            { name: "Ian", role: "LEAD", status: "online", avatarColor: "#607D8B" },
-            { name: "Jack", role: "MEMBER", status: "offline", avatarColor: "#9C27B0" },
-            { name: "Karen", role: "MEMBER", status: "online", avatarColor: "#8BC34A" },
-            { name: "Leo", role: "MEMBER", status: "offline", avatarColor: "#00BCD4" }
+            { name: "Ian", role: "LEAD", status: "online", avatarColor: "#64748B" },
+            { name: "Jack", role: "MEMBER", status: "offline", avatarColor: "#0284C7" },
+            { name: "Karen", role: "MEMBER", status: "online", avatarColor: "#84CC16" },
+            { name: "Leo", role: "MEMBER", status: "offline", avatarColor: "#06B6D4" }
         ]
     })
 

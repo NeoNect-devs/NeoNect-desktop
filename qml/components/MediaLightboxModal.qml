@@ -311,7 +311,7 @@ Rectangle {
                         Layout.alignment: Qt.AlignHCenter
                         width: 180; height: 36
                         radius: 6
-                        color: lbExtBtnMouse.containsMouse ? "#4752C4" : ThemeData.accentColor
+                        color: lbExtBtnMouse.containsMouse ? "#0066CC" : ThemeData.accentColor
 
                         RowLayout {
                             anchors.centerIn: parent
@@ -398,16 +398,22 @@ Rectangle {
                 font.bold: true
             }
 
-            // Progress Slider
-            Slider {
+            // Interactive Gradient Progress Bar
+            GradientSeekBar {
                 id: lbScrubber
                 Layout.fillWidth: true
-                from: 0.0
-                to: 1.0
                 value: lightboxPlayer.duration > 0 ? (lightboxPlayer.position / lightboxPlayer.duration) : 0.0
-                onMoved: {
+                duration: lightboxPlayer.duration > 0 ? lightboxPlayer.duration : 0
+                trackHeight: 6
+                hoverTrackHeight: 8
+                onSeekMoved: (p) => {
                     if (lightboxPlayer.duration > 0) {
-                        lightboxPlayer.position = lbScrubber.value * lightboxPlayer.duration;
+                        lightboxPlayer.position = p * lightboxPlayer.duration;
+                    }
+                }
+                onSeekFinished: (p) => {
+                    if (lightboxPlayer.duration > 0) {
+                        lightboxPlayer.position = p * lightboxPlayer.duration;
                     }
                 }
             }

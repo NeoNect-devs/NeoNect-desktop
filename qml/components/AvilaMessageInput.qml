@@ -257,7 +257,7 @@ Rectangle {
                                 Rectangle {
                                     width: 32; height: 32
                                     radius: 8
-                                    color: Qt.rgba(88, 101, 242, 0.2)
+                                    color: Qt.rgba(10, 132, 255, 0.2)
 
                                     IconImage {
                                         anchors.centerIn: parent
@@ -315,13 +315,13 @@ Rectangle {
                                 Rectangle {
                                     width: 32; height: 32
                                     radius: 8
-                                    color: Qt.rgba(235, 69, 158, 0.2)
+                                    color: Qt.rgba(6, 182, 212, 0.2)
 
                                     IconImage {
                                         anchors.centerIn: parent
                                         source: "qrc:/qt/qml/Avila/assets/icons/video.svg"
                                         width: 16; height: 16
-                                        color: "#EB459E"
+                                        color: "#06B6D4"
                                     }
                                 }
 
