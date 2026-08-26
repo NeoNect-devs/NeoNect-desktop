@@ -21,6 +21,15 @@ void FriendService::loadFriends() {
     QStringList list = m_storage->friends();
     if (list.isEmpty()) {
         list = QStringList{"alex", "beatrice", "charlie"};
+        QString current = m_storage->username().toLower();
+        if (current == "alice") {
+            list.append("bob");
+        } else if (current == "bob") {
+            list.append("alice");
+        } else {
+            list.append("alice");
+            list.append("bob");
+        }
         m_storage->setFriends(list);
     }
     emit friendsListChanged(list);

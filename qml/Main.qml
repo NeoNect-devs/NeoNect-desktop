@@ -115,6 +115,10 @@ Window {
                                 id: mainPanel
                                 selectedServer: root.currentSelectedServer
                                 activeChannel: root.currentActiveChannel
+                                onNavigateRequested: (srv, chan) => {
+                                    root.currentSelectedServer = srv;
+                                    root.currentActiveChannel = chan;
+                                }
                                 SplitView.fillWidth: true
                                 Layout.fillHeight: true
                             }

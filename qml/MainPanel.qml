@@ -42,6 +42,8 @@ Item {
 
     }
 
+    signal navigateRequested(string server, string channel)
+
     property bool showAddFriendModal: false
     property string addFriendStatusMsg: ""
     property bool addFriendSuccess: false
@@ -52,8 +54,7 @@ Item {
             root.addFriendSuccess = success;
             root.addFriendStatusMsg = message;
             if (success) {
-                root.selectedServer = "dms";
-                root.activeChannel = username.toLowerCase();
+                root.navigateRequested("dms", username.toLowerCase());
             }
         }
     }
