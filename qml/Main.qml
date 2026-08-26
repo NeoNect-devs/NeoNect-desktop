@@ -119,6 +119,9 @@ Window {
                                     root.currentSelectedServer = srv;
                                     root.currentActiveChannel = chan;
                                 }
+                                onOpenMediaModalRequested: (url, type, name) => {
+                                    globalLightboxModal.open(url, type, name);
+                                }
                                 SplitView.fillWidth: true
                                 Layout.fillHeight: true
                             }
@@ -136,11 +139,18 @@ Window {
         // Framework Frameless Window Geometry Sizing hitboxes
         Item {
             anchors.fill: parent; z: 101
-            visible: root.appState === "authenticated" && root.visibility !== Window.Maximized
+            visible: root.appState === "authenticated" && root.visibility !== Window.Maximized && root.visibility !== Window.FullScreen
             MouseArea { width: 4; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; cursorShape: Qt.SizeHorCursor; onPressed: root.startSystemResize(Qt.LeftEdge) }
             MouseArea { width: 4; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; cursorShape: Qt.SizeHorCursor; onPressed: root.startSystemResize(Qt.RightEdge) }
             MouseArea { height: 4; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; cursorShape: Qt.SizeVerCursor; onPressed: root.startSystemResize(Qt.BottomEdge) }
             MouseArea { height: 4; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; cursorShape: Qt.SizeVerCursor; onPressed: root.startSystemResize(Qt.TopEdge) }
+        }
+
+        // Global Media Fullscreen Lightbox Modal (Covers entire application)
+        MediaLightboxModal {
+            id: globalLightboxModal
+            anchors.fill: parent
+            z: 999999
         }
     }
 }

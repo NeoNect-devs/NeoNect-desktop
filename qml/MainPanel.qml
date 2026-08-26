@@ -118,6 +118,7 @@ Item {
     }
 
     signal navigateRequested(string server, string channel)
+    signal openMediaModalRequested(string url, string type, string name)
 
     property bool showAddFriendModal: false
     property string addFriendStatusMsg: ""
@@ -625,7 +626,7 @@ Item {
                                                     MouseArea {
                                                         anchors.fill: parent
                                                         cursorShape: Qt.PointingHandCursor
-                                                        onClicked: lightboxModal.open(model.mediaUrl, "image", model.fileName || "Image")
+                                                        onClicked: root.openMediaModalRequested(model.mediaUrl, "image", model.fileName || "Image")
                                                     }
                                                 }
                                             }
@@ -639,7 +640,7 @@ Item {
                                                 fileSize: model.fileSize
                                                 duration: model.duration || 30
                                                 fromMe: model.fromMe
-                                                onOpenFullscreenRequested: (url, name) => lightboxModal.open(url, "video", name)
+                                                onOpenFullscreenRequested: (url, name) => root.openMediaModalRequested(url, "video", name)
                                             }
 
                                             // 5. MUSIC AUDIO MESSAGE
@@ -923,13 +924,6 @@ Item {
         }
     }
 
-    // Media Fullscreen Lightbox Modal
-    MediaLightboxModal {
-        id: lightboxModal
-        onDownloadRequested: function(url, name) {
-            toast.show("Saved " + name + " to downloads", "success", "");
-        }
-    }
 
     // ─── ADD FRIEND / DIRECT CHAT MODAL OVERLAY ───────────────────────────
     Rectangle {
