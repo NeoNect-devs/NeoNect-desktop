@@ -30,7 +30,8 @@ Rectangle {
         spacing: 10
 
         Item {
-            width: 20; height: 20
+            width: itemRoot.isDM ? 22 : 20
+            height: itemRoot.isDM ? 26 : 20
             Layout.alignment: Qt.AlignVCenter
 
             IconImage {
@@ -41,12 +42,45 @@ Rectangle {
                 color: itemRoot.isActive ? ThemeData.textPrimary : ThemeData.textSecondary
             }
 
-            Rectangle {
+            Item {
                 visible: itemRoot.isDM
-                anchors.centerIn: parent
-                width: 10; height: 10
-                radius: 5
-                color: itemRoot.userStatus === "online" ? "#23A55A" : "#80848E"
+                anchors.fill: parent
+
+                Rectangle {
+                    id: dmAvatarBox
+                    width: 22; height: 22
+                    anchors.top: parent.top
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    radius: 6
+                    color: itemRoot.isActive ? ThemeData.accentColor : Qt.rgba(255, 255, 255, 0.12)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: itemRoot.channelName ? itemRoot.channelName.charAt(0).toUpperCase() : "@"
+                        color: "#FFFFFF"
+                        font.bold: true
+                        font.pixelSize: 11
+                    }
+                }
+
+                // Small Horizontal Status Pill Under DM Avatar
+                Rectangle {
+                    id: dmStatusPill
+                    width: 14
+                    height: 3.5
+                    radius: 1.75
+                    color: {
+                        var st = (itemRoot.userStatus || "").toLowerCase();
+                        if (st === "online") return "#23A55A";
+                        if (st === "afk" || st === "idle") return "#FAA81A";
+                        if (st === "dnd") return "#F23F43";
+                        return "#80848E";
+                    }
+                    border.color: ThemeData.panelBackground
+                    border.width: 0.5
+                    anchors.bottom: parent.bottom
+                    anchors.horizontalCenter: parent.horizontalCenter
+                }
             }
         }
 
