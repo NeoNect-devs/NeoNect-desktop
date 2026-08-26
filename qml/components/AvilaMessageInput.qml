@@ -278,24 +278,26 @@ Rectangle {
                 Layout.fillHeight: true
                 clip: true
                 background: null
+                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                 ScrollBar.vertical: ScrollBar {
                     id: inputScrollBar
-                    parent: inputScrollView
-                    anchors.top: inputScrollView.top
-                    anchors.right: inputScrollView.right
-                    anchors.bottom: inputScrollView.bottom
-                    width: 6
+                    width: 5
                     policy: ScrollBar.AsNeeded
-                    palette.window: "transparent"
-                    palette.base: "transparent"
+                    visible: inputScrollBar.size < 1.0
+                    active: inputScrollView.moving || inputScrollBar.hovered || inputScrollBar.pressed
+
+                    background: Rectangle {
+                        color: "transparent"
+                    }
 
                     contentItem: Rectangle {
-                        implicitWidth: 6
-                        radius: 3
+                        implicitWidth: 5
+                        radius: 2.5
                         color: inputScrollBar.pressed ? ThemeData.accentColor : (inputScrollBar.hovered ? "#7289DA" : "#4E5058")
+                        opacity: (inputScrollBar.size < 1.0 && (inputScrollBar.active || inputScrollBar.hovered)) ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
                     }
-                    background: Item {}
                 }
 
                 TextArea {

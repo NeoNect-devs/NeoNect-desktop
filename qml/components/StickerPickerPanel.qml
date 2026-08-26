@@ -241,22 +241,22 @@ Rectangle {
 
                 ScrollBar.vertical: ScrollBar {
                     id: stickerScroll
-                    parent: stickerGrid
-                    anchors.top: stickerGrid.top
-                    anchors.right: stickerGrid.right
-                    anchors.bottom: stickerGrid.bottom
-                    width: 6
+                    width: 5
                     policy: ScrollBar.AsNeeded
-                    active: true
-                    palette.window: "transparent"
-                    palette.base: "transparent"
+                    visible: stickerScroll.size < 1.0
+                    active: stickerGrid.moving || stickerScroll.hovered || stickerScroll.pressed
+
+                    background: Rectangle {
+                        color: "transparent"
+                    }
 
                     contentItem: Rectangle {
-                        implicitWidth: 6
-                        radius: 3
+                        implicitWidth: 5
+                        radius: 2.5
                         color: stickerScroll.pressed ? ThemeData.accentColor : (stickerScroll.hovered ? "#7289DA" : "#4E5058")
+                        opacity: (stickerScroll.size < 1.0 && (stickerScroll.active || stickerScroll.hovered)) ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
                     }
-                    background: Item {}
                 }
 
                 delegate: Item {
@@ -314,22 +314,22 @@ Rectangle {
 
                 ScrollBar.vertical: ScrollBar {
                     id: emojiScroll
-                    parent: emojiGrid
-                    anchors.top: emojiGrid.top
-                    anchors.right: emojiGrid.right
-                    anchors.bottom: emojiGrid.bottom
-                    width: 6
+                    width: 5
                     policy: ScrollBar.AsNeeded
-                    active: true
-                    palette.window: "transparent"
-                    palette.base: "transparent"
+                    visible: emojiScroll.size < 1.0
+                    active: emojiGrid.moving || emojiScroll.hovered || emojiScroll.pressed
+
+                    background: Rectangle {
+                        color: "transparent"
+                    }
 
                     contentItem: Rectangle {
-                        implicitWidth: 6
-                        radius: 3
+                        implicitWidth: 5
+                        radius: 2.5
                         color: emojiScroll.pressed ? ThemeData.accentColor : (emojiScroll.hovered ? "#7289DA" : "#4E5058")
+                        opacity: (emojiScroll.size < 1.0 && (emojiScroll.active || emojiScroll.hovered)) ? 1.0 : 0.0
+                        Behavior on opacity { NumberAnimation { duration: 150 } }
                     }
-                    background: Item {}
                 }
 
                 delegate: Item {
