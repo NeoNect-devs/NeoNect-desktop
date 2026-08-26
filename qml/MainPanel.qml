@@ -139,10 +139,14 @@ Item {
 
     signal navigateRequested(string server, string channel)
     signal openMediaModalRequested(string url, string type, string name)
+    signal openDirectMessageRequested(string username)
 
     property bool showAddFriendModal: false
     property string addFriendStatusMsg: ""
     property bool addFriendSuccess: false
+
+    property bool isOtherTyping: false
+    property string typingUser: ""
 
     Connections {
         target: NetworkManager
@@ -167,9 +171,12 @@ Item {
             { messageId: "d5", text: "", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "sticker", mediaUrl: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_happy.svg", fileName: "Happy", status: "sent", timestamp: 1620000040 }
         ],
         "dms:alex": [
-            { messageId: "d6", text: "Hey Alex, are you available for a quick sync later today?", fromMe: true, senderName: "Me", senderAvatar: "", messageType: "text", status: "sent", timestamp: 1620000050 },
-            { messageId: "d7", text: "Sure! Just ping me here when you're ready.", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "text", status: "sent", timestamp: 1620000060 },
-            { messageId: "d8", text: "", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "voice", duration: 8, waveform: [0.3, 0.5, 0.8, 0.9, 0.6, 0.4, 0.7, 0.85, 0.95, 0.6, 0.3, 0.5, 0.8, 0.9, 0.6, 0.4, 0.7, 0.85, 0.95, 0.6, 0.4, 0.5, 0.6, 0.7, 0.8, 0.5, 0.3, 0.2], status: "sent", timestamp: 1620000070 }
+            { messageId: "d6", text: "Hey Alex, are you available for a quick sync later today?", fromMe: true, senderName: "Me", senderAvatar: "", messageType: "text", status: "seen", timestamp: 1620000050 },
+            { messageId: "d7", text: "Sure! Just ping me here when you're ready.", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "text", status: "seen", timestamp: 1620000060 },
+            { messageId: "d8", text: "", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "voice", duration: 8, waveform: [0.3, 0.5, 0.8, 0.9, 0.6, 0.4, 0.7, 0.85, 0.95, 0.6, 0.3, 0.5, 0.8, 0.9, 0.6, 0.4, 0.7, 0.85, 0.95, 0.6, 0.4, 0.5, 0.6, 0.7, 0.8, 0.5, 0.3, 0.2], status: "seen", timestamp: 1620000070 }
+        ],
+        "dms:saved-messages": [
+            { messageId: "s1", text: "Welcome to Saved Messages! 🔖\n\n• Forward messages here to save them\n• Send notes, media, audio, and files to store in your private cloud\n• Everything is end-to-end encrypted with your local keys", fromMe: false, senderName: "Saved Messages Cloud", senderAvatar: "🔖", messageType: "text", status: "seen", timestamp: 1620000000 }
         ]
     })
 
@@ -185,6 +192,10 @@ Item {
     }
 
     function switchChannel() {
+        if (root.selectedServer === "dms" && root.activeChannel === "friends") {
+            return;
+        }
+
         var key = selectedServer + ":" + activeChannel;
         nativeMessageModel.clearActiveViewportStore();
 
@@ -212,6 +223,11 @@ Item {
 
         var target = root.selectedServer === "dms" ? root.activeChannel : "general";
         NetworkManager.sendRichRelayMessage(target, itemObj);
+
+        // Transition: Sending -> Sent after 350ms
+        statusSentTimer.targetChannel = target;
+        statusSentTimer.messageId = itemObj.messageId;
+        statusSentTimer.restart();
     }
 
     function retryMessage(messageId) {
@@ -229,6 +245,106 @@ Item {
         interval: 50
         repeat: false
         onTriggered: messageListView.positionViewAtEnd()
+    }
+
+    // ─── REAL-TIME MESSAGE DELIVERY & TYPING SIMULATION TIMERS ───
+    Timer {
+        id: statusSentTimer
+        property string targetChannel: ""
+        property string messageId: ""
+        interval: 350
+        repeat: false
+        onTriggered: {
+            nativeMessageModel.updateMessageStatus(messageId, "sent", "");
+            statusDeliveredTimer.targetChannel = targetChannel;
+            statusDeliveredTimer.messageId = messageId;
+            statusDeliveredTimer.restart();
+        }
+    }
+
+    Timer {
+        id: statusDeliveredTimer
+        property string targetChannel: ""
+        property string messageId: ""
+        interval: 700
+        repeat: false
+        onTriggered: {
+            nativeMessageModel.updateMessageStatus(messageId, "delivered", "");
+            if (root.selectedServer === "dms" && targetChannel !== "saved-messages") {
+                statusSeenTimer.targetChannel = targetChannel;
+                statusSeenTimer.messageId = messageId;
+                statusSeenTimer.restart();
+            }
+        }
+    }
+
+    Timer {
+        id: statusSeenTimer
+        property string targetChannel: ""
+        property string messageId: ""
+        interval: 1200
+        repeat: false
+        onTriggered: {
+            nativeMessageModel.updateMessageStatus(messageId, "seen", "");
+            // Friend starts typing after message is seen
+            root.typingUser = targetChannel.replace(/^\w/, c => c.toUpperCase());
+            root.isOtherTyping = true;
+            mockReplyTimer.targetChannel = targetChannel;
+            mockReplyTimer.restart();
+        }
+    }
+
+    Timer {
+        id: mockReplyTimer
+        property string targetChannel: ""
+        interval: 2500
+        repeat: false
+        onTriggered: {
+            root.isOtherTyping = false;
+            var replies = [
+                "Received your message loud and clear! The new UI looks fantastic 🚀",
+                "Testing end-to-end encrypted relay transmission — works flawlessly!",
+                "Got the file/message, everything looks crisp.",
+                "Awesome! Thanks for the update 👍"
+            ];
+            var replyText = replies[Math.floor(Math.random() * replies.length)];
+            var replyObj = {
+                messageId: "msg_reply_" + Date.now(),
+                text: replyText,
+                fromMe: false,
+                senderName: targetChannel.replace(/^\w/, c => c.toUpperCase()),
+                senderAvatar: targetChannel.charAt(0).toUpperCase(),
+                messageType: "text",
+                mediaUrl: "",
+                fileName: "",
+                fileSize: 0,
+                duration: 0,
+                waveform: [],
+                status: "seen",
+                errorText: "",
+                timestamp: Math.floor(Date.now() / 1000)
+            };
+            var key = "dms:" + targetChannel.toLowerCase();
+            if (!root.chatHistories[key]) root.chatHistories[key] = [];
+            root.chatHistories[key].push(replyObj);
+            if (root.selectedServer === "dms" && root.activeChannel.toLowerCase() === targetChannel.toLowerCase()) {
+                nativeMessageModel.insertMessageItem(replyObj);
+                messageListView.positionViewAtEnd();
+            }
+        }
+    }
+
+    // ─── PERIODIC HEARTBEAT ONLINE CHECKER ───
+    Timer {
+        id: heartbeatOnlineTimer
+        interval: 12000
+        repeat: true
+        running: true
+        onTriggered: {
+            if (NetworkManager) {
+                NetworkManager.checkFriendsStatus();
+            }
+        }
     }
 
     onActiveChannelChanged: switchChannel()
@@ -262,84 +378,127 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // Full-width Header Bar
-        Rectangle {
+        // ─── VIEW 1: FRIENDS DASHBOARD (Discord-like Homepage) ───
+        FriendsHomePanel {
+            visible: root.selectedServer === "dms" && root.activeChannel === "friends"
             Layout.fillWidth: true
-            height: 48
-            color: ThemeData.panelBackground
-            border.color: Qt.darker(ThemeData.panelBackground, 1.25)
-            border.width: 1
+            Layout.fillHeight: true
+            onMessageFriendRequested: function(username) {
+                root.openDirectMessageRequested(username);
+            }
+            onAddFriendSubmitted: function(username) {
+                NetworkManager.addFriend(username);
+            }
+        }
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
+        // ─── VIEW 2: CHAT INTERFACE (Server Channels, DMs, Saved Messages) ───
+        ColumnLayout {
+            visible: !(root.selectedServer === "dms" && root.activeChannel === "friends")
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: 0
 
-                IconImage {
-                    visible: root.selectedServer !== "dms"
-                    source: "qrc:/qt/qml/Avila/assets/icons/hash.svg"
-                    width: 18; height: 18
-                    color: ThemeData.textSecondary
-                    Layout.alignment: Qt.AlignVCenter
-                }
+            // Full-width Header Bar
+            Rectangle {
+                Layout.fillWidth: true
+                height: 48
+                color: ThemeData.panelBackground
+                border.color: Qt.darker(ThemeData.panelBackground, 1.25)
+                border.width: 1
 
-                Text {
-                    visible: root.selectedServer === "dms"
-                    text: "@"
-                    color: ThemeData.textSecondary
-                    font.family: "Segoe UI"
-                    font.pixelSize: 20
-                    font.weight: Font.Light
-                }
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 16
+                    anchors.rightMargin: 16
+                    spacing: 10
 
-                Text {
-                    text: root.selectedServer === "dms" ? root.activeChannel.replace(/^\w/, c => c.toUpperCase()) : root.activeChannel
-                    color: ThemeData.textPrimary
-                    font.family: "Segoe UI"
-                    font.pixelSize: 15
-                    font.bold: true
-                }
-
-                Rectangle {
-                    width: 1; height: 16
-                    color: ThemeData.textSecondary
-                    opacity: 0.3
-                    Layout.leftMargin: 4; Layout.rightMargin: 4
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: root.selectedServer === "dms" ? "Danisa Zero-Knowledge E2EE Direct Messages" : "Secure Workspace Channel"
-                    color: ThemeData.textSecondary
-                    font.family: "Segoe UI"
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                }
-
-                Rectangle {
-                    width: 32; height: 32
-                    radius: 6
-                    visible: root.selectedServer !== "dms"
-                    color: membersToggleMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
-
+                    // Server Channel Icon
                     IconImage {
-                        anchors.centerIn: parent
-                        source: "qrc:/qt/qml/Avila/assets/icons/users.svg"
-                        width: 20; height: 20
-                        color: membersPanel.expanded ? ThemeData.textPrimary : ThemeData.textSecondary
+                        visible: root.selectedServer !== "dms"
+                        source: "qrc:/qt/qml/Avila/assets/icons/hash.svg"
+                        width: 18; height: 18
+                        color: ThemeData.textSecondary
+                        Layout.alignment: Qt.AlignVCenter
                     }
 
-                    MouseArea {
-                        id: membersToggleMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: membersPanel.userToggledExpanded = !membersPanel.userToggledExpanded
+                    // Saved Messages Ribbon Icon
+                    Text {
+                        visible: root.selectedServer === "dms" && root.activeChannel === "saved-messages"
+                        text: "🔖"
+                        font.pixelSize: 18
+                    }
+
+                    // DM Contact @ Prefix
+                    Text {
+                        visible: root.selectedServer === "dms" && root.activeChannel !== "saved-messages"
+                        text: "@"
+                        color: ThemeData.textSecondary
+                        font.family: "Segoe UI"
+                        font.pixelSize: 20
+                        font.weight: Font.Light
+                    }
+
+                    // Channel / Contact Title
+                    Text {
+                        text: {
+                            if (root.selectedServer === "dms") {
+                                if (root.activeChannel === "saved-messages") return "Saved Messages";
+                                return root.activeChannel.replace(/^\w/, c => c.toUpperCase());
+                            }
+                            return root.activeChannel;
+                        }
+                        color: ThemeData.textPrimary
+                        font.family: "Segoe UI"
+                        font.pixelSize: 15
+                        font.bold: true
+                    }
+
+                    Rectangle {
+                        width: 1; height: 16
+                        color: ThemeData.textSecondary
+                        opacity: 0.3
+                        Layout.leftMargin: 4; Layout.rightMargin: 4
+                    }
+
+                    // Channel / DM Subtitle
+                    Text {
+                        Layout.fillWidth: true
+                        text: {
+                            if (root.selectedServer === "dms") {
+                                if (root.activeChannel === "saved-messages") return "Your Personal Cloud Storage & Notes";
+                                return "Danisa Zero-Knowledge E2EE Direct Messages";
+                            }
+                            return "Secure Workspace Channel";
+                        }
+                        color: ThemeData.textSecondary
+                        font.family: "Segoe UI"
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+
+                    Rectangle {
+                        width: 32; height: 32
+                        radius: 6
+                        visible: root.selectedServer !== "dms"
+                        color: membersToggleMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
+
+                        IconImage {
+                            anchors.centerIn: parent
+                            source: "qrc:/qt/qml/Avila/assets/icons/users.svg"
+                            width: 20; height: 20
+                            color: membersPanel.expanded ? ThemeData.textPrimary : ThemeData.textSecondary
+                        }
+
+                        MouseArea {
+                            id: membersToggleMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: membersPanel.userToggledExpanded = !membersPanel.userToggledExpanded
+                        }
                     }
                 }
             }
-        }
 
         RowLayout {
             Layout.fillWidth: true
@@ -817,16 +976,38 @@ Item {
                                                 }
 
                                                 // Status Icon for Sent Messages
-                                                Text {
+                                                RowLayout {
                                                     visible: delegateRoot.isMe
-                                                    text: {
-                                                        if (model.status === "sending") return "🕒";
-                                                        if (model.status === "failed") return "⚠️";
-                                                        return "✓";
+                                                    spacing: 2
+                                                    Layout.alignment: Qt.AlignVCenter
+
+                                                    Text {
+                                                        text: {
+                                                            if (model.status === "sending") return "🕒";
+                                                            if (model.status === "failed") return "⚠️";
+                                                            if (model.status === "seen") return "✓✓";
+                                                            if (model.status === "delivered") return "✓✓";
+                                                            return "✓";
+                                                        }
+                                                        color: {
+                                                            if (model.status === "failed") return "#FF5252";
+                                                            if (model.status === "seen") return "#00E5FF"; // Electric Cyan (Seen)
+                                                            if (model.status === "delivered") return "#FFFFFF";
+                                                            return Qt.rgba(255, 255, 255, 0.7);
+                                                        }
+                                                        font.family: "Segoe UI"
+                                                        font.pixelSize: 10
+                                                        font.bold: true
                                                     }
-                                                    color: model.status === "failed" ? "#FF8A80" : (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.8) : ThemeData.accentColor)
-                                                    font.pixelSize: 10
-                                                    font.bold: true
+
+                                                    Text {
+                                                        visible: model.status === "seen"
+                                                        text: "Seen"
+                                                        color: "#00E5FF"
+                                                        font.family: "Segoe UI"
+                                                        font.pixelSize: 9
+                                                        font.bold: true
+                                                    }
                                                 }
                                             }
                                         }
@@ -961,6 +1142,68 @@ Item {
                     }
                 }
 
+                // ─── TYPING INDICATOR BANNER ───
+                Rectangle {
+                    visible: root.isOtherTyping && root.selectedServer === "dms" && root.activeChannel !== "saved-messages"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 16
+                    Layout.rightMargin: 16
+                    height: 20
+                    color: "transparent"
+
+                    RowLayout {
+                        anchors.fill: parent
+                        spacing: 6
+
+                        // 3 Pulsing Animated Typing Dots
+                        Row {
+                            spacing: 3
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Rectangle {
+                                width: 5; height: 5; radius: 2.5
+                                color: "#00E5FF"
+                                SequentialAnimation on opacity {
+                                    loops: Animation.Infinite
+                                    running: root.isOtherTyping
+                                    NumberAnimation { from: 0.2; to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { from: 1.0; to: 0.2; duration: 400; easing.type: Easing.InOutQuad }
+                                }
+                            }
+                            Rectangle {
+                                width: 5; height: 5; radius: 2.5
+                                color: "#00E5FF"
+                                SequentialAnimation on opacity {
+                                    loops: Animation.Infinite
+                                    running: root.isOtherTyping
+                                    PauseAnimation { duration: 200 }
+                                    NumberAnimation { from: 0.2; to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { from: 1.0; to: 0.2; duration: 400; easing.type: Easing.InOutQuad }
+                                }
+                            }
+                            Rectangle {
+                                width: 5; height: 5; radius: 2.5
+                                color: "#00E5FF"
+                                SequentialAnimation on opacity {
+                                    loops: Animation.Infinite
+                                    running: root.isOtherTyping
+                                    PauseAnimation { duration: 400 }
+                                    NumberAnimation { from: 0.2; to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+                                    NumberAnimation { from: 1.0; to: 0.2; duration: 400; easing.type: Easing.InOutQuad }
+                                }
+                            }
+                        }
+
+                        Text {
+                            text: (root.typingUser || (root.activeChannel.replace(/^\w/, c => c.toUpperCase()))) + " is typing..."
+                            color: "#00E5FF"
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                            font.italic: true
+                        }
+                    }
+                }
+
                 // ─── MESSAGE INPUT SECTION ───
                 AvilaMessageInput {
                     id: messageInput
@@ -1045,7 +1288,7 @@ Item {
             }
         }
     }
-
+}
 
     // ─── ADD FRIEND / DIRECT CHAT MODAL OVERLAY ───────────────────────────
     Rectangle {

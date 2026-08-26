@@ -67,64 +67,136 @@ Rectangle {
     }
 
     ListModel {
-        id: dmListModel
+        id: openDmListModel
     }
 
-    property var friendStatusMap: ({})
+    property var friendStatusMap: ({
+        "alex": "online",
+        "beatrice": "online",
+        "charlie": "afk",
+        "david": "offline",
+        "eva": "dnd",
+        "frank": "offline",
+        "grace": "online",
+        "henry": "afk"
+    })
 
-    function syncFriendsModel() {
-        dmListModel.clear();
-        var list = (NetworkManager && NetworkManager.friends && NetworkManager.friends.length > 0) ?
-                    NetworkManager.friends : ["alex", "beatrice", "charlie"];
-        for (var i = 0; i < list.length; ++i) {
-            var friendName = list[i].toLowerCase();
+    // Active Open DMs tracked in session
+    property var openDms: ["alex", "beatrice"]
+
+    function openDirectMessage(username) {
+        if (!username) return;
+        var lower = username.toLowerCase();
+        if (openDms.indexOf(lower) === -1) {
+            openDms.push(lower);
+        }
+        syncDmModel();
+        sidebarRoot.activeChannel = lower;
+        sidebarRoot.channelSelected(lower);
+        sidebarRoot.channelChanged(lower);
+    }
+
+    function closeDirectMessage(username) {
+        var lower = username.toLowerCase();
+        var idx = openDms.indexOf(lower);
+        if (idx !== -1) {
+            openDms.splice(idx, 1);
+            syncDmModel();
+            if (sidebarRoot.activeChannel === lower) {
+                sidebarRoot.activeChannel = "friends";
+                sidebarRoot.channelSelected("friends");
+                sidebarRoot.channelChanged("friends");
+            }
+        }
+    }
+
+    function syncDmModel() {
+        openDmListModel.clear();
+        for (var i = 0; i < openDms.length; ++i) {
+            var friendName = openDms[i].toLowerCase();
             var st = sidebarRoot.friendStatusMap[friendName] || "offline";
-            dmListModel.append({
-                name: list[i],
+            openDmListModel.append({
+                name: friendName,
                 isDM: true,
                 userStatus: st
             });
-
         }
     }
 
     Connections {
         target: NetworkManager
         function onFriendsChanged() {
-            sidebarRoot.syncFriendsModel();
+            sidebarRoot.syncDmModel();
         }
         function onIncomingRelayMessageReceived(fromUsername, target, text, timestamp) {
-            sidebarRoot.friendStatusMap[fromUsername.toLowerCase()] = "online";
-            sidebarRoot.syncFriendsModel();
+            var lower = fromUsername.toLowerCase();
+            sidebarRoot.friendStatusMap[lower] = "online";
+            if (sidebarRoot.openDms.indexOf(lower) === -1) {
+                sidebarRoot.openDms.push(lower);
+            }
+            sidebarRoot.syncDmModel();
         }
         function onFriendStatusUpdated(username, status) {
             sidebarRoot.friendStatusMap[username.toLowerCase()] = status;
-            sidebarRoot.syncFriendsModel();
+            sidebarRoot.syncDmModel();
         }
     }
 
-
-    Component.onCompleted: syncFriendsModel()
-
-
+    Component.onCompleted: syncDmModel()
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 10
-        spacing: 8
+        anchors.margins: 8
+        spacing: 6
 
+        // ─── PINNED TOP DIRECT MESSAGES NAVIGATION (Friends & Saved Messages) ───
+        ColumnLayout {
+            visible: sidebarRoot.selectedServer === "dms"
+            Layout.fillWidth: true
+            spacing: 2
+
+            // 1. Friends Dashboard Navigation
+            ChannelListItem {
+                channelName: "Friends"
+                isSpecialNav: true
+                specialType: "friends"
+                unreadBadge: 4
+                isSelected: sidebarRoot.activeChannel === "friends"
+                onClicked: {
+                    sidebarRoot.activeChannel = "friends";
+                    sidebarRoot.channelSelected("friends");
+                    sidebarRoot.channelChanged("friends");
+                }
+            }
+
+            // 2. Saved Messages (Cloud Bookmark / Notes to Self)
+            ChannelListItem {
+                channelName: "Saved Messages"
+                isSpecialNav: true
+                specialType: "saved-messages"
+                isSelected: sidebarRoot.activeChannel === "saved-messages"
+                onClicked: {
+                    sidebarRoot.activeChannel = "saved-messages";
+                    sidebarRoot.channelSelected("saved-messages");
+                    sidebarRoot.channelChanged("saved-messages");
+                }
+            }
+        }
+
+        // Section Title & Action
         RowLayout {
             Layout.fillWidth: true
-            Layout.leftMargin: 4
-            Layout.topMargin: 4
+            Layout.leftMargin: 6
+            Layout.topMargin: sidebarRoot.selectedServer === "dms" ? 8 : 4
             spacing: 8
 
             Text {
                 text: sidebarRoot.selectedServer === "dms" ? "DIRECT MESSAGES" : sidebarRoot.selectedServer.toUpperCase()
-                color: ThemeData.textPrimary
+                color: ThemeData.textSecondary
                 font.family: "Segoe UI"
-                font.pixelSize: 12
+                font.pixelSize: 11
                 font.bold: true
+                font.letterSpacing: 0.5
                 Layout.fillWidth: true
                 elide: Text.ElideRight
             }
@@ -132,17 +204,16 @@ Rectangle {
             Rectangle {
                 id: addFriendBtn
                 visible: sidebarRoot.selectedServer === "dms"
-                width: 28
-                height: 28
-                radius: 6
+                width: 24; height: 24
+                radius: 4
                 color: addFriendMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.12) : "transparent"
 
-                IconImage {
+                Text {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/friends.svg"
-                    width: 16
-                    height: 16
+                    text: "+"
                     color: addFriendMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
+                    font.pixelSize: 16
+                    font.bold: true
                 }
 
                 MouseArea {
@@ -155,19 +226,13 @@ Rectangle {
             }
         }
 
-        Rectangle {
-            Layout.fillWidth: true
-            height: 1
-            color: ThemeData.textSecondary
-            opacity: 0.2
-        }
-
+        // List of Active Channels OR Active Open DMs
         ListView {
             id: channelListView
             Layout.fillWidth: true
             Layout.fillHeight: true
-            model: sidebarRoot.selectedServer === "dms" ? dmListModel : serverChannelsModel
-            spacing: 4
+            model: sidebarRoot.selectedServer === "dms" ? openDmListModel : serverChannelsModel
+            spacing: 3
             clip: true
 
             ScrollBar.vertical: ScrollBar {
@@ -176,15 +241,15 @@ Rectangle {
                 anchors.top: channelListView.top
                 anchors.right: channelListView.right
                 anchors.bottom: channelListView.bottom
-                width: 6
+                width: 4
                 policy: ScrollBar.AsNeeded
                 palette.window: "transparent"
                 palette.base: "transparent"
 
                 contentItem: Rectangle {
-                    implicitWidth: 6
-                    radius: 3
-                    color: sidebarScrollBar.pressed ? ThemeData.accentColor : (sidebarScrollBar.hovered ? "#7289DA" : "#4E5058")
+                    implicitWidth: 4
+                    radius: 2
+                    color: ThemeData.scrollBarThumb
                 }
                 background: Item {}
             }
@@ -192,12 +257,16 @@ Rectangle {
             delegate: ChannelListItem {
                 channelName: model.name
                 isDM: model.isDM
+                canClose: model.isDM
                 userStatus: model.userStatus
                 isSelected: sidebarRoot.activeChannel === model.name
                 onClicked: {
                     sidebarRoot.activeChannel = model.name;
                     sidebarRoot.channelSelected(model.name);
                     sidebarRoot.channelChanged(model.name);
+                }
+                onCloseClicked: {
+                    sidebarRoot.closeDirectMessage(model.name);
                 }
             }
         }

@@ -119,6 +119,11 @@ Window {
                                     root.currentSelectedServer = srv;
                                     root.currentActiveChannel = chan;
                                 }
+                                onOpenDirectMessageRequested: (username) => {
+                                    root.currentSelectedServer = "dms";
+                                    channelsPanel.openDirectMessage(username);
+                                    root.currentActiveChannel = username.toLowerCase();
+                                }
                                 onOpenMediaModalRequested: (url, type, name) => {
                                     globalLightboxModal.open(url, type, name);
                                 }

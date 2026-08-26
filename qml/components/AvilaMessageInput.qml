@@ -16,6 +16,15 @@ Rectangle {
     signal stickerSent(string stickerUrl, string packId, string stickerName)
     signal voiceSent(var voiceData)
     signal mediaSent(var mediaData) // { type, mediaUrl, fileName, fileSize, duration, caption }
+    signal typingStarted()
+    signal typingStopped()
+
+    Timer {
+        id: typingDebounceTimer
+        interval: 2000
+        repeat: false
+        onTriggered: inputRoot.typingStopped()
+    }
 
     // Draft Attachment State
     property var draftAttachment: null // { type, url, name, size }
@@ -306,7 +315,18 @@ Rectangle {
                     // Auto RTL/LTR alignment based on input text
                     horizontalAlignment: inputRoot.isRTL(inputArea.text) ? Text.AlignRight : Text.AlignLeft
 
+                    onTextChanged: {
+                        if (text.trim() !== "") {
+                            inputRoot.typingStarted();
+                            typingDebounceTimer.restart();
+                        } else {
+                            inputRoot.typingStopped();
+                        }
+                    }
+
                     Keys.onReturnPressed: function(event) {
+                        typingDebounceTimer.stop();
+                        inputRoot.typingStopped();
                         if (event.modifiers & Qt.ShiftModifier) {
                             event.accepted = false;
                             return;

@@ -13,11 +13,16 @@ Rectangle {
     property bool isDM: false
     property string userStatus: "offline"
     property string avatarUrl: ""
+    property bool isSpecialNav: false
+    property string specialType: "" // "friends", "saved-messages"
+    property int unreadBadge: 0
+    property bool canClose: false
 
     signal clicked()
+    signal closeClicked()
 
     width: ListView.view ? ListView.view.width : (parent ? parent.width : 200)
-    height: itemRoot.isDM ? 48 : 36
+    height: itemRoot.isSpecialNav ? 40 : (itemRoot.isDM ? 48 : 36)
     radius: 8
     color: isActive ? Qt.rgba(255, 255, 255, 0.1) : (mouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.05) : "transparent")
 
@@ -29,22 +34,53 @@ Rectangle {
         anchors.rightMargin: 8
         spacing: 10
 
-        // Channel Icon OR Large DM Avatar with Status Pill
+        // 1. Icon / Avatar Section
         Item {
-            width: itemRoot.isDM ? 34 : 20
-            height: itemRoot.isDM ? 40 : 20
+            width: itemRoot.isSpecialNav ? 28 : (itemRoot.isDM ? 34 : 20)
+            height: itemRoot.isSpecialNav ? 28 : (itemRoot.isDM ? 40 : 20)
             Layout.alignment: Qt.AlignVCenter
 
+            // Special Nav Item: Friends
+            Rectangle {
+                visible: itemRoot.isSpecialNav && itemRoot.specialType === "friends"
+                anchors.fill: parent
+                radius: 6
+                color: itemRoot.isActive ? Qt.rgba(10, 132, 255, 0.25) : "transparent"
+
+                IconImage {
+                    anchors.centerIn: parent
+                    source: "qrc:/qt/qml/Avila/assets/icons/friends.svg"
+                    width: 20; height: 20
+                    color: itemRoot.isActive ? "#0A84FF" : (mouseArea.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary)
+                }
+            }
+
+            // Special Nav Item: Saved Messages
+            Rectangle {
+                visible: itemRoot.isSpecialNav && itemRoot.specialType === "saved-messages"
+                anchors.fill: parent
+                radius: 6
+                color: itemRoot.isActive ? Qt.rgba(0, 229, 255, 0.25) : Qt.rgba(0, 229, 255, 0.1)
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "🔖"
+                    font.pixelSize: 15
+                }
+            }
+
+            // Server Channel Hash Icon
             IconImage {
-                visible: !itemRoot.isDM
+                visible: !itemRoot.isSpecialNav && !itemRoot.isDM
                 anchors.centerIn: parent
                 source: "qrc:/qt/qml/Avila/assets/icons/hash.svg"
                 width: 18; height: 18
                 color: itemRoot.isActive ? ThemeData.textPrimary : ThemeData.textSecondary
             }
 
+            // Direct Message Squircle Avatar with Status Pill
             Item {
-                visible: itemRoot.isDM
+                visible: !itemRoot.isSpecialNav && itemRoot.isDM
                 anchors.fill: parent
 
                 Rectangle {
@@ -87,6 +123,7 @@ Rectangle {
             }
         }
 
+        // 2. Labels & Subtitles
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 1
@@ -94,8 +131,8 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: itemRoot.isDM ? itemRoot.channelName.replace(/^\w/, c => c.toUpperCase()) : itemRoot.channelName
-                color: itemRoot.isActive ? ThemeData.textPrimary : ThemeData.textSecondary
+                text: itemRoot.isSpecialNav ? (itemRoot.specialType === "friends" ? "Friends" : "Saved Messages") : (itemRoot.isDM ? itemRoot.channelName.replace(/^\w/, c => c.toUpperCase()) : itemRoot.channelName)
+                color: itemRoot.isActive ? ThemeData.textPrimary : (mouseArea.containsMouse ? "#FFFFFF" : ThemeData.textSecondary)
                 font.family: "Segoe UI"
                 font.pixelSize: 14
                 font.weight: itemRoot.isActive ? Font.DemiBold : Font.Normal
@@ -103,7 +140,7 @@ Rectangle {
             }
 
             Text {
-                visible: itemRoot.isDM
+                visible: !itemRoot.isSpecialNav && itemRoot.isDM
                 Layout.fillWidth: true
                 text: {
                     var st = (itemRoot.userStatus || "").toLowerCase();
@@ -122,6 +159,48 @@ Rectangle {
                 font.family: "Segoe UI"
                 font.pixelSize: 11
                 elide: Text.ElideRight
+            }
+        }
+
+        // 3. Online Badge Count for Friends Tab
+        Rectangle {
+            visible: itemRoot.isSpecialNav && itemRoot.specialType === "friends" && itemRoot.unreadBadge > 0
+            height: 18
+            radius: 9
+            color: "#23A55A"
+            implicitWidth: Math.max(18, badgeText.implicitWidth + 8)
+
+            Text {
+                id: badgeText
+                anchors.centerIn: parent
+                text: itemRoot.unreadBadge.toString()
+                color: "#FFFFFF"
+                font.family: "Segoe UI"
+                font.pixelSize: 10
+                font.bold: true
+            }
+        }
+
+        // 4. Hover Close Button for Open DMs
+        Rectangle {
+            visible: itemRoot.isDM && itemRoot.canClose && (mouseArea.containsMouse || closeMouse.containsMouse)
+            width: 20; height: 20
+            radius: 10
+            color: closeMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.15) : "transparent"
+
+            Text {
+                anchors.centerIn: parent
+                text: "✕"
+                color: closeMouse.containsMouse ? "#FFFFFF" : "#949BA4"
+                font.pixelSize: 10
+            }
+
+            MouseArea {
+                id: closeMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: itemRoot.closeClicked()
             }
         }
     }

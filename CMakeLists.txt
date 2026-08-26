@@ -162,6 +162,7 @@ qt_add_qml_module(AvilaApp
         qml/components/VolumeController.qml
         qml/components/GradientSeekBar.qml
         qml/components/ToastNotification.qml
+        qml/components/FriendsHomePanel.qml
 
         # --- Entrypage Folder ---
         qml/entrypage/entry.qml

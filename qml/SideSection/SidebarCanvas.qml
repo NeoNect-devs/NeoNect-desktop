@@ -97,7 +97,7 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             sidebarRoot.serverSelected("dms");
-                            sidebarRoot.channelSelected("alex");
+                            sidebarRoot.channelSelected("friends");
                         }
                     }
                 }
