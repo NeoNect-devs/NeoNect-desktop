@@ -859,7 +859,7 @@ Item {
                         }
                     }
 
-                    // ─── DRAG & DROP FOR SENDING FILES & MEDIA ───
+                    // ─── DRAG & DROP FOR ATTACHING FILES & MEDIA ───
                     DropArea {
                         id: chatDropArea
                         anchors.fill: parent
@@ -873,69 +873,76 @@ Item {
 
                         onDropped: (drop) => {
                             if (drop.hasUrls && drop.urls.length > 0) {
-                                for (var i = 0; i < drop.urls.length; ++i) {
-                                    var url = drop.urls[i].toString();
-                                    var path = url.replace("file:///", "").replace("file://", "");
-                                    var fileName = path.substring(path.lastIndexOf('/') + 1);
-                                    if (!fileName || fileName.indexOf('\\') !== -1) {
-                                        fileName = path.substring(path.lastIndexOf('\\') + 1);
+                                if (drop.urls.length === 1) {
+                                    // Single file: stage as draft attachment so user can write an optional description
+                                    messageInput.handleSelectedFileUrl(drop.urls[0].toString());
+                                } else {
+                                    // Multiple files: send earlier files and stage the last one with focus for captioning
+                                    for (var i = 0; i < drop.urls.length - 1; ++i) {
+                                        var url = drop.urls[i].toString();
+                                        var path = url.replace("file:///", "").replace("file://", "");
+                                        var fileName = path.substring(path.lastIndexOf('/') + 1);
+                                        if (!fileName || fileName.indexOf('\\') !== -1) {
+                                            fileName = path.substring(path.lastIndexOf('\\') + 1);
+                                        }
+                                        var detectedType = root.detectMediaType(url, fileName);
+                                        var itemObj = {
+                                            messageId: "msg_" + Date.now() + "_" + i,
+                                            text: "",
+                                            fromMe: true,
+                                            senderName: "Me",
+                                            senderAvatar: "",
+                                            messageType: detectedType,
+                                            mediaUrl: url,
+                                            fileName: fileName,
+                                            fileSize: (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000))),
+                                            duration: (detectedType === "video" ? 30 : (detectedType === "audio" ? 180 : 0)),
+                                            waveform: (detectedType === "voice" ? [0.3, 0.6, 0.9, 0.5, 0.2] : []),
+                                            status: "sending",
+                                            timestamp: Math.floor(Date.now() / 1000)
+                                        };
+                                        root.sendMessagePayload(itemObj);
                                     }
-                                    var detectedType = root.detectMediaType(url, fileName);
-                                    var itemObj = {
-                                        messageId: "msg_" + Date.now() + "_" + i,
-                                        text: "",
-                                        fromMe: true,
-                                        senderName: "Me",
-                                        senderAvatar: "",
-                                        messageType: detectedType,
-                                        mediaUrl: url,
-                                        fileName: fileName,
-                                        fileSize: (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000))),
-                                        duration: (detectedType === "video" ? 30 : (detectedType === "audio" ? 180 : 0)),
-                                        waveform: (detectedType === "voice" ? [0.3, 0.6, 0.9, 0.5, 0.2] : []),
-                                        status: "sending",
-                                        timestamp: Math.floor(Date.now() / 1000)
-                                    };
-                                    root.sendMessagePayload(itemObj);
+                                    messageInput.handleSelectedFileUrl(drop.urls[drop.urls.length - 1].toString());
                                 }
                                 drop.acceptProposedAction();
                             }
                         }
                     }
 
-                    // Drag & Drop visual feedback overlay
+                    // Drag & Drop visual feedback overlay (Transparent Frosted Glass Black)
                     Rectangle {
                         anchors.fill: parent
-                        anchors.margins: 8
-                        radius: 12
-                        color: Qt.rgba(10, 132, 255, 0.12)
-                        border.color: "#00E5FF"
-                        border.width: 2
+                        anchors.margins: 6
+                        radius: 14
+                        color: Qt.rgba(0, 0, 0, 0.78)
+                        border.color: Qt.rgba(0, 229, 255, 0.5)
+                        border.width: 1.5
                         visible: chatDropArea.containsDrag
                         z: 999
 
                         Rectangle {
                             anchors.fill: parent
                             anchors.margins: 4
-                            radius: 10
-                            color: Qt.rgba(15, 18, 24, 0.92)
+                            radius: 12
+                            color: Qt.rgba(10, 12, 16, 0.85)
 
                             ColumnLayout {
                                 anchors.centerIn: parent
-                                spacing: 10
+                                spacing: 12
 
                                 Rectangle {
                                     Layout.alignment: Qt.AlignHCenter
-                                    width: 56; height: 56
-                                    radius: 28
-                                    color: Qt.rgba(10, 132, 255, 0.25)
+                                    width: 60; height: 60
+                                    radius: 30
+                                    color: Qt.rgba(10, 132, 255, 0.2)
                                     border.color: "#00E5FF"
                                     border.width: 2
 
                                     IconImage {
                                         anchors.centerIn: parent
                                         source: "qrc:/qt/qml/Avila/assets/icons/download.svg"
-                                        width: 26; height: 26
+                                        width: 28; height: 28
                                         color: "#00E5FF"
                                         rotation: 180
                                     }
@@ -943,17 +950,17 @@ Item {
 
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
-                                    text: "Drop files to send to " + (root.selectedServer === "dms" ? ("@" + root.activeChannel) : ("#" + root.activeChannel))
+                                    text: "Drop to Attach & Add Caption"
                                     color: "#FFFFFF"
                                     font.family: "Segoe UI"
-                                    font.pixelSize: 16
+                                    font.pixelSize: 18
                                     font.bold: true
                                 }
 
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
-                                    text: "Images, videos, music, and documents will be automatically recognized and sent"
-                                    color: ThemeData.textSecondary
+                                    text: "File will be staged in the message bar so you can add a description before sending"
+                                    color: Qt.rgba(255, 255, 255, 0.7)
                                     font.family: "Segoe UI"
                                     font.pixelSize: 12
                                 }
@@ -964,6 +971,7 @@ Item {
 
                 // ─── MESSAGE INPUT SECTION ───
                 AvilaMessageInput {
+                    id: messageInput
                     Layout.fillWidth: true
                     Layout.margins: 12
                     channelName: root.selectedServer === "dms" ? root.activeChannel.replace("dm-", "").replace(/^\w/, c => c.toUpperCase()) : root.activeChannel
