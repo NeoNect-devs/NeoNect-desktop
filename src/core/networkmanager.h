@@ -3,9 +3,15 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QTimer>
+#include <memory>
+
+#include "../transport/ihttptransport.h"
+#include "../storage/isettingsrepository.h"
+#include "../crypto/icryptoservice.h"
+#include "../services/authservice.h"
+#include "../services/deviceservice.h"
+#include "../services/relayservice.h"
+#include "../services/friendservice.h"
 
 class NetworkManager : public QObject {
     Q_OBJECT
@@ -17,13 +23,17 @@ class NetworkManager : public QObject {
 
 public:
     static NetworkManager* instance();
-    explicit NetworkManager(QObject *parent = nullptr);
+    explicit NetworkManager(std::shared_ptr<Avila::Transport::IHttpTransport> transport = nullptr,
+                            std::shared_ptr<Avila::Storage::ISettingsRepository> storage = nullptr,
+                            std::shared_ptr<Avila::Crypto::ICryptoService> cryptoService = nullptr,
+                            QObject *parent = nullptr);
+    ~NetworkManager() override = default;
 
-    QString serverUrl() const { return m_serverUrl; }
-    QString token() const { return m_token; }
-    QString currentUsername() const { return m_currentUsername; }
+    QString serverUrl() const;
+    QString token() const;
+    QString currentUsername() const;
     bool isLoading() const { return m_isLoading; }
-    QStringList friends() const { return m_friends; }
+    QStringList friends() const;
 
     Q_INVOKABLE void setProfile(const QString &profileName);
     Q_INVOKABLE void verifyServer(const QString &address);
@@ -37,7 +47,7 @@ public:
     Q_INVOKABLE void fetchUserProfile();
     Q_INVOKABLE void sendSecurePayload(const QString &channelId, const QString &cipher, const QString &nonce);
 
-    // Danisa E2EE Relay & Direct Chat
+    // E2EE Relay & Direct Chat
     Q_INVOKABLE void sendRelayMessage(const QString &toUsername, const QString &plainText);
     Q_INVOKABLE void pollPendingMessages();
     Q_INVOKABLE void acknowledgeMessage(qint64 messageId);
@@ -66,29 +76,19 @@ signals:
     void addFriendResult(bool success, const QString &message, const QString &username);
     void friendStatusUpdated(const QString &username, const QString &status);
 
-
 private:
     void setIsLoading(bool loading);
-    QString cleanUrl(const QString &input);
-    void loadFriends();
-    void saveFriends();
-    void loadSettings();
-    void saveSettings();
-    void startPolling();
-    void stopPolling();
+    void setupServiceSignals();
+    void autoRegisterDevice();
 
+    std::shared_ptr<Avila::Transport::IHttpTransport> m_transport;
+    std::shared_ptr<Avila::Storage::ISettingsRepository> m_storage;
+    std::shared_ptr<Avila::Crypto::ICryptoService> m_cryptoService;
 
-    QNetworkAccessManager *m_nam;
-    QTimer *m_pollTimer;
-    QString m_profile;
-    QString m_serverUrl;
-    QString m_token;
-    QString m_currentUsername;
-    QStringList m_friends;
-    QMap<QString, QDateTime> m_lastSeen;
+    std::shared_ptr<Avila::Services::AuthService> m_authService;
+    std::shared_ptr<Avila::Services::DeviceService> m_deviceService;
+    std::shared_ptr<Avila::Services::RelayService> m_relayService;
+    std::shared_ptr<Avila::Services::FriendService> m_friendService;
+
     bool m_isLoading{false};
 };
-
-
-
-

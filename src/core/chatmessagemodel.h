@@ -2,23 +2,31 @@
 #pragma once
 #include <QAbstractListModel>
 #include <QString>
-#include <QVector>
+#include <vector>
 
 struct MessageItem {
     QString text;
-    bool fromMe;
+    bool fromMe{false};
     QString senderName;
     QString senderAvatar;
-    bool isFirstInBlock;
-    bool isLastInBlock;
+    bool isFirstInBlock{true};
+    bool isLastInBlock{true};
 };
 
 class ChatMessageModel : public QAbstractListModel {
     Q_OBJECT
 public:
-    enum MessageRoles { TextRole = Qt::UserRole + 1, FromMeRole, SenderNameRole, SenderAvatarRole, FirstInBlockRole, LastInBlockRole };
+    enum MessageRoles {
+        TextRole = Qt::UserRole + 1,
+        FromMeRole,
+        SenderNameRole,
+        SenderAvatarRole,
+        FirstInBlockRole,
+        LastInBlockRole
+    };
 
     explicit ChatMessageModel(QObject *parent = nullptr);
+    ~ChatMessageModel() override = default;
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     QVariant data(const QModelIndex &index, int role) const override;
@@ -28,6 +36,8 @@ public:
     Q_INVOKABLE void insertMessage(const QString &text, bool fromMe, const QString &senderName, const QString &senderAvatar);
     Q_INVOKABLE void clearActiveViewportStore();
 
+    void addMessage(MessageItem &&item);
+
 private:
-    QVector<MessageItem> m_items;
+    std::vector<MessageItem> m_items;
 };

@@ -1,93 +1,75 @@
 // src/core/cryptomanager.cpp
 #include "cryptomanager.h"
+#include "../crypto/cryptoservice.h"
+#include "../storage/settingsrepository.h"
 #include <QtConcurrent>
-#include <openssl/evp.h>
-#include <openssl/rand.h>
-
 #include <QUuid>
-#include <QSettings>
 
 CryptoManager* CryptoManager::instance() {
     static CryptoManager _instance;
     return &_instance;
 }
 
-CryptoManager::CryptoManager(QObject *parent) : QObject(parent) {
-    m_masterSymKey.resize(32); // 256-bit Key Allocation
-    setProfile("");
+CryptoManager::CryptoManager(std::shared_ptr<Avila::Crypto::ICryptoService> cryptoService,
+                             std::shared_ptr<Avila::Storage::ISettingsRepository> settingsRepo,
+                             QObject *parent)
+    : QObject(parent),
+      m_cryptoService(cryptoService ? cryptoService : std::make_shared<Avila::Crypto::CryptoService>()),
+      m_settingsRepo(settingsRepo ? settingsRepo : std::make_shared<Avila::Storage::SettingsRepository>()) {
+    ensureDeviceCredentials();
 }
 
 void CryptoManager::setProfile(const QString &profileName) {
-    m_profile = profileName;
-    QString group = profileName.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + profileName.trimmed());
-    QSettings settings("Avila", group);
+    m_settingsRepo->setProfile(profileName);
+    ensureDeviceCredentials();
+}
 
-    m_deviceId = settings.value("device_id").toString();
-    if (m_deviceId.isEmpty()) {
-        m_deviceId = "avila-dev-" + (profileName.trimmed().isEmpty() ? "" : (profileName.trimmed() + "-")) + QUuid::createUuid().toString(QUuid::WithoutBraces);
-        settings.setValue("device_id", m_deviceId);
+void CryptoManager::ensureDeviceCredentials() {
+    QString devId = m_settingsRepo->deviceId();
+    if (devId.isEmpty()) {
+        QString prof = m_settingsRepo->profile();
+        devId = QString("avila-dev-%1%2").arg(prof.isEmpty() ? "" : prof + "-",
+                                              QUuid::createUuid().toString(QUuid::WithoutBraces));
+        m_settingsRepo->setDeviceId(devId);
     }
 
-    m_publicKey = settings.value("public_key").toString();
-    if (m_publicKey.isEmpty()) {
-        QByteArray randomKey(32, 0);
-        RAND_bytes(reinterpret_cast<unsigned char*>(randomKey.data()), 32);
-        m_publicKey = randomKey.toBase64();
-        settings.setValue("public_key", m_publicKey);
+    QString pubKey = m_settingsRepo->publicKey();
+    if (pubKey.isEmpty()) {
+        QByteArray randomKey = m_cryptoService->generateRandomBytes(32);
+        if (!randomKey.isEmpty()) {
+            pubKey = QString::fromLatin1(randomKey.toBase64());
+            m_settingsRepo->setPublicKey(pubKey);
+        }
     }
 }
 
 QString CryptoManager::getDeviceId() {
-    return m_deviceId;
+    return m_settingsRepo->deviceId();
 }
 
 QString CryptoManager::getDevicePublicKey() {
-    return m_publicKey;
+    return m_settingsRepo->publicKey();
 }
 
-
-
 void CryptoManager::initializeKeyFromPassphrase(const QString &passphrase) {
-    QtConcurrent::run([this, passphrase]() {
-        QByteArray salt = "AVILA_STATIC_NETWORK_SALT_VAULT";
-        // Native OpenSSL hardware key derivation processing block
-        PKCS5_PBKDF2_HMAC(passphrase.toUtf8().constData(), passphrase.length(),
-                          reinterpret_cast<const unsigned char*>(salt.constData()), salt.length(),
-                          10000, EVP_sha256(), 32, 
-                          reinterpret_cast<unsigned char*>(m_masterSymKey.data()));
+    auto cryptoSvc = m_cryptoService;
+    QtConcurrent::run([cryptoSvc, passphrase]() {
+        cryptoSvc->deriveKeyFromPassphrase(passphrase);
     });
 }
 
 void CryptoManager::encryptMessageAsposing(const QString &channelId, const QString &plainText) {
+    auto cryptoSvc = m_cryptoService;
     QByteArray plainData = plainText.toUtf8();
-    QByteArray localKey = m_masterSymKey;
 
-    QtConcurrent::run([this, channelId, plainData, localKey]() {
-        unsigned char nonce[12];
-        RAND_bytes(nonce, sizeof(nonce));
-
-        QByteArray ciphertext;
-        ciphertext.resize(plainData.size());
-        int len = 0, ciphertext_len = 0;
-
-        EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
-        EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), nullptr, nullptr, nullptr);
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, sizeof(nonce), nullptr);
-        EVP_EncryptInit_ex(ctx, nullptr, nullptr, 
-                           reinterpret_cast<const unsigned char*>(localKey.constData()), nonce);
-
-        EVP_EncryptUpdate(ctx, reinterpret_cast<unsigned char*>(ciphertext.data()), &len,
-                          reinterpret_cast<const unsigned char*>(plainData.constData()), plainData.size());
-        ciphertext_len = len;
-
-        unsigned char tag[16];
-        EVP_EncryptFinal_ex(ctx, reinterpret_cast<unsigned char*>(ciphertext.data()) + len, &len);
-        EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, sizeof(tag), tag);
-        EVP_CIPHER_CTX_free(ctx);
-
-        // Package ciphertext + authentication tag sequentially
-        ciphertext.append(reinterpret_cast<const char*>(tag), sizeof(tag));
-
-        emit encryptionCompleted(channelId, ciphertext.toBase64(), QByteArray(reinterpret_cast<const char*>(nonce), sizeof(nonce)).toBase64());
+    QtConcurrent::run([this, cryptoSvc, channelId, plainData]() {
+        auto payload = cryptoSvc->encryptAesGcm(plainData);
+        if (payload.success) {
+            QString cipherB64 = QString::fromLatin1(payload.cipherWithTag.toBase64());
+            QString nonceB64 = QString::fromLatin1(payload.nonce.toBase64());
+            QMetaObject::invokeMethod(this, [this, channelId, cipherB64, nonceB64]() {
+                emit encryptionCompleted(channelId, cipherB64, nonceB64);
+            }, Qt::QueuedConnection);
+        }
     });
 }

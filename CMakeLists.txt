@@ -92,6 +92,32 @@ endif()
 qt_add_executable(AvilaApp
     src/main.cpp
     src/themedata.h
+
+    # Common
+    src/common/types.h
+    src/common/constants.h
+    src/common/openssl_raii.h
+
+    # Cryptography
+    src/crypto/icryptoservice.h
+    src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
+
+    # Storage
+    src/storage/isettingsrepository.h
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp
+
+    # Transport
+    src/transport/ihttptransport.h
+    src/transport/httptransport.h src/transport/httptransport.cpp
+
+    # Services
+    src/services/authservice.h src/services/authservice.cpp
+    src/services/deviceservice.h src/services/deviceservice.cpp
+    src/services/relayservice.h src/services/relayservice.cpp
+    src/services/friendservice.h src/services/friendservice.cpp
+
+    # Core & Facade
+    src/core/application.h src/core/application.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp

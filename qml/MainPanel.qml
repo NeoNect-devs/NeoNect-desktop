@@ -33,9 +33,8 @@ Item {
                 NetworkManager.addFriend(senderLower)
             }
 
-            // Insert message into active model if viewing this DM or general channel
-            if ((root.selectedServer === "dms" && root.activeChannel.toLowerCase() === senderLower) ||
-                (root.selectedServer !== "dms" && root.activeChannel === "general")) {
+            // Insert message into active model only if currently viewing this direct message channel
+            if (root.selectedServer === "dms" && root.activeChannel.toLowerCase() === senderLower) {
                 nativeMessageModel.insertMessage(text, false, fromUsername, fromUsername.charAt(0).toUpperCase())
                 scrollTimer.restart()
             }
