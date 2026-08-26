@@ -23,7 +23,7 @@ Window {
     Connections {
         target: NetworkManager
         ignoreUnknownSignals: true
-        onTokenChanged: () => {
+        function onTokenChanged() {
             if (NetworkManager && NetworkManager.token && NetworkManager.token !== "") {
                 root.appState = "authenticated";
             } else {

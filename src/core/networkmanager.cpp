@@ -16,7 +16,7 @@ NetworkManager* NetworkManager::instance() {
 }
 
 NetworkManager::NetworkManager(QObject *parent) : QObject(parent) {
-    m_serverUrl = "http://localhost:8080";
+    m_serverUrl = "http://localhost:8090";
     m_nam = new QNetworkAccessManager(this);
     m_pollTimer = new QTimer(this);
     m_pollTimer->setInterval(2500); // 2.5 seconds background relay poll
@@ -55,7 +55,7 @@ void NetworkManager::saveFriends() {
 void NetworkManager::loadSettings() {
     QString group = m_profile.trimmed().isEmpty() ? "DesktopClient" : ("DesktopClient_" + m_profile.trimmed());
     QSettings settings("Avila", group);
-    m_serverUrl = settings.value("server_url", "http://localhost:8080").toString();
+    m_serverUrl = settings.value("server_url", "http://localhost:8090").toString();
     m_token = settings.value("auth_token").toString();
     m_currentUsername = settings.value("username").toString();
     emit serverUrlChanged();

@@ -197,7 +197,7 @@ Item {
                     AvilaTextField {
                         id: serverInput
                         width: parent.width
-                        placeholderText: "e.g., http://localhost:8080 or avila.chat"
+                        placeholderText: "e.g., http://localhost:8090 or avila.chat"
                         text: NetworkManager.serverUrl
 
                         onTextChanged: {
@@ -569,14 +569,14 @@ Item {
         target: NetworkManager
         ignoreUnknownSignals: true
 
-        onVerificationResult: (success, message) => {
+        function onVerificationResult(success, message) {
             if (entryRoot) {
                 entryRoot.isServerReady = success;
                 entryRoot.serverStatusText = success ? "🟢 " + message : "🔴 " + message;
             }
         }
 
-        onAvailabilityResult: (username, available, message) => {
+        function onAvailabilityResult(username, available, message) {
             if (entryRoot && regUser.text.trim() === username) {
                 entryRoot.isCheckingAvailability = false;
                 entryRoot.isUsernameAvailable = available;
@@ -584,7 +584,7 @@ Item {
             }
         }
 
-        onRegistrationResult: (success, message) => {
+        function onRegistrationResult(success, message) {
             if (!entryRoot) return;
             if (success) {
                 entryRoot.regSuccessText = "Account created! Signing in...";
@@ -597,7 +597,7 @@ Item {
             }
         }
 
-        onLoginResult: (success, tokenOrError) => {
+        function onLoginResult(success, tokenOrError) {
             if (!entryRoot) return;
             if (success) {
                 entryRoot.quickConnectUser = "";
