@@ -155,11 +155,11 @@ Item {
     property var chatHistories: ({})
 
     function getAvatarColor(sender) {
-        if (sender === "Alex") return "#5865F2"
-        if (sender === "Beatrice") return "#EB459E"
-        if (sender === "Charlie") return "#9B59B6"
-        if (sender === "David") return "#F1C40F"
-        if (sender === "System") return "#1ABC9C"
+        if (sender === "Alex") return "#0A84FF"
+        if (sender === "Beatrice") return "#06B6D4"
+        if (sender === "Charlie") return "#10B981"
+        if (sender === "David") return "#F59E0B"
+        if (sender === "System") return "#14B8A6"
         return "#4F545C"
     }
 
@@ -370,7 +370,14 @@ Item {
 
                             readonly property bool isDM: root.selectedServer === "dms"
                             readonly property bool isMe: model.fromMe
+                            readonly property bool isText: model.messageType === "text"
                             readonly property bool isSticker: model.messageType === "sticker"
+                            readonly property bool isImage: model.messageType === "image"
+                            readonly property bool isVideo: model.messageType === "video"
+                            readonly property bool isAudio: model.messageType === "audio"
+                            readonly property bool isVoice: model.messageType === "voice"
+                            readonly property bool isFile: model.messageType === "file"
+                            readonly property bool isMediaWidget: isSticker || isImage || isVideo || isAudio || isVoice || isFile
                             readonly property bool isFailed: model.status === "failed"
 
                             // Hover background for server stream
@@ -463,7 +470,7 @@ Item {
                                     id: bubbleRow
                                     Layout.alignment: (delegateRoot.isDM && delegateRoot.isMe) ? Qt.AlignRight : Qt.AlignLeft
                                     Layout.fillWidth: !delegateRoot.isDM
-                                    Layout.maximumWidth: delegateRoot.isDM ? Math.min(540, Math.max(200, delegateRoot.width * 0.72)) : (delegateRoot.width - 82)
+                                    Layout.maximumWidth: delegateRoot.isDM ? Math.min(540, Math.max(260, delegateRoot.width * 0.72)) : (delegateRoot.width - 82)
                                     spacing: 6
 
                                     // Retry button on left of sent failed bubble
@@ -494,20 +501,19 @@ Item {
                                         id: bubbleBox
                                         readonly property real maxContentWidth: delegateRoot.isDM ? (bubbleRow.Layout.maximumWidth - (delegateRoot.isFailed ? 32 : 0)) : (delegateRoot.width - 82)
 
-                                        Layout.maximumWidth: maxContentWidth
-                                        Layout.preferredWidth: Math.min(maxContentWidth, bubbleInnerContent.implicitWidth + (delegateRoot.isDM && !delegateRoot.isSticker ? 24 : 0))
-                                        implicitWidth: Layout.preferredWidth
-                                        implicitHeight: bubbleInnerContent.implicitHeight + (delegateRoot.isDM && !delegateRoot.isSticker ? 16 : 0)
+                                        width: bubbleInnerContent.implicitWidth + (delegateRoot.isDM && delegateRoot.isText ? 24 : 0)
+                                        height: bubbleInnerContent.implicitHeight + (delegateRoot.isDM && delegateRoot.isText ? 16 : 0)
+                                        implicitWidth: width
+                                        implicitHeight: height
 
-                                        // For stickers: transparent container without bubble background
+                                        // Background: only for DM text bubbles (stickers, media, widgets have their own styling)
                                         color: {
-                                            if (delegateRoot.isSticker) return "transparent";
-                                            if (!delegateRoot.isDM) return "transparent";
+                                            if (!delegateRoot.isDM || !delegateRoot.isText) return "transparent";
                                             return delegateRoot.isMe ? ThemeData.accentColor : "#232527";
                                         }
 
                                         // Subtle gradient for Sent DM bubbles
-                                        gradient: (delegateRoot.isDM && delegateRoot.isMe && !delegateRoot.isSticker) ? bubbleGrad : null
+                                        gradient: (delegateRoot.isDM && delegateRoot.isMe && delegateRoot.isText) ? bubbleGrad : null
 
                                         Gradient {
                                             id: bubbleGrad
@@ -517,28 +523,29 @@ Item {
                                         }
 
                                         border.color: {
-                                            if (delegateRoot.isSticker || !delegateRoot.isDM) return "transparent";
+                                            if (!delegateRoot.isDM || !delegateRoot.isText) return "transparent";
                                             if (delegateRoot.isFailed) return "#E53935";
                                             return delegateRoot.isMe ? "transparent" : Qt.rgba(255, 255, 255, 0.08);
                                         }
-                                        border.width: (delegateRoot.isDM && !delegateRoot.isSticker) ? 1 : 0
+                                        border.width: (delegateRoot.isDM && delegateRoot.isText) ? 1 : 0
 
                                         // Tailored corner radii for Telegram/iMessage style bubbles
-                                        radius: (delegateRoot.isDM && !delegateRoot.isSticker) ? 16 : 0
+                                        radius: (delegateRoot.isDM && delegateRoot.isText) ? 16 : 0
 
                                         ColumnLayout {
                                             id: bubbleInnerContent
-                                            anchors.fill: parent
-                                            anchors.margins: (delegateRoot.isDM && !delegateRoot.isSticker) ? 8 : 0
+                                            anchors.left: parent.left
+                                            anchors.top: parent.top
+                                            anchors.margins: (delegateRoot.isDM && delegateRoot.isText) ? 8 : 0
                                             spacing: 6
 
                                             // 1. TEXT MESSAGE
                                             Text {
                                                 id: chatTextItem
-                                                visible: model.messageType === "text" && model.text !== ""
-                                                Layout.fillWidth: true
-                                                Layout.maximumWidth: bubbleBox.maxContentWidth - (delegateRoot.isDM && !delegateRoot.isSticker ? 24 : 0)
-                                                width: Layout.maximumWidth
+                                                visible: delegateRoot.isText && model.text !== ""
+                                                width: visible ? Math.min(bubbleBox.maxContentWidth - (delegateRoot.isDM ? 24 : 0), implicitWidth) : 0
+                                                Layout.preferredWidth: width
+                                                Layout.maximumWidth: bubbleBox.maxContentWidth - (delegateRoot.isDM ? 24 : 0)
                                                 text: model.text
                                                 color: (delegateRoot.isDM && delegateRoot.isMe) ? "#FFFFFF" : ThemeData.textPrimary
                                                 font.family: "Segoe UI"
