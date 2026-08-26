@@ -18,6 +18,28 @@ Rectangle {
     topLeftRadius: 12; topRightRadius: 12
     border.color: "#232523"; border.width: 1
 
+    property string userStatus: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "online" : "offline"
+
+    function getStatusColor(st) {
+        switch(st) {
+            case "online": return "#23A55A"; // Emerald Green
+            case "afk": return "#FAA81A";    // Amber Yellow (AFK / Idle)
+            case "dnd": return "#F23F43";    // Crimson Red (Do Not Disturb)
+            case "offline":
+            default: return "#80848E";       // Muted Gray (Offline)
+        }
+    }
+
+    function getStatusLabel(st) {
+        switch(st) {
+            case "online": return "Online";
+            case "afk": return "Idle / AFK";
+            case "dnd": return "Do Not Disturb";
+            case "offline":
+            default: return "Offline";
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         spacing: 0
@@ -28,11 +50,15 @@ Rectangle {
             Layout.fillHeight: true
 
             Item {
+                id: avatarWrapper
                 anchors.centerIn: parent
-                width: 34; height: 34
+                width: 34; height: 38
 
                 Rectangle {
-                    anchors.fill: parent
+                    id: avatarBox
+                    width: 34; height: 34
+                    anchors.top: parent.top
+                    anchors.horizontalCenter: parent.horizontalCenter
                     radius: 8
                     color: ThemeData.accentColor
 
@@ -46,17 +72,98 @@ Rectangle {
                     }
                 }
 
-                // Online / Offline Status Badge Dot
+                // ─── SMALL HORIZONTAL STATUS PILL UNDER PROFILE PIC ───
                 Rectangle {
-                    width: 10; height: 10
-                    radius: 3
-                    color: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "#23A55A" : "#80848E"
+                    id: statusPill
+                    width: 22
+                    height: 5
+                    radius: 2.5
+                    color: root.getStatusColor(root.userStatus)
                     border.color: "#0F1110"
-                    border.width: 1.5
+                    border.width: 1
                     anchors.bottom: parent.bottom
-                    anchors.right: parent.right
-                    anchors.bottomMargin: -2
-                    anchors.rightMargin: -2
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                }
+
+                MouseArea {
+                    id: avatarStatusMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: statusPopup.open()
+                }
+
+                // Status selection popup
+                Popup {
+                    id: statusPopup
+                    y: -160
+                    x: 6
+                    width: 175
+                    padding: 6
+                    modal: true
+                    focus: true
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                    background: Rectangle {
+                        radius: 10
+                        color: "#111214"
+                        border.color: Qt.rgba(255, 255, 255, 0.12)
+                        border.width: 1
+                    }
+
+                    contentItem: ColumnLayout {
+                        spacing: 3
+
+                        Repeater {
+                            model: [
+                                { name: "Online", key: "online", color: "#23A55A" },
+                                { name: "Idle / AFK", key: "afk", color: "#FAA81A" },
+                                { name: "Do Not Disturb", key: "dnd", color: "#F23F43" },
+                                { name: "Invisible / Offline", key: "offline", color: "#80848E" }
+                            ]
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 30
+                                radius: 6
+                                color: optMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : (root.userStatus === modelData.key ? Qt.rgba(255, 255, 255, 0.04) : "transparent")
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 8; anchors.rightMargin: 8
+                                    spacing: 8
+
+                                    Rectangle {
+                                        width: 8; height: 8
+                                        radius: 2.5
+                                        color: modelData.color
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData.name
+                                        color: ThemeData.textPrimary
+                                        font.family: "Segoe UI"
+                                        font.pixelSize: 12
+                                        font.bold: root.userStatus === modelData.key
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: optMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.userStatus = modelData.key;
+                                        statusPopup.close();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -78,8 +185,8 @@ Rectangle {
                     Layout.fillWidth: true
                 }
                 Text {
-                    text: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "Online" : "Offline"
-                    color: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "#23A55A" : "#80848E"
+                    text: root.getStatusLabel(root.userStatus)
+                    color: root.getStatusColor(root.userStatus)
                     font.family: "Segoe UI"
                     font.pixelSize: 11
                     elide: Text.ElideRight
