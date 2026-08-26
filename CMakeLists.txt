@@ -194,6 +194,7 @@ qt_add_qml_module(AvilaApp
         assets/icons/refresh.svg
         assets/icons/volume-2.svg
         assets/icons/volume-x.svg
+        assets/icons/maximize.svg
         # Stickers: Duck Pack
         assets/stickers/duck/duck_happy.svg
         assets/stickers/duck/duck_love.svg

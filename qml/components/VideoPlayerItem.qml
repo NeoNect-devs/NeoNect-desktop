@@ -20,6 +20,9 @@ Rectangle {
     property bool hasPlaybackError: false
     property string playbackErrorMsg: ""
 
+    readonly property bool isPlaying: player.playbackState === MediaPlayer.PlayingState
+    readonly property bool isControlsVisible: !videoRoot.hasPlaybackError && (!videoRoot.isPlaying || videoHoverHandler.hovered)
+
     signal openFullscreenRequested(string url, string name)
 
     function formatTime(secs) {
@@ -75,13 +78,18 @@ Rectangle {
     border.color: Qt.rgba(255, 255, 255, 0.1)
     border.width: 1
 
+    // Non-conflicting hover handler covering entire video root without mouse grabbing
+    HoverHandler {
+        id: videoHoverHandler
+    }
+
     MediaPlayer {
         id: player
         source: videoRoot.videoUrl
         audioOutput: AudioOutput {
             id: audioOut
-            volume: (videoRoot.isMuted || player.playbackState !== MediaPlayer.PlayingState) ? 0.0 : videoRoot.volumeLevel
-            muted: videoRoot.isMuted || player.playbackState !== MediaPlayer.PlayingState
+            volume: (videoRoot.isMuted || !videoRoot.isPlaying) ? 0.0 : videoRoot.volumeLevel
+            muted: videoRoot.isMuted || !videoRoot.isPlaying
         }
         videoOutput: videoOutputItem
 
@@ -94,7 +102,7 @@ Rectangle {
 
     Component.onCompleted: {
         if (videoRoot.videoUrl && videoRoot.videoUrl !== "") {
-            // Pre-load and pause at frame 0 to extract thumbnail
+            // Pre-load and pause at frame 0 to decode initial thumbnail frame
             player.pause();
         }
     }
@@ -139,11 +147,11 @@ Rectangle {
         visible: !videoRoot.hasPlaybackError
     }
 
-    // 3. Interactive Full Click Area
+    // 3. Main Surface Click Area (Toggles Play/Pause)
     MouseArea {
-        id: videoClickArea
+        id: videoSurfaceClickArea
         anchors.fill: parent
-        hoverEnabled: true
+        z: 1
         cursorShape: Qt.PointingHandCursor
         onClicked: {
             videoRoot.hasPlaybackError = false;
@@ -158,22 +166,25 @@ Rectangle {
     // 4. Central Glowing Play / Pause Button
     Rectangle {
         id: playBtn
-        width: 56; height: 56
-        radius: 28
-        color: playBtnMouse.containsMouse ? ThemeData.accentColor : Qt.rgba(0, 0, 0, 0.75)
+        z: 5
+        width: 54; height: 54
+        radius: 27
+        color: playBtnMouse.containsMouse ? ThemeData.accentColor : Qt.rgba(0, 0, 0, 0.72)
         border.color: "#FFFFFF"
         border.width: 2
         anchors.centerIn: parent
-        visible: !videoRoot.hasPlaybackError && (player.playbackState !== MediaPlayer.PlayingState || videoClickArea.containsMouse)
-        scale: playBtnMouse.containsMouse ? 1.12 : 1.0
+        visible: opacity > 0
+        opacity: videoRoot.isControlsVisible ? 1.0 : 0.0
+        scale: playBtnMouse.containsMouse ? 1.1 : 1.0
 
+        Behavior on opacity { NumberAnimation { duration: 150 } }
         Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
 
         IconImage {
             anchors.centerIn: parent
-            anchors.horizontalCenterOffset: player.playbackState === MediaPlayer.PlayingState ? 0 : 2
-            source: player.playbackState === MediaPlayer.PlayingState ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
-            width: 24; height: 24
+            anchors.horizontalCenterOffset: videoRoot.isPlaying ? 0 : 2
+            source: videoRoot.isPlaying ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
+            width: 22; height: 22
             color: "#FFFFFF"
         }
 
@@ -193,71 +204,19 @@ Rectangle {
         }
     }
 
-    // 5. Top Filename & External Play Bar
+    // 5. Bottom Controls Bar with Advanced Volume Controller & Fullscreen Icon
     Rectangle {
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.margins: 8
-        height: 28
-        radius: 6
-        color: Qt.rgba(0, 0, 0, 0.65)
-        visible: !videoRoot.hasPlaybackError && (player.playbackState !== MediaPlayer.PlayingState || videoClickArea.containsMouse)
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 8; anchors.rightMargin: 8
-            spacing: 6
-
-            IconImage {
-                source: "qrc:/qt/qml/Avila/assets/icons/video.svg"
-                width: 14; height: 14
-                color: "#FFFFFF"
-            }
-
-            Text {
-                Layout.fillWidth: true
-                text: videoRoot.fileName
-                color: "#FFFFFF"
-                font.family: "Segoe UI"
-                font.pixelSize: 12
-                font.bold: true
-                elide: Text.ElideRight
-            }
-
-            // Quick External Open Icon
-            Rectangle {
-                width: 20; height: 20
-                radius: 4
-                color: quickExtMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.2) : "transparent"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "↗"
-                    color: "#FFFFFF"
-                    font.pixelSize: 12
-                    font.bold: true
-                }
-
-                MouseArea {
-                    id: quickExtMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: AudioManager.openMediaFile(videoRoot.videoUrl)
-                }
-            }
-        }
-    }
-
-    // 6. Bottom Controls Bar with Advanced Volume Controller (0% to 100%)
-    Rectangle {
+        id: bottomControlsBar
+        z: 5
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         height: 38
         color: Qt.rgba(0, 0, 0, 0.85)
-        visible: !videoRoot.hasPlaybackError
+        visible: opacity > 0 && !videoRoot.hasPlaybackError
+        opacity: videoRoot.isControlsVisible ? 1.0 : 0.0
+
+        Behavior on opacity { NumberAnimation { duration: 150 } }
 
         RowLayout {
             anchors.fill: parent
@@ -272,7 +231,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: player.playbackState === MediaPlayer.PlayingState ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
+                    source: videoRoot.isPlaying ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
                     width: 14; height: 14
                     color: "#FFFFFF"
                 }
@@ -342,19 +301,17 @@ Rectangle {
                 }
             }
 
-            // Fullscreen Expansion Button
+            // Fullscreen Expansion Button (SVG Icon)
             Rectangle {
-                width: 48; height: 22
-                radius: 4
+                width: 26; height: 26
+                radius: 13
                 color: fsMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.2) : "transparent"
 
-                Text {
+                IconImage {
                     anchors.centerIn: parent
-                    text: "Full ↗"
+                    source: "qrc:/qt/qml/Avila/assets/icons/maximize.svg"
+                    width: 14; height: 14
                     color: "#FFFFFF"
-                    font.family: "Segoe UI"
-                    font.pixelSize: 10
-                    font.bold: true
                 }
 
                 MouseArea {
@@ -371,7 +328,7 @@ Rectangle {
         }
     }
 
-    // 7. Codec / Playback Error Recovery Card
+    // 6. Codec / Playback Error Recovery Card
     Rectangle {
         anchors.fill: parent
         color: "#16171A"
