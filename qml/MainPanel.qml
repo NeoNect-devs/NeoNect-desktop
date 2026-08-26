@@ -533,22 +533,22 @@ Item {
 
                         ScrollBar.vertical: ScrollBar {
                             id: chatScrollBar
-                            parent: messageListView
-                            anchors.top: messageListView.top
-                            anchors.right: messageListView.right
-                            anchors.bottom: messageListView.bottom
                             width: 8
                             policy: ScrollBar.AsNeeded
-                            active: true
-                            palette.window: "transparent"
-                            palette.base: "transparent"
+                            visible: chatScrollBar.size < 1.0
+                            active: messageListView.moving || chatScrollBar.hovered || chatScrollBar.pressed
+
+                            background: Rectangle {
+                                color: "transparent"
+                            }
 
                             contentItem: Rectangle {
                                 implicitWidth: 8
                                 radius: 4
                                 color: chatScrollBar.pressed ? ThemeData.accentColor : (chatScrollBar.hovered ? ThemeData.accentHover : "#4E5058")
+                                opacity: (chatScrollBar.size < 1.0 && (chatScrollBar.active || chatScrollBar.hovered)) ? 1.0 : 0.0
+                                Behavior on opacity { NumberAnimation { duration: 150 } }
                             }
-                            background: Item {}
                         }
 
                         // Message Item Delegate

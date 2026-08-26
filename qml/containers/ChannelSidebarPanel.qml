@@ -242,21 +242,22 @@ Rectangle {
 
             ScrollBar.vertical: ScrollBar {
                 id: sidebarScrollBar
-                parent: channelListView
-                anchors.top: channelListView.top
-                anchors.right: channelListView.right
-                anchors.bottom: channelListView.bottom
-                width: 4
+                width: 5
                 policy: ScrollBar.AsNeeded
-                palette.window: "transparent"
-                palette.base: "transparent"
+                visible: sidebarScrollBar.size < 1.0
+                active: channelListView.moving || sidebarScrollBar.hovered || sidebarScrollBar.pressed
+
+                background: Rectangle {
+                    color: "transparent"
+                }
 
                 contentItem: Rectangle {
-                    implicitWidth: 4
-                    radius: 2
-                    color: ThemeData.scrollBarThumb
+                    implicitWidth: 5
+                    radius: 2.5
+                    color: sidebarScrollBar.pressed ? "#6E727A" : (sidebarScrollBar.hovered ? "#4E5058" : "#2B2D31")
+                    opacity: (sidebarScrollBar.size < 1.0 && (sidebarScrollBar.active || sidebarScrollBar.hovered)) ? 1.0 : 0.0
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
                 }
-                background: Item {}
             }
 
             delegate: ChannelListItem {
