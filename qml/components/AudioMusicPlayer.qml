@@ -17,9 +17,10 @@ Rectangle {
 
     property real volumeLevel: 1.0
     property bool isMuted: false
+    property bool hasPlaybackError: false
 
-    readonly property bool isPlaying: musicPlayer.playbackState === MediaPlayer.PlayingState
-    readonly property real progress: musicPlayer.duration > 0 ? (musicPlayer.position / musicPlayer.duration) : 0.0
+    readonly property bool isPlaying: musicPlayer.playbackState === MediaPlayer.PlayingState || (AudioManager.currentPlayingId === messageId && AudioManager.isPlaying)
+    readonly property real progress: musicPlayer.duration > 0 ? (musicPlayer.position / musicPlayer.duration) : (AudioManager.currentPlayingId === messageId ? AudioManager.playbackProgress : 0.0)
 
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return "Audio File";
@@ -29,6 +30,7 @@ Rectangle {
     }
 
     function formatTime(secs) {
+        if (!secs || isNaN(secs) || secs < 0) return "0:00";
         var m = Math.floor(secs / 60);
         var s = Math.floor(secs % 60);
         return m + ":" + (s < 10 ? "0" + s : s);
@@ -41,8 +43,8 @@ Rectangle {
     Layout.minimumWidth: 280
     Layout.maximumWidth: 360
     radius: 12
-    color: fromMe ? Qt.rgba(0, 0, 0, 0.2) : Qt.rgba(255, 255, 255, 0.05)
-    border.color: fromMe ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(255, 255, 255, 0.1)
+    color: fromMe ? Qt.rgba(255, 255, 255, 0.08) : Qt.rgba(255, 255, 255, 0.05)
+    border.color: fromMe ? Qt.rgba(255, 255, 255, 0.18) : Qt.rgba(255, 255, 255, 0.1)
     border.width: 1
 
     MediaPlayer {
@@ -51,11 +53,12 @@ Rectangle {
         audioOutput: AudioOutput {
             id: musicAudio
             volume: musicRoot.isMuted ? 0.0 : musicRoot.volumeLevel
+            muted: musicPlayer.playbackState !== MediaPlayer.PlayingState
         }
 
         onErrorOccurred: (error, errorString) => {
-            console.log("[AudioMusicPlayer] Fallback playing via AudioManager:", errorString);
-            AudioManager.playAudio(musicRoot.messageId, musicRoot.audioUrl, musicRoot.duration);
+            console.log("[AudioMusicPlayer] Playback notice:", errorString);
+            musicRoot.hasPlaybackError = true;
         }
     }
 
@@ -83,10 +86,18 @@ Rectangle {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    if (musicPlayer.playbackState === MediaPlayer.PlayingState) {
-                        musicPlayer.pause();
+                    if (musicRoot.isPlaying) {
+                        if (musicPlayer.playbackState === MediaPlayer.PlayingState) {
+                            musicPlayer.pause();
+                        } else {
+                            AudioManager.pauseAudio();
+                        }
                     } else {
-                        musicPlayer.play();
+                        if (musicRoot.hasPlaybackError || !musicRoot.audioUrl) {
+                            AudioManager.playAudio(musicRoot.messageId, musicRoot.audioUrl, musicRoot.duration);
+                        } else {
+                            musicPlayer.play();
+                        }
                     }
                 }
             }
@@ -129,7 +140,7 @@ Rectangle {
             GradientSeekBar {
                 id: musicScrubber
                 Layout.fillWidth: true
-                value: musicPlayer.duration > 0 ? (musicPlayer.position / musicPlayer.duration) : 0.0
+                value: musicRoot.progress
                 duration: musicPlayer.duration > 0 ? musicPlayer.duration : (musicRoot.duration * 1000)
                 gradientStart: musicRoot.fromMe ? "#FFFFFF" : "#00E5FF"
                 gradientMid: musicRoot.fromMe ? "#E0F2FE" : "#0A84FF"
@@ -137,11 +148,15 @@ Rectangle {
                 onSeekMoved: (p) => {
                     if (musicPlayer.duration > 0) {
                         musicPlayer.position = p * musicPlayer.duration;
+                    } else if (AudioManager.currentPlayingId === musicRoot.messageId) {
+                        AudioManager.seek(musicRoot.messageId, p);
                     }
                 }
                 onSeekFinished: (p) => {
                     if (musicPlayer.duration > 0) {
                         musicPlayer.position = p * musicPlayer.duration;
+                    } else if (AudioManager.currentPlayingId === musicRoot.messageId) {
+                        AudioManager.seek(musicRoot.messageId, p);
                     }
                 }
             }
@@ -152,7 +167,7 @@ Rectangle {
                 spacing: 6
 
                 Text {
-                    text: musicRoot.formatTime(musicPlayer.position / 1000)
+                    text: musicRoot.formatTime(musicPlayer.position > 0 ? (musicPlayer.position / 1000) : (AudioManager.currentPosition / 1000))
                     color: musicRoot.fromMe ? Qt.rgba(255, 255, 255, 0.8) : ThemeData.textSecondary
                     font.family: "Segoe UI"
                     font.pixelSize: 10

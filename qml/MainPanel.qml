@@ -509,23 +509,23 @@ Item {
                                         // Background: only for DM text bubbles (stickers, media, widgets have their own styling)
                                         color: {
                                             if (!delegateRoot.isDM || !delegateRoot.isText) return "transparent";
-                                            return delegateRoot.isMe ? ThemeData.accentColor : "#232527";
+                                            return delegateRoot.isMe ? "#3C3F46" : "#232528";
                                         }
 
-                                        // Subtle gradient for Sent DM bubbles
+                                        // Subtle sleek white-grayish gradient for Sent DM bubbles
                                         gradient: (delegateRoot.isDM && delegateRoot.isMe && delegateRoot.isText) ? bubbleGrad : null
 
                                         Gradient {
                                             id: bubbleGrad
                                             orientation: Gradient.Horizontal
-                                            GradientStop { position: 0.0; color: delegateRoot.isFailed ? "#992D22" : "#0A84FF" }
-                                            GradientStop { position: 1.0; color: delegateRoot.isFailed ? "#C0392B" : "#00B4D8" }
+                                            GradientStop { position: 0.0; color: delegateRoot.isFailed ? "#992D22" : "#383A40" }
+                                            GradientStop { position: 1.0; color: delegateRoot.isFailed ? "#C0392B" : "#484B54" }
                                         }
 
                                         border.color: {
                                             if (!delegateRoot.isDM || !delegateRoot.isText) return "transparent";
                                             if (delegateRoot.isFailed) return "#E53935";
-                                            return delegateRoot.isMe ? "transparent" : Qt.rgba(255, 255, 255, 0.08);
+                                            return delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.18) : Qt.rgba(255, 255, 255, 0.08);
                                         }
                                         border.width: (delegateRoot.isDM && delegateRoot.isText) ? 1 : 0
 

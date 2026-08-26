@@ -80,7 +80,8 @@ Rectangle {
         source: videoRoot.videoUrl
         audioOutput: AudioOutput {
             id: audioOut
-            volume: videoRoot.isMuted ? 0.0 : videoRoot.volumeLevel
+            volume: (videoRoot.isMuted || player.playbackState !== MediaPlayer.PlayingState) ? 0.0 : videoRoot.volumeLevel
+            muted: videoRoot.isMuted || player.playbackState !== MediaPlayer.PlayingState
         }
         videoOutput: videoOutputItem
 
