@@ -4,6 +4,7 @@
 #include "cryptomanager.h"
 #include "chatmessagemodel.h"
 #include "../themedata.h"
+#include "../storage/settingsrepository.h"
 #include "../../tests/mocks/mockhttptransport.h"
 
 #include <QQmlContext>
@@ -66,6 +67,15 @@ void Application::initializeServices() {
     CryptoManager::instance()->setProfile(m_profile);
     if (m_isMockMode) {
         auto mockTransport = std::make_shared<Testing::MockHttpTransport>(true, false);
+        if (!m_profile.isEmpty()) {
+            QString profileUser = m_profile.trimmed().toLower();
+            mockTransport->seedUser(profileUser, "password123");
+            auto storage = std::make_shared<Storage::SettingsRepository>(m_profile);
+            if (storage->authToken().isEmpty() || storage->username().isEmpty()) {
+                storage->setUsername(profileUser);
+                storage->setAuthToken("mock-token-" + profileUser);
+            }
+        }
         NetworkManager::instance()->initializeCustom(mockTransport);
         std::cout << "➔ [MOCK MODE ACTIVATED] Running with embedded multi-client server." << std::endl;
     }
