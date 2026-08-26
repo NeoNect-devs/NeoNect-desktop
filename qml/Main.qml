@@ -61,6 +61,10 @@ Window {
                     viewFlowLoader.item.goBack();
                 }
             }
+
+            onBrandClicked: {
+                settingsModal.open();
+            }
         }
 
         Loader {
@@ -156,6 +160,37 @@ Window {
             id: globalLightboxModal
             anchors.fill: parent
             z: 999999
+        }
+
+        // Global Custom Notification System Stack (Top-Right Toast Queue)
+        NotificationStackView {
+            id: globalNotifStack
+            onActionTriggered: (notifId, action, channel) => {
+                if (channel && channel !== "") {
+                    root.currentSelectedServer = "dms";
+                    root.currentActiveChannel = channel.toLowerCase();
+                }
+            }
+        }
+
+        // Avila Settings & Profile Center Modal (Launched by AvilaBrandButton)
+        SettingsProfileModal {
+            id: settingsModal
+            onLogoutRequested: {
+                NetworkManager.logout();
+                root.appState = "gateway";
+            }
+            onSendTestNotificationRequested: {
+                globalNotifStack.showNotification({
+                    title: "Alex",
+                    body: "Hey! This is a test notification from Avila Notification System ⚡",
+                    type: "message",
+                    avatar: "A",
+                    actionText: "Reply",
+                    channel: "alex",
+                    duration: 5000
+                });
+            }
         }
     }
 }

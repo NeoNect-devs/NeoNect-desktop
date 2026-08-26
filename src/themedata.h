@@ -152,8 +152,8 @@ public:
         m_tokens.panelBackground = QColor("#08080a");
         m_tokens.headerBackground = QColor("#0d0e11");
         m_tokens.sidebarBackground = QColor("#000000");
-        m_tokens.accentColor = QColor("#5865f2");
-        m_tokens.accentHover = QColor("#4752c4");
+        m_tokens.accentColor = QColor("#0A84FF");
+        m_tokens.accentHover = QColor("#0066CC");
         m_tokens.textPrimary = QColor("#f2f3f5");
         m_tokens.textSecondary = QColor("#949ba4");
         m_tokens.textMuted = QColor("#6d6f78");
@@ -167,8 +167,8 @@ public:
         m_tokens.statusOnline = QColor("#23a55a");
         m_tokens.statusOffline = QColor("#80848e");
 
-        m_tokens.inputGradientStart = QColor("#5865f2");
-        m_tokens.inputGradientEnd = QColor("#7289da");
+        m_tokens.inputGradientStart = QColor("#0A84FF");
+        m_tokens.inputGradientEnd = QColor("#00E5FF");
         m_tokens.inputSolidBorder = QColor("#18191d");
         m_tokens.inputBackgroundActive = QColor("#000000");
         m_tokens.inputBackgroundInactive = QColor("#08080a");
@@ -183,8 +183,8 @@ public:
         m_tokens.panelBackground = QColor("#2b2d31");
         m_tokens.headerBackground = QColor("#313338");
         m_tokens.sidebarBackground = QColor("#111214");
-        m_tokens.accentColor = QColor("#5865f2");
-        m_tokens.accentHover = QColor("#4752c4");
+        m_tokens.accentColor = QColor("#00E5FF");
+        m_tokens.accentHover = QColor("#00B4D8");
         m_tokens.textPrimary = QColor("#dbdee1");
         m_tokens.textSecondary = QColor("#949ba4");
         m_tokens.textMuted = QColor("#6d6f78");
@@ -198,8 +198,8 @@ public:
         m_tokens.statusOnline = QColor("#23a55a");
         m_tokens.statusOffline = QColor("#80848e");
 
-        m_tokens.inputGradientStart = QColor("#5865f2");
-        m_tokens.inputGradientEnd = QColor("#7289da");
+        m_tokens.inputGradientStart = QColor("#00E5FF");
+        m_tokens.inputGradientEnd = QColor("#0A84FF");
         m_tokens.inputSolidBorder = QColor("#383a40");
         m_tokens.inputBackgroundActive = QColor("#1e1f22");
         m_tokens.inputBackgroundInactive = QColor("#2b2d31");
