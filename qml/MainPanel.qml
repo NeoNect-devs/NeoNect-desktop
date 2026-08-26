@@ -357,7 +357,7 @@ Item {
                             contentItem: Rectangle {
                                 implicitWidth: 8
                                 radius: 4
-                                color: chatScrollBar.pressed ? ThemeData.accentColor : (chatScrollBar.hovered ? "#7289DA" : "#4E5058")
+                                color: chatScrollBar.pressed ? ThemeData.accentColor : (chatScrollBar.hovered ? ThemeData.accentHover : "#4E5058")
                             }
                             background: Item {}
                         }
@@ -433,13 +433,14 @@ Item {
                                 anchors.leftMargin: (!delegateRoot.isDM || !delegateRoot.isMe) ? 66 : 0
                                 anchors.right: (delegateRoot.isDM && delegateRoot.isMe) ? parent.right : (!delegateRoot.isDM ? parent.right : undefined)
                                 anchors.rightMargin: (delegateRoot.isDM && delegateRoot.isMe) ? 16 : (!delegateRoot.isDM ? 16 : 0)
-                                width: (!delegateRoot.isDM) ? (delegateRoot.width - 82) : undefined
+                                width: (!delegateRoot.isDM) ? (delegateRoot.width - 82) : Math.min(delegateRoot.width - 90, bubbleRow.implicitWidth)
                                 spacing: 4
 
                                 // Sender Name & Timestamp (Server view OR first in block)
                                 RowLayout {
                                     visible: !delegateRoot.isDM && model.isFirstInBlock
                                     spacing: 8
+                                    Layout.fillWidth: true
 
                                     Text {
                                         text: model.senderName
@@ -459,7 +460,10 @@ Item {
 
                                 // ─── MESSAGE BODY (BUBBLE IN DM VS FLAT STREAM IN SERVER) ───
                                 RowLayout {
+                                    id: bubbleRow
                                     Layout.alignment: (delegateRoot.isDM && delegateRoot.isMe) ? Qt.AlignRight : Qt.AlignLeft
+                                    Layout.fillWidth: !delegateRoot.isDM
+                                    Layout.maximumWidth: delegateRoot.isDM ? Math.min(540, Math.max(200, delegateRoot.width * 0.72)) : (delegateRoot.width - 82)
                                     spacing: 6
 
                                     // Retry button on left of sent failed bubble
@@ -488,6 +492,13 @@ Item {
                                     // Main Bubble / Media Container
                                     Rectangle {
                                         id: bubbleBox
+                                        readonly property real maxContentWidth: delegateRoot.isDM ? (bubbleRow.Layout.maximumWidth - (delegateRoot.isFailed ? 32 : 0)) : (delegateRoot.width - 82)
+
+                                        Layout.maximumWidth: maxContentWidth
+                                        Layout.preferredWidth: Math.min(maxContentWidth, bubbleInnerContent.implicitWidth + (delegateRoot.isDM && !delegateRoot.isSticker ? 24 : 0))
+                                        implicitWidth: Layout.preferredWidth
+                                        implicitHeight: bubbleInnerContent.implicitHeight + (delegateRoot.isDM && !delegateRoot.isSticker ? 16 : 0)
+
                                         // For stickers: transparent container without bubble background
                                         color: {
                                             if (delegateRoot.isSticker) return "transparent";
@@ -501,8 +512,8 @@ Item {
                                         Gradient {
                                             id: bubbleGrad
                                             orientation: Gradient.Horizontal
-                                            GradientStop { position: 0.0; color: delegateRoot.isFailed ? "#992D22" : "#5865F2" }
-                                            GradientStop { position: 1.0; color: delegateRoot.isFailed ? "#C0392B" : "#6B74E6" }
+                                            GradientStop { position: 0.0; color: delegateRoot.isFailed ? "#992D22" : "#0A84FF" }
+                                            GradientStop { position: 1.0; color: delegateRoot.isFailed ? "#C0392B" : "#00B4D8" }
                                         }
 
                                         border.color: {
@@ -515,9 +526,6 @@ Item {
                                         // Tailored corner radii for Telegram/iMessage style bubbles
                                         radius: (delegateRoot.isDM && !delegateRoot.isSticker) ? 16 : 0
 
-                                        implicitWidth: bubbleInnerContent.implicitWidth + (delegateRoot.isDM && !delegateRoot.isSticker ? 24 : 0)
-                                        implicitHeight: bubbleInnerContent.implicitHeight + (delegateRoot.isDM && !delegateRoot.isSticker ? 16 : 0)
-
                                         ColumnLayout {
                                             id: bubbleInnerContent
                                             anchors.fill: parent
@@ -526,14 +534,16 @@ Item {
 
                                             // 1. TEXT MESSAGE
                                             Text {
+                                                id: chatTextItem
                                                 visible: model.messageType === "text" && model.text !== ""
-                                                Layout.fillWidth: !delegateRoot.isDM
-                                                Layout.maximumWidth: delegateRoot.isDM ? 360 : -1
+                                                Layout.fillWidth: true
+                                                Layout.maximumWidth: bubbleBox.maxContentWidth - (delegateRoot.isDM && !delegateRoot.isSticker ? 24 : 0)
+                                                width: Layout.maximumWidth
                                                 text: model.text
                                                 color: (delegateRoot.isDM && delegateRoot.isMe) ? "#FFFFFF" : ThemeData.textPrimary
                                                 font.family: "Segoe UI"
                                                 font.pixelSize: 14
-                                                wrapMode: Text.Wrap
+                                                wrapMode: Text.WrapAnywhere
                                                 textFormat: Text.PlainText
                                                 // Dynamic LTR vs RTL alignment
                                                 horizontalAlignment: root.isRTL(model.text) ? Text.AlignRight : Text.AlignLeft
