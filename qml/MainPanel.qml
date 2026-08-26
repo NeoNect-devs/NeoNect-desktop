@@ -63,7 +63,8 @@ Item {
         function onAddFriendResult(success, message, username) {
             root.addFriendSuccess = success;
             root.addFriendStatusMsg = message;
-            if (success) {
+            if (success && root.showAddFriendModal) {
+                root.showAddFriendModal = false;
                 root.navigateRequested("dms", username.toLowerCase());
             }
         }
