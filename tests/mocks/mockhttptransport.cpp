@@ -403,6 +403,8 @@ void MockHttpTransport::handleDeviceRegister(const QByteArray &data, Transport::
     QString deviceId = doc.object().value("device_id").toString();
     QString publicKey = doc.object().value("public_key").toString();
 
+    // Replace placeholder seed device with real client device
+    m_users[username].devices.remove("mock-dev-" + username);
     m_users[username].devices[deviceId] = publicKey;
 
     if (m_enableSharedStorage) {
@@ -543,11 +545,10 @@ void MockHttpTransport::handleRelayPoll(const QMap<QString, QString> &queryParam
     }
 
     QString deviceId = queryParams.value("device_id");
-    QString currentUser = m_tokenToUser[m_activeToken];
 
     QJsonArray msgs;
     for (const auto &item : m_deliveryQueue) {
-        if (item.deviceId == deviceId || (!currentUser.isEmpty() && item.toUsername == currentUser)) {
+        if (item.deviceId == deviceId) {
             QJsonObject m;
             m["id"] = item.id;
             m["ciphertext"] = item.ciphertextBase64;
@@ -568,7 +569,7 @@ void MockHttpTransport::handleRelayAck(const QByteArray &data, Transport::HttpRe
     qint64 messageId = doc.object().value("message_id").toInteger();
 
     for (auto it = m_deliveryQueue.begin(); it != m_deliveryQueue.end(); ) {
-        if (it->id == messageId) {
+        if (it->id == messageId && it->deviceId == deviceId) {
             it = m_deliveryQueue.erase(it);
         } else {
             ++it;
