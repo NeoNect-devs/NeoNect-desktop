@@ -423,24 +423,24 @@ Item {
                                 anchors.left: parent.left
                                 anchors.leftMargin: 16
 
-                                // Floating sticky calculation: smooth offset tracking scroll position within message block
+                                // Floating sticky calculation: smooth reactive offset tracking scroll position within message block
                                 y: {
                                     if (!messageListView) return 6;
-                                    var topInView = delegateRoot.mapToItem(messageListView, 0, 0).y;
+                                    var topInView = delegateRoot.y - messageListView.contentY;
                                     if (topInView < 0) {
-                                        // Block top scrolled above viewport -> float avatar down
-                                        return Math.max(6, Math.min(delegateRoot.height - 44, -topInView + 6));
+                                        var maxOffset = delegateRoot.height - avatarContainer.height - 6;
+                                        return Math.max(6, Math.min(maxOffset, 6 - topInView));
                                     }
                                     return 6;
                                 }
 
                                 Behavior on y {
-                                    NumberAnimation { duration: 60; easing.type: Easing.OutQuad }
+                                    NumberAnimation { duration: 40; easing.type: Easing.OutQuad }
                                 }
 
                                 Rectangle {
                                     anchors.fill: parent
-                                    radius: 19
+                                    radius: 8
                                     color: getAvatarColor(model.senderName)
 
                                     Text {
@@ -910,60 +910,52 @@ Item {
                         }
                     }
 
-                    // Drag & Drop visual feedback overlay (Transparent Frosted Glass Black)
+                    // Drag & Drop visual feedback overlay (Deep Obsidian Frosted Glass)
                     Rectangle {
                         anchors.fill: parent
-                        anchors.margins: 6
-                        radius: 14
-                        color: Qt.rgba(0, 0, 0, 0.78)
-                        border.color: Qt.rgba(0, 229, 255, 0.5)
-                        border.width: 1.5
+                        radius: 12
+                        color: "#DD060709"
+                        border.color: "#00E5FF"
+                        border.width: 2
                         visible: chatDropArea.containsDrag
-                        z: 999
+                        z: 9999
 
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.margins: 4
-                            radius: 12
-                            color: Qt.rgba(10, 12, 16, 0.85)
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            spacing: 14
 
-                            ColumnLayout {
-                                anchors.centerIn: parent
-                                spacing: 12
+                            Rectangle {
+                                Layout.alignment: Qt.AlignHCenter
+                                width: 68; height: 68
+                                radius: 16
+                                color: Qt.rgba(10, 132, 255, 0.2)
+                                border.color: "#00E5FF"
+                                border.width: 2
 
-                                Rectangle {
-                                    Layout.alignment: Qt.AlignHCenter
-                                    width: 60; height: 60
-                                    radius: 30
-                                    color: Qt.rgba(10, 132, 255, 0.2)
-                                    border.color: "#00E5FF"
-                                    border.width: 2
-
-                                    IconImage {
-                                        anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/Avila/assets/icons/download.svg"
-                                        width: 28; height: 28
-                                        color: "#00E5FF"
-                                        rotation: 180
-                                    }
+                                IconImage {
+                                    anchors.centerIn: parent
+                                    source: "qrc:/qt/qml/Avila/assets/icons/download.svg"
+                                    width: 32; height: 32
+                                    color: "#00E5FF"
+                                    rotation: 180
                                 }
+                            }
 
-                                Text {
-                                    Layout.alignment: Qt.AlignHCenter
-                                    text: "Drop to Attach & Add Caption"
-                                    color: "#FFFFFF"
-                                    font.family: "Segoe UI"
-                                    font.pixelSize: 18
-                                    font.bold: true
-                                }
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: "Drop to Attach & Add Caption"
+                                color: "#FFFFFF"
+                                font.family: "Segoe UI"
+                                font.pixelSize: 18
+                                font.bold: true
+                            }
 
-                                Text {
-                                    Layout.alignment: Qt.AlignHCenter
-                                    text: "File will be staged in the message bar so you can add a description before sending"
-                                    color: Qt.rgba(255, 255, 255, 0.7)
-                                    font.family: "Segoe UI"
-                                    font.pixelSize: 12
-                                }
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                text: "File will be staged in the message bar for optional description"
+                                color: "#949BA4"
+                                font.family: "Segoe UI"
+                                font.pixelSize: 13
                             }
                         }
                     }

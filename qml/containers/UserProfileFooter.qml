@@ -33,7 +33,7 @@ Rectangle {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: 17
+                    radius: 8
                     color: ThemeData.accentColor
 
                     Text {
@@ -49,12 +49,14 @@ Rectangle {
                 // Online / Offline Status Badge Dot
                 Rectangle {
                     width: 10; height: 10
-                    radius: 5
+                    radius: 3
                     color: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "#23A55A" : "#80848E"
                     border.color: "#0F1110"
                     border.width: 1.5
                     anchors.bottom: parent.bottom
                     anchors.right: parent.right
+                    anchors.bottomMargin: -2
+                    anchors.rightMargin: -2
                 }
             }
         }

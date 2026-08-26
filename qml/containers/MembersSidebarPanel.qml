@@ -62,7 +62,7 @@ Rectangle {
                 name: NetworkManager.currentUsername + " (You)",
                 role: "YOU",
                 status: "online",
-                avatarColor: "#5865F2"
+                avatarColor: "#0A84FF"
             })
         }
 
@@ -156,8 +156,8 @@ Rectangle {
 
                         Rectangle {
                             anchors.fill: parent
-                            radius: 14
-                            color: model.avatarColor ? model.avatarColor : "#5865F2"
+                            radius: 7
+                            color: model.avatarColor ? model.avatarColor : "#0A84FF"
 
                             Text {
                                 anchors.centerIn: parent
@@ -169,12 +169,14 @@ Rectangle {
                         }
 
                         Rectangle {
-                            width: 8; height: 8; radius: 4
+                            width: 8; height: 8; radius: 2.5
                             color: model.status === "online" ? "#23A55A" : "#80848E"
                             border.color: ThemeData.panelBackground
                             border.width: 1.5
                             anchors.bottom: parent.bottom
                             anchors.right: parent.right
+                            anchors.bottomMargin: -1
+                            anchors.rightMargin: -1
                         }
                     }
 

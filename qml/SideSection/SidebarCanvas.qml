@@ -55,7 +55,7 @@ Item {
                     Rectangle {
                         id: dmBorderLayer
                         anchors.fill: parent
-                        radius: dmMouseArea.containsMouse || sidebarRoot.selectedServer === "dms" ? 14 : 24
+                        radius: dmMouseArea.containsMouse || sidebarRoot.selectedServer === "dms" ? 14 : 12
                         color: sidebarRoot.selectedServer === "dms" ? "#FFFFFF" : "transparent"
                         Behavior on radius {
                             NumberAnimation {
@@ -68,7 +68,7 @@ Item {
                     Rectangle {
                         anchors.fill: parent
                         anchors.margins: sidebarRoot.selectedServer === "dms" ? 2 : 0
-                        radius: dmMouseArea.containsMouse || sidebarRoot.selectedServer === "dms" ? 12 : 24
+                        radius: dmMouseArea.containsMouse || sidebarRoot.selectedServer === "dms" ? 12 : 10
                         color: sidebarRoot.selectedServer === "dms" ? "#00A36C" : (dmMouseArea.containsMouse ? "#2A2C2A" : "#1E201E")
 
                         Behavior on radius {
@@ -143,14 +143,14 @@ Item {
 
                             Rectangle {
                                 anchors.fill: parent
-                                radius: server1Mouse.containsMouse || sidebarRoot.selectedServer === "server1" ? 14 : 24
+                                radius: server1Mouse.containsMouse || sidebarRoot.selectedServer === "server1" ? 14 : 12
                                 color: sidebarRoot.selectedServer === "server1" ? "#FFFFFF" : "transparent"
                             }
 
                             Rectangle {
                                 anchors.fill: parent
                                 anchors.margins: sidebarRoot.selectedServer === "server1" ? 2 : 0
-                                radius: server1Mouse.containsMouse || sidebarRoot.selectedServer === "server1" ? 12 : 24
+                                radius: server1Mouse.containsMouse || sidebarRoot.selectedServer === "server1" ? 12 : 10
                                 color: sidebarRoot.selectedServer === "server1" ? "#00A36C" : (server1Mouse.containsMouse ? "#2A2C2A" : "#1E201E")
 
                                 Text {
@@ -200,14 +200,14 @@ Item {
 
                             Rectangle {
                                 anchors.fill: parent
-                                radius: server2Mouse.containsMouse || sidebarRoot.selectedServer === "server2" ? 14 : 24
+                                radius: server2Mouse.containsMouse || sidebarRoot.selectedServer === "server2" ? 14 : 12
                                 color: sidebarRoot.selectedServer === "server2" ? "#FFFFFF" : "transparent"
                             }
 
                             Rectangle {
                                 anchors.fill: parent
                                 anchors.margins: sidebarRoot.selectedServer === "server2" ? 2 : 0
-                                radius: server2Mouse.containsMouse || sidebarRoot.selectedServer === "server2" ? 12 : 24
+                                radius: server2Mouse.containsMouse || sidebarRoot.selectedServer === "server2" ? 12 : 10
                                 color: sidebarRoot.selectedServer === "server2" ? "#00A36C" : (server2Mouse.containsMouse ? "#2A2C2A" : "#1E201E")
 
                                 Text {
