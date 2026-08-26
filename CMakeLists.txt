@@ -187,6 +187,12 @@ qt_add_qml_module(AvilaApp
         assets/icons/plus-circle.svg
         assets/icons/send.svg
         assets/icons/settings.svg
+        assets/icons/user.svg
+        assets/icons/palette.svg
+        assets/icons/bell.svg
+        assets/icons/lock.svg
+        assets/icons/shield.svg
+        assets/icons/log-out.svg
         assets/icons/smile.svg
         assets/icons/sticker.svg
         assets/icons/users.svg

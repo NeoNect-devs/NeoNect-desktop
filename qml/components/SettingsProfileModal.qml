@@ -144,7 +144,7 @@ Rectangle {
                         component NavTabButton: Rectangle {
                             property string tabId: ""
                             property string tabTitle: ""
-                            property string tabIcon: ""
+                            property string tabIconSource: ""
                             property bool isDanger: false
 
                             width: parent ? parent.width : 190
@@ -160,9 +160,11 @@ Rectangle {
                                 anchors.rightMargin: 12
                                 spacing: 10
 
-                                Text {
-                                    text: tabIcon
-                                    font.pixelSize: 15
+                                IconImage {
+                                    source: tabIconSource
+                                    width: 17; height: 17
+                                    color: isDanger ? "#FF5252" : (modalRoot.currentTab === tabId ? (tabId === "appearance" ? "#00E5FF" : (tabId === "notifications" ? "#FAA81A" : (tabId === "privacy" ? "#23A55A" : "#0A84FF"))) : (navMouse.containsMouse ? "#FFFFFF" : "#949BA4"))
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
 
                                 Text {
@@ -187,25 +189,25 @@ Rectangle {
                         NavTabButton {
                             tabId: "profile"
                             tabTitle: "My Profile"
-                            tabIcon: "👤"
+                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/user.svg"
                         }
 
                         NavTabButton {
                             tabId: "appearance"
                             tabTitle: "Appearance"
-                            tabIcon: "🎨"
+                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/palette.svg"
                         }
 
                         NavTabButton {
                             tabId: "notifications"
                             tabTitle: "Notifications"
-                            tabIcon: "🔔"
+                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/bell.svg"
                         }
 
                         NavTabButton {
                             tabId: "privacy"
                             tabTitle: "Privacy & E2EE"
-                            tabIcon: "🔒"
+                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/lock.svg"
                         }
 
                         Item {
@@ -227,7 +229,7 @@ Rectangle {
                         NavTabButton {
                             tabId: "logout"
                             tabTitle: "Log Out"
-                            tabIcon: "🚪"
+                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/log-out.svg"
                             isDanger: true
                         }
                     }
@@ -734,9 +736,11 @@ Rectangle {
                                     anchors.margins: 12
                                     spacing: 10
 
-                                    Text {
-                                        text: "🛡️"
-                                        font.pixelSize: 22
+                                    IconImage {
+                                        source: "qrc:/qt/qml/Avila/assets/icons/shield.svg"
+                                        width: 24; height: 24
+                                        color: "#23A55A"
+                                        Layout.alignment: Qt.AlignVCenter
                                     }
 
                                     ColumnLayout {
