@@ -492,15 +492,17 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
         return;
     }
 
-    // Enqueue message for all recipient devices
+    // Enqueue message for all recipient devices (excluding sender device)
     for (auto it = recipient.devices.cbegin(); it != recipient.devices.cend(); ++it) {
-        MockQueuedMessage item;
-        item.id = m_nextMessageId++;
-        item.deviceId = it.key();
-        item.toUsername = toUsername;
-        item.ciphertextBase64 = ciphertext;
-        item.timestamp = timestamp;
-        m_deliveryQueue.push_back(std::move(item));
+        if (it.key() != fromDeviceId) {
+            MockQueuedMessage item;
+            item.id = m_nextMessageId++;
+            item.deviceId = it.key();
+            item.toUsername = toUsername;
+            item.ciphertextBase64 = ciphertext;
+            item.timestamp = timestamp;
+            m_deliveryQueue.push_back(std::move(item));
+        }
     }
 
     // Interactive echo bot response simulation (only if receiver is not an active profile)

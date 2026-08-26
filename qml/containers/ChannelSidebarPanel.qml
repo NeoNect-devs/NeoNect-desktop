@@ -130,6 +130,9 @@ Rectangle {
         }
         function onIncomingRelayMessageReceived(fromUsername, target, text, timestamp) {
             var lower = fromUsername.toLowerCase();
+            var myUsername = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
+            if (myUsername !== "" && lower === myUsername) return; // Prevent self-DM from appearing on sent message
+
             sidebarRoot.friendStatusMap[lower] = "online";
             if (sidebarRoot.openDms.indexOf(lower) === -1) {
                 sidebarRoot.openDms.push(lower);

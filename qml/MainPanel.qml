@@ -77,6 +77,13 @@ Item {
             var target = messageData.target || "general";
             var senderLower = fromUsername.toLowerCase();
             var targetLower = (target || "").toLowerCase();
+
+            var myUsername = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
+            if (myUsername !== "" && senderLower === myUsername) {
+                // Ignore self-echoes from relay server
+                return;
+            }
+
             var isChannelMsg = (targetLower === "general" || targetLower.startsWith("channel:"));
             var targetChannelName = targetLower.startsWith("channel:") ? targetLower.replace("channel:", "") : targetLower;
             var key = isChannelMsg ? ("server1:" + targetChannelName) : ("dms:" + senderLower);
@@ -97,13 +104,13 @@ Item {
                 fileSize: messageData.fileSize || 0,
                 duration: messageData.duration || 0,
                 waveform: messageData.waveform || [],
-                status: "sent",
+                status: "seen",
                 timestamp: messageData.timestamp || Math.floor(Date.now() / 1000)
             };
 
             chatHistories[key].push(itemObj);
 
-            // Auto add friend to Direct Messages list ONLY for direct messages
+            // Auto add friend to Direct Messages list ONLY for direct messages from others
             if (!isChannelMsg && NetworkManager && NetworkManager.friends && NetworkManager.friends.indexOf(senderLower) === -1) {
                 NetworkManager.addFriend(senderLower);
             }
@@ -978,37 +985,76 @@ Item {
                                                 }
 
                                                 // Status Icon for Sent Messages
-                                                RowLayout {
+                                                Row {
                                                     visible: delegateRoot.isMe
-                                                    spacing: 2
+                                                    spacing: 3
                                                     Layout.alignment: Qt.AlignVCenter
 
-                                                    Text {
-                                                        text: {
-                                                            if (model.status === "sending") return "🕒";
-                                                            if (model.status === "failed") return "⚠️";
-                                                            if (model.status === "seen") return "✓✓";
-                                                            if (model.status === "delivered") return "✓✓";
-                                                            return "✓";
+                                                    // 1. Sending Progress Dot
+                                                    Rectangle {
+                                                        visible: model.status === "sending"
+                                                        width: 8; height: 8; radius: 4
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        color: "transparent"
+                                                        border.color: Qt.rgba(255, 255, 255, 0.7)
+                                                        border.width: 1.5
+
+                                                        SequentialAnimation on opacity {
+                                                            loops: Animation.Infinite
+                                                            running: model.status === "sending"
+                                                            NumberAnimation { from: 0.3; to: 1.0; duration: 400 }
+                                                            NumberAnimation { from: 1.0; to: 0.3; duration: 400 }
                                                         }
-                                                        color: {
-                                                            if (model.status === "failed") return "#FF5252";
-                                                            if (model.status === "seen") return "#00E5FF"; // Electric Cyan (Seen)
-                                                            if (model.status === "delivered") return "#FFFFFF";
-                                                            return Qt.rgba(255, 255, 255, 0.7);
-                                                        }
-                                                        font.family: "Segoe UI"
-                                                        font.pixelSize: 10
-                                                        font.bold: true
                                                     }
 
-                                                    Text {
+                                                    // 2. Sent (Unseen) Single Check
+                                                    IconImage {
+                                                        visible: model.status === "sent"
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        source: "qrc:/qt/qml/Avila/assets/icons/check.svg"
+                                                        width: 12; height: 12
+                                                        color: Qt.rgba(255, 255, 255, 0.7)
+                                                    }
+
+                                                    // 3. Delivered Double Check
+                                                    IconImage {
+                                                        visible: model.status === "delivered"
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        source: "qrc:/qt/qml/Avila/assets/icons/check-check.svg"
+                                                        width: 13; height: 13
+                                                        color: "#FFFFFF"
+                                                    }
+
+                                                    // 4. Seen Double Check + Seen Badge
+                                                    Row {
                                                         visible: model.status === "seen"
-                                                        text: "Seen"
-                                                        color: "#00E5FF"
-                                                        font.family: "Segoe UI"
-                                                        font.pixelSize: 9
-                                                        font.bold: true
+                                                        spacing: 2
+                                                        anchors.verticalCenter: parent.verticalCenter
+
+                                                        IconImage {
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            source: "qrc:/qt/qml/Avila/assets/icons/check-check.svg"
+                                                            width: 13; height: 13
+                                                            color: "#00E5FF"
+                                                        }
+
+                                                        Text {
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            text: "Seen"
+                                                            color: "#00E5FF"
+                                                            font.family: "Segoe UI"
+                                                            font.pixelSize: 9
+                                                            font.bold: true
+                                                        }
+                                                    }
+
+                                                    // 5. Error / Failed Alert Icon
+                                                    IconImage {
+                                                        visible: model.status === "failed"
+                                                        anchors.verticalCenter: parent.verticalCenter
+                                                        source: "qrc:/qt/qml/Avila/assets/icons/alert-circle.svg"
+                                                        width: 12; height: 12
+                                                        color: "#FF5252"
                                                     }
                                                 }
                                             }
@@ -1025,7 +1071,7 @@ Item {
                                         IconImage {
                                             anchors.centerIn: parent
                                             source: "qrc:/qt/qml/Avila/assets/icons/refresh.svg"
-                                            width: 12; height: 12
+                                            width: 14; height: 14
                                             color: "#FFFFFF"
                                         }
 
@@ -1037,6 +1083,43 @@ Item {
                                             onClicked: root.retryMessage(model.messageId)
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        // Empty State Placeholder
+                        Item {
+                            visible: nativeMessageModel.count === 0
+                            anchors.centerIn: parent
+                            width: parent.width * 0.7
+                            height: 120
+
+                            ColumnLayout {
+                                anchors.centerIn: parent
+                                spacing: 8
+
+                                IconImage {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    source: root.selectedServer === "dms" ? "qrc:/qt/qml/Avila/assets/icons/friends.svg" : "qrc:/qt/qml/Avila/assets/icons/hash.svg"
+                                    width: 32; height: 32
+                                    color: "#4E5058"
+                                }
+
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: root.selectedServer === "dms" ? ("This is the beginning of your direct message history with @" + (root.activeChannel.replace(/^\w/, c => c.toUpperCase()))) : ("Welcome to #" + root.activeChannel + "!")
+                                    color: ThemeData.textPrimary
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                }
+
+                                Text {
+                                    Layout.alignment: Qt.AlignHCenter
+                                    text: "Send a message or media to kick off the conversation."
+                                    color: "#949BA4"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 13
                                 }
                             }
                         }
@@ -1153,14 +1236,15 @@ Item {
                     height: 20
                     color: "transparent"
 
-                    RowLayout {
-                        anchors.fill: parent
+                    Row {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
                         spacing: 6
 
                         // 3 Pulsing Animated Typing Dots
                         Row {
                             spacing: 3
-                            Layout.alignment: Qt.AlignVCenter
+                            anchors.verticalCenter: parent.verticalCenter
 
                             Rectangle {
                                 width: 5; height: 5; radius: 2.5
@@ -1197,6 +1281,7 @@ Item {
                         }
 
                         Text {
+                            anchors.verticalCenter: parent.verticalCenter
                             text: (root.typingUser || (root.activeChannel.replace(/^\w/, c => c.toUpperCase()))) + " is typing..."
                             color: "#00E5FF"
                             font.family: "Segoe UI"
