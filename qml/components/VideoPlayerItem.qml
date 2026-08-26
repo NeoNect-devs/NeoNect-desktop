@@ -163,7 +163,7 @@ Rectangle {
         }
     }
 
-    // 4. Central Glowing Play / Pause Button
+    // 4. Central Glowing Play Button (Visible only when paused)
     Rectangle {
         id: playBtn
         z: 5
@@ -174,7 +174,7 @@ Rectangle {
         border.width: 2
         anchors.centerIn: parent
         visible: opacity > 0
-        opacity: videoRoot.isControlsVisible ? 1.0 : 0.0
+        opacity: (!videoRoot.isPlaying && !videoRoot.hasPlaybackError) ? 1.0 : 0.0
         scale: playBtnMouse.containsMouse ? 1.1 : 1.0
 
         Behavior on opacity { NumberAnimation { duration: 150 } }
@@ -182,8 +182,8 @@ Rectangle {
 
         IconImage {
             anchors.centerIn: parent
-            anchors.horizontalCenterOffset: videoRoot.isPlaying ? 0 : 2
-            source: videoRoot.isPlaying ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
+            anchors.horizontalCenterOffset: 2
+            source: "qrc:/qt/qml/Avila/assets/icons/play.svg"
             width: 22; height: 22
             color: "#FFFFFF"
         }
