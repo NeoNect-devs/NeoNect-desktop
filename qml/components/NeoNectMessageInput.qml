@@ -82,7 +82,7 @@ Rectangle {
         inputArea.forceActiveFocus();
     }
 
-    implicitHeight: isRecordingMode ? 52 : (draftAttachment ? Math.min(Math.max(104, inputArea.contentHeight + 76), 220) : Math.min(Math.max(52, inputArea.contentHeight + 24), 160))
+    implicitHeight: isRecordingMode ? 52 : (draftAttachment ? Math.min(Math.max(104, inputArea.implicitHeight + 64), 200) : Math.min(Math.max(52, inputArea.implicitHeight + 16), 140))
     color: ThemeData.inputBackgroundInactive
     radius: 10
 
@@ -272,37 +272,37 @@ Rectangle {
             }
 
             // Text Input ScrollArea
-            ScrollView {
-                id: inputScrollView
+            Flickable {
+                id: inputFlickable
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                contentWidth: width
+                contentHeight: inputArea.implicitHeight
                 clip: true
-                background: null
-                ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
                 ScrollBar.vertical: ScrollBar {
                     id: inputScrollBar
-                    width: 5
+                    width: 6
                     policy: ScrollBar.AsNeeded
-                    visible: inputScrollBar.size < 1.0
-                    active: inputScrollView.moving || inputScrollBar.hovered || inputScrollBar.pressed
+                    visible: inputFlickable.contentHeight > inputFlickable.height
+                    active: inputFlickable.contentHeight > inputFlickable.height
 
                     background: Rectangle {
                         color: "transparent"
                     }
 
                     contentItem: Rectangle {
-                        implicitWidth: 5
-                        radius: 2.5
+                        implicitWidth: 6
+                        radius: 3
                         color: inputScrollBar.pressed ? ThemeData.accentColor : (inputScrollBar.hovered ? "#7289DA" : "#4E5058")
-                        opacity: (inputScrollBar.size < 1.0 && (inputScrollBar.active || inputScrollBar.hovered)) ? 1.0 : 0.0
+                        opacity: inputFlickable.contentHeight > inputFlickable.height ? (inputScrollBar.hovered || inputScrollBar.pressed ? 1.0 : 0.8) : 0.0
                         Behavior on opacity { NumberAnimation { duration: 150 } }
                     }
                 }
 
                 TextArea {
                     id: inputArea
-                    width: inputScrollView.width
+                    width: inputFlickable.width
                     placeholderText: inputRoot.draftAttachment ? "Add a caption..." : ("Message " + (inputRoot.isDM ? "@" : "#") + inputRoot.channelName)
                     placeholderTextColor: ThemeData.placeholderColor
                     color: ThemeData.textPrimary
@@ -310,7 +310,7 @@ Rectangle {
                     font.pixelSize: 14
                     wrapMode: Text.Wrap
                     selectByMouse: true
-                    leftPadding: 4; rightPadding: 14
+                    leftPadding: 4; rightPadding: 16
                     topPadding: 6; bottomPadding: 6
                     background: null
 
@@ -323,6 +323,15 @@ Rectangle {
                             typingDebounceTimer.restart();
                         } else {
                             inputRoot.typingStopped();
+                        }
+                    }
+
+                    onCursorPositionChanged: {
+                        var cr = cursorRectangle;
+                        if (cr.y + cr.height > inputFlickable.contentY + inputFlickable.height) {
+                            inputFlickable.contentY = cr.y + cr.height - inputFlickable.height + bottomPadding;
+                        } else if (cr.y < inputFlickable.contentY) {
+                            inputFlickable.contentY = cr.y - topPadding;
                         }
                     }
 
