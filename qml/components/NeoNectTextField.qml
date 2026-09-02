@@ -1,6 +1,6 @@
-// qml/containers/AvilaTextField.qml
+// qml/containers/NeoNectTextField.qml
 import QtQuick
-import Avila 1.0
+import NeoNect 1.0
 
 Item {
     id: control

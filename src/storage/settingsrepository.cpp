@@ -2,7 +2,7 @@
 #include "settingsrepository.h"
 #include "../common/constants.h"
 
-namespace Avila {
+namespace NeoNect {
 namespace Storage {
 
 SettingsRepository::SettingsRepository(const QString &profileName)
@@ -106,4 +106,4 @@ void SettingsRepository::clearSession() {
 }
 
 } // namespace Storage
-} // namespace Avila
+} // namespace NeoNect

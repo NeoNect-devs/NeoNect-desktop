@@ -3,8 +3,8 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila 1.0
-import Avila.Core 1.0
+import NeoNect 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: root
@@ -40,7 +40,7 @@ Rectangle {
 
     // Master Friends Model (Mocked for testing with rich activity & real-time statuses)
     property var allFriends: [
-        { name: "Alex", tag: "#1337", status: "online", customStatus: "Developing Avila E2EE relay node", avatarColor: "#0A84FF" },
+        { name: "Alex", tag: "#1337", status: "online", customStatus: "Developing NeoNect E2EE relay node", avatarColor: "#0A84FF" },
         { name: "Beatrice", tag: "#2048", status: "online", customStatus: "Listening to Spotify • Synthwave", avatarColor: "#06B6D4" },
         { name: "Charlie", tag: "#4096", status: "afk", customStatus: "AFK • Grabbing coffee ☕", avatarColor: "#10B981" },
         { name: "David", tag: "#8192", status: "offline", customStatus: "Last seen 2 hours ago", avatarColor: "#F59E0B" },
@@ -82,7 +82,7 @@ Rectangle {
                 RowLayout {
                     spacing: 8
                     IconImage {
-                        source: "qrc:/qt/qml/Avila/assets/icons/friends.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/friends.svg"
                         width: 20; height: 20
                         color: ThemeData.textSecondary
                     }
@@ -260,7 +260,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "You can add friends with their Avila E2EE username or handle."
+                    text: "You can add friends with their NeoNect E2EE username or handle."
                     color: ThemeData.textSecondary
                     font.family: "Segoe UI"
                     font.pixelSize: 13
@@ -357,7 +357,7 @@ Rectangle {
                         spacing: 8
 
                         IconImage {
-                            source: "qrc:/qt/qml/Avila/assets/icons/search.svg"
+                            source: "qrc:/qt/qml/NeoNect/assets/icons/search.svg"
                             width: 14; height: 14
                             color: ThemeData.textSecondary
                         }
@@ -536,7 +536,7 @@ Rectangle {
 
                                     IconImage {
                                         anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/Avila/assets/icons/chat.svg"
+                                        source: "qrc:/qt/qml/NeoNect/assets/icons/chat.svg"
                                         width: 18; height: 18
                                         color: msgBtnMouse.containsMouse ? "#0A84FF" : "#B5BAC1"
                                     }
@@ -562,7 +562,7 @@ Rectangle {
 
                                     IconImage {
                                         anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/Avila/assets/icons/headphones.svg"
+                                        source: "qrc:/qt/qml/NeoNect/assets/icons/headphones.svg"
                                         width: 18; height: 18
                                         color: callBtnMouse.containsMouse ? "#23A55A" : "#B5BAC1"
                                     }
@@ -603,7 +603,7 @@ Rectangle {
 
                         IconImage {
                             anchors.centerIn: parent
-                            source: "qrc:/qt/qml/Avila/assets/icons/friends.svg"
+                            source: "qrc:/qt/qml/NeoNect/assets/icons/friends.svg"
                             width: 32; height: 32
                             color: ThemeData.textSecondary
                         }

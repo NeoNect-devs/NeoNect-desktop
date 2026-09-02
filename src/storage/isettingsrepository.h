@@ -3,7 +3,7 @@
 #include <QString>
 #include <QStringList>
 
-namespace Avila {
+namespace NeoNect {
 namespace Storage {
 
 class ISettingsRepository {
@@ -35,4 +35,4 @@ public:
 };
 
 } // namespace Storage
-} // namespace Avila
+} // namespace NeoNect

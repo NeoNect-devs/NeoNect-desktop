@@ -1,6 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
-import Avila 1.0
+import NeoNect 1.0
 import "../components"
 
 Rectangle {
@@ -17,7 +17,7 @@ Rectangle {
     z: 100
 
     // ─── TOP-LEFT OVERLAPPING BRAND BUTTON ────────────────────────────
-    AvilaBrandButton {
+    NeoNectBrandButton {
         id: topBrandButton
         anchors.left: parent.left
         anchors.top: parent.top

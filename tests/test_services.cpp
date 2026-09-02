@@ -12,20 +12,20 @@
 #include "../src/core/networkmanager.h"
 
 void TestServices::testAuthServiceFlow() {
-    auto mockTransport = std::make_shared<Avila::Testing::MockHttpTransport>(false);
-    auto storage = std::make_shared<Avila::Storage::SettingsRepository>("test_service_auth");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_auth");
     storage->clearSession();
     storage->setFriends({});
-    Avila::Services::AuthService authService(mockTransport, storage);
+    NeoNect::Services::AuthService authService(mockTransport, storage);
 
     // 1. Test verifyServer
-    QSignalSpy spyVerify(&authService, &Avila::Services::AuthService::verificationResult);
+    QSignalSpy spyVerify(&authService, &NeoNect::Services::AuthService::verificationResult);
     authService.verifyServer("http://localhost:8090");
     QCOMPARE(spyVerify.count(), 1);
     QCOMPARE(spyVerify.takeFirst().at(0).toBool(), true);
 
     // 2. Test checkUsernameAvailability
-    QSignalSpy spyAvail(&authService, &Avila::Services::AuthService::availabilityResult);
+    QSignalSpy spyAvail(&authService, &NeoNect::Services::AuthService::availabilityResult);
     authService.checkUsernameAvailability("new_user_123");
     QCOMPARE(spyAvail.count(), 1);
     auto availArgs = spyAvail.takeFirst();
@@ -33,13 +33,13 @@ void TestServices::testAuthServiceFlow() {
     QCOMPARE(availArgs.at(1).toBool(), true); // available
 
     // 3. Test registerUser
-    QSignalSpy spyReg(&authService, &Avila::Services::AuthService::registrationResult);
+    QSignalSpy spyReg(&authService, &NeoNect::Services::AuthService::registrationResult);
     authService.registerUser("new_user_123", "secret_pass_123");
     QCOMPARE(spyReg.count(), 1);
     QCOMPARE(spyReg.takeFirst().at(0).toBool(), true);
 
     // 4. Test loginUser
-    QSignalSpy spyLogin(&authService, &Avila::Services::AuthService::loginResult);
+    QSignalSpy spyLogin(&authService, &NeoNect::Services::AuthService::loginResult);
     authService.loginUser("new_user_123", "secret_pass_123");
     QCOMPARE(spyLogin.count(), 1);
     QCOMPARE(spyLogin.takeFirst().at(0).toBool(), true);
@@ -52,20 +52,20 @@ void TestServices::testAuthServiceFlow() {
 }
 
 void TestServices::testDeviceServiceFlow() {
-    auto mockTransport = std::make_shared<Avila::Testing::MockHttpTransport>(false);
-    auto storage = std::make_shared<Avila::Storage::SettingsRepository>("test_service_device");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_device");
     storage->clearSession();
     mockTransport->setAuthToken("mock-valid-session-token");
     storage->setAuthToken("mock-valid-session-token");
 
-    Avila::Services::DeviceService deviceService(mockTransport, storage);
+    NeoNect::Services::DeviceService deviceService(mockTransport, storage);
 
-    QSignalSpy spyReg(&deviceService, &Avila::Services::DeviceService::deviceRegistrationResult);
+    QSignalSpy spyReg(&deviceService, &NeoNect::Services::DeviceService::deviceRegistrationResult);
     deviceService.registerDevice("unit-dev-id-99", "MOCK_PUB_KEY_99");
     QCOMPARE(spyReg.count(), 1);
     QCOMPARE(spyReg.takeFirst().at(0).toBool(), true);
 
-    QSignalSpy spyFetch(&deviceService, &Avila::Services::DeviceService::deviceKeyFetched);
+    QSignalSpy spyFetch(&deviceService, &NeoNect::Services::DeviceService::deviceKeyFetched);
     deviceService.fetchDevicePublicKey("unit-dev-id-99");
     QCOMPARE(spyFetch.count(), 1);
     auto fetchArgs = spyFetch.takeFirst();
@@ -76,10 +76,10 @@ void TestServices::testDeviceServiceFlow() {
 }
 
 void TestServices::testRelayServiceFlowAndDeduplication() {
-    auto mockTransport = std::make_shared<Avila::Testing::MockHttpTransport>(false);
-    auto storage = std::make_shared<Avila::Storage::SettingsRepository>("test_service_relay");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_relay");
     storage->clearSession();
-    auto crypto = std::make_shared<Avila::Crypto::CryptoService>();
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
 
     mockTransport->seedUser("alice", "pass");
     mockTransport->seedUser("bob", "pass");
@@ -90,10 +90,10 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     storage->setUsername("alice");
     storage->setDeviceId("dev-alice");
 
-    Avila::Services::RelayService relayService(mockTransport, storage, crypto);
+    NeoNect::Services::RelayService relayService(mockTransport, storage, crypto);
 
     // 1. Send relay message from Alice to Bob
-    QSignalSpy spySend(&relayService, &Avila::Services::RelayService::secureMessageTransmitted);
+    QSignalSpy spySend(&relayService, &NeoNect::Services::RelayService::secureMessageTransmitted);
     relayService.sendRelayMessage("bob", "Hello Bob from Alice!");
     QCOMPARE(spySend.count(), 1);
     QCOMPARE(spySend.takeFirst().at(1).toBool(), true);
@@ -107,7 +107,7 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     storage->setUsername("bob");
     storage->setDeviceId("mock-dev-bob");
 
-    QSignalSpy spyRecv(&relayService, &Avila::Services::RelayService::incomingRelayMessageReceived);
+    QSignalSpy spyRecv(&relayService, &NeoNect::Services::RelayService::incomingRelayMessageReceived);
 
     // Poll message as Bob
     relayService.pollPendingMessages();
@@ -125,18 +125,18 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
 }
 
 void TestServices::testFriendServiceFlow() {
-    auto mockTransport = std::make_shared<Avila::Testing::MockHttpTransport>(false);
-    auto storage = std::make_shared<Avila::Storage::SettingsRepository>("test_service_friend");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_friend");
     storage->clearSession();
     storage->setFriends({});
     storage->setUsername("alice");
 
     mockTransport->seedUser("david", "pass");
 
-    Avila::Services::FriendService friendService(mockTransport, storage);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
     friendService.loadFriends();
 
-    QSignalSpy spyAdd(&friendService, &Avila::Services::FriendService::addFriendResult);
+    QSignalSpy spyAdd(&friendService, &NeoNect::Services::FriendService::addFriendResult);
     friendService.addFriend("david");
 
     QCOMPARE(spyAdd.count(), 1);
@@ -144,7 +144,7 @@ void TestServices::testFriendServiceFlow() {
     QVERIFY(friendService.friends().contains("david", Qt::CaseInsensitive));
 
     // Test Presence tracking
-    QSignalSpy spyStatus(&friendService, &Avila::Services::FriendService::friendStatusUpdated);
+    QSignalSpy spyStatus(&friendService, &NeoNect::Services::FriendService::friendStatusUpdated);
     friendService.updateLastSeen("david");
     QCOMPARE(spyStatus.count(), 1);
     auto statusArgs = spyStatus.takeFirst();
@@ -155,11 +155,11 @@ void TestServices::testFriendServiceFlow() {
 }
 
 void TestServices::testNetworkManagerFacadeIntegration() {
-    auto mockTransport = std::make_shared<Avila::Testing::MockHttpTransport>(false);
-    auto storage = std::make_shared<Avila::Storage::SettingsRepository>("test_facade_profile");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_facade_profile");
     storage->clearSession();
     storage->setFriends({});
-    auto crypto = std::make_shared<Avila::Crypto::CryptoService>();
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
 
     NetworkManager nm(mockTransport, storage, crypto);
 
@@ -173,30 +173,30 @@ void TestServices::testNetworkManagerFacadeIntegration() {
 
 void TestServices::testTwoClientChatExchange() {
     // 1. Shared mock transport simulating network backbone
-    auto sharedTransport = std::make_shared<Avila::Testing::MockHttpTransport>(false, false);
+    auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
     sharedTransport->seedUser("alice", "pass123");
     sharedTransport->seedUser("bob", "pass123");
 
-    auto cryptoAlice = std::make_shared<Avila::Crypto::CryptoService>();
-    auto cryptoBob = std::make_shared<Avila::Crypto::CryptoService>();
+    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
 
-    auto storageAlice = std::make_shared<Avila::Storage::SettingsRepository>("client_alice");
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice");
     storageAlice->clearSession();
     storageAlice->setUsername("alice");
     storageAlice->setAuthToken("mock-token-alice");
     storageAlice->setDeviceId("mock-dev-alice");
 
-    auto storageBob = std::make_shared<Avila::Storage::SettingsRepository>("client_bob");
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob");
     storageBob->clearSession();
     storageBob->setUsername("bob");
     storageBob->setDeviceId("mock-dev-bob");
     storageBob->setAuthToken("mock-token-bob");
 
-    Avila::Services::RelayService relayAlice(sharedTransport, storageAlice, cryptoAlice);
-    Avila::Services::RelayService relayBob(sharedTransport, storageBob, cryptoBob);
+    NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, cryptoAlice);
+    NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, cryptoBob);
 
-    QSignalSpy spyBobRecv(&relayBob, &Avila::Services::RelayService::incomingRelayMessageReceived);
-    QSignalSpy spyAliceRecv(&relayAlice, &Avila::Services::RelayService::incomingRelayMessageReceived);
+    QSignalSpy spyBobRecv(&relayBob, &NeoNect::Services::RelayService::incomingRelayMessageReceived);
+    QSignalSpy spyAliceRecv(&relayAlice, &NeoNect::Services::RelayService::incomingRelayMessageReceived);
 
     // 2. Alice sends a direct message to Bob
     sharedTransport->setAuthToken("mock-token-alice");

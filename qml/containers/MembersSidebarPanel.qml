@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: membersRoot
@@ -50,7 +50,7 @@ Rectangle {
             { name: "Grace", role: "MEMBER", status: "online", avatarColor: "#22C55E" },
             { name: "Henry", role: "MEMBER", status: "afk", avatarColor: "#F97316" },
             { name: "Ivy", role: "DESIGNER", status: "online", avatarColor: "#14B8A6" },
-            { name: "Avila Bot", role: "BOT", status: "online", avatarColor: "#0284C7" }
+            { name: "NeoNect Bot", role: "BOT", status: "online", avatarColor: "#0284C7" }
         ],
         "server2": [
             { name: "Hannah", role: "OWNER", status: "online", avatarColor: "#FF5722" },
@@ -127,7 +127,7 @@ Rectangle {
                     spacing: 6
 
                     IconImage {
-                        source: "qrc:/qt/qml/Avila/assets/icons/search.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/search.svg"
                         width: 14; height: 14
                         color: ThemeData.textSecondary
                     }

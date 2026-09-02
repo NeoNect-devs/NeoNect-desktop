@@ -3,8 +3,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import Avila 1.0
-import Avila.Core 1.0
+import NeoNect 1.0
+import NeoNect.Core 1.0
 import "."
 
 Window {
@@ -173,7 +173,7 @@ Window {
             }
         }
 
-        // Avila Settings & Profile Center Modal (Launched by AvilaBrandButton)
+        // NeoNect Settings & Profile Center Modal (Launched by NeoNectBrandButton)
         SettingsProfileModal {
             id: settingsModal
             onLogoutRequested: {
@@ -183,7 +183,7 @@ Window {
             onSendTestNotificationRequested: {
                 globalNotifStack.showNotification({
                     title: "Alex",
-                    body: "Hey! This is a test notification from Avila Notification System ⚡",
+                    body: "Hey! This is a test notification from NeoNect Notification System ⚡",
                     type: "message",
                     avatar: "A",
                     actionText: "Reply",

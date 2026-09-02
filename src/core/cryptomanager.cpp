@@ -10,12 +10,12 @@ CryptoManager* CryptoManager::instance() {
     return &_instance;
 }
 
-CryptoManager::CryptoManager(std::shared_ptr<Avila::Crypto::ICryptoService> cryptoService,
-                             std::shared_ptr<Avila::Storage::ISettingsRepository> settingsRepo,
+CryptoManager::CryptoManager(std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService,
+                             std::shared_ptr<NeoNect::Storage::ISettingsRepository> settingsRepo,
                              QObject *parent)
     : QObject(parent),
-      m_cryptoService(cryptoService ? cryptoService : std::make_shared<Avila::Crypto::CryptoService>()),
-      m_settingsRepo(settingsRepo ? settingsRepo : std::make_shared<Avila::Storage::SettingsRepository>()) {
+      m_cryptoService(cryptoService ? cryptoService : std::make_shared<NeoNect::Crypto::CryptoService>()),
+      m_settingsRepo(settingsRepo ? settingsRepo : std::make_shared<NeoNect::Storage::SettingsRepository>()) {
     ensureDeviceCredentials();
 }
 
@@ -28,7 +28,7 @@ void CryptoManager::ensureDeviceCredentials() {
     QString devId = m_settingsRepo->deviceId();
     if (devId.isEmpty()) {
         QString prof = m_settingsRepo->profile();
-        devId = QString("avila-dev-%1%2").arg(prof.isEmpty() ? "" : prof + "-",
+        devId = QString("neonect-dev-%1%2").arg(prof.isEmpty() ? "" : prof + "-",
                                               QUuid::createUuid().toString(QUuid::WithoutBraces));
         m_settingsRepo->setDeviceId(devId);
     }

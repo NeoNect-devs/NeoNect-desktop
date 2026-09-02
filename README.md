@@ -1,6 +1,6 @@
 # Desktop Client
 
-This directory contains the desktop client for the Avila chat application. It's built using C++ and Qt.
+This directory contains the desktop client for the NeoNect chat application. It's built using C++ and Qt.
 
 ## Technologies
 
@@ -19,7 +19,7 @@ This directory contains the desktop client for the Avila chat application. It's 
 ## Run
 
 1.  Navigate to the build directory: `cd build`
-2.  Run the client: `./AvilaDesktopClient` (or the appropriate executable name)
+2.  Run the client: `./NeoNectDesktopClient` (or the appropriate executable name)
 
 ## Structure
 

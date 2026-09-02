@@ -6,7 +6,7 @@
 #include <memory>
 #include <mutex>
 
-namespace Avila {
+namespace NeoNect {
 namespace Transport {
 
 class HttpTransport : public QObject, public IHttpTransport {
@@ -40,4 +40,4 @@ private:
 };
 
 } // namespace Transport
-} // namespace Avila
+} // namespace NeoNect

@@ -1,7 +1,7 @@
 // qml/entrypage/entry.qml
 import QtQuick
 import QtQuick.Controls
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 import "../containers"
 import "../components"
 
@@ -72,7 +72,7 @@ Item {
                 spacing: 6
 
                 Image {
-                    source: "qrc:/qt/qml/Avila/assets/logo.png"
+                    source: "qrc:/qt/qml/NeoNect/assets/logo.png"
                     width: 56
                     height: 56
                     fillMode: Image.PreserveAspectFit
@@ -80,7 +80,7 @@ Item {
                 }
 
                 Text {
-                    text: "DANISA / AVILA"
+                    text: "DANISA / NEONECT"
                     color: ThemeData.textPrimary
                     font.pointSize: ThemeData.fontSizeHeader + 2
                     font.bold: true
@@ -194,10 +194,10 @@ Item {
                         font.letterSpacing: 1
                     }
 
-                    AvilaTextField {
+                    NeoNectTextField {
                         id: serverInput
                         width: parent.width
-                        placeholderText: "e.g., http://localhost:8090 or avila.chat"
+                        placeholderText: "e.g., http://localhost:8090 or neonect.chat"
                         text: NetworkManager.serverUrl
 
                         onTextChanged: {
@@ -237,7 +237,7 @@ Item {
                         width: parent.width
                         spacing: 12
 
-                        AvilaButton {
+                        NeoNectButton {
                             text: "Log In"
                             width: (parent.width - parent.spacing) / 2
                             enabled: entryRoot.isServerReady && !NetworkManager.isLoading
@@ -245,7 +245,7 @@ Item {
                             onClicked: entryRoot.currentScreen = "login"
                         }
 
-                        AvilaButton {
+                        NeoNectButton {
                             text: "Register"
                             width: (parent.width - parent.spacing) / 2
                             enabled: entryRoot.isServerReady && !NetworkManager.isLoading
@@ -254,7 +254,7 @@ Item {
                         }
                     }
 
-                    AvilaButton {
+                    NeoNectButton {
                         width: parent.width
                         height: 42
                         text: "⚡ Quick Connect (@" + (typeof appProfile !== "undefined" && appProfile !== "" ? appProfile : "demo") + ")"
@@ -305,7 +305,7 @@ Item {
                             font.pointSize: ThemeData.fontSizeNormal - 3
                             font.bold: true
                         }
-                        AvilaTextField {
+                        NeoNectTextField {
                             id: loginUser
                             width: parent.width
                             placeholderText: "Enter your username"
@@ -324,7 +324,7 @@ Item {
                         Item {
                             width: parent.width
                             height: 46
-                            AvilaTextField {
+                            NeoNectTextField {
                                 id: loginPass
                                 anchors.fill: parent
                                 placeholderText: "Enter your password"
@@ -350,7 +350,7 @@ Item {
 
                     Item { width: 1; height: 6 }
 
-                    AvilaButton {
+                    NeoNectButton {
                         text: NetworkManager.isLoading ? "Signing In..." : "Sign In"
                         width: parent.width
                         enabled: loginUser.text.trim() !== "" && loginPass.text !== "" && !NetworkManager.isLoading
@@ -398,7 +398,7 @@ Item {
                             font.pointSize: ThemeData.fontSizeNormal - 3
                             font.bold: true
                         }
-                        AvilaTextField {
+                        NeoNectTextField {
                             id: regUser
                             width: parent.width
                             placeholderText: "Choose a username"
@@ -441,7 +441,7 @@ Item {
                         Item {
                             width: parent.width
                             height: 46
-                            AvilaTextField {
+                            NeoNectTextField {
                                 id: regPass
                                 anchors.fill: parent
                                 placeholderText: "Min 8 chars, letters & numbers (e.g. pass1234)"
@@ -505,7 +505,7 @@ Item {
                             font.pointSize: ThemeData.fontSizeNormal - 3
                             font.bold: true
                         }
-                        AvilaTextField {
+                        NeoNectTextField {
                             id: regConfirmPass
                             width: parent.width
                             placeholderText: "Re-enter your password"
@@ -522,7 +522,7 @@ Item {
 
                     Item { width: 1; height: 4 }
 
-                    AvilaButton {
+                    NeoNectButton {
                         text: NetworkManager.isLoading ? "Creating Account..." : "Create Account"
                         width: parent.width
                         enabled: regUser.text.trim().length >= 3 &&

@@ -4,8 +4,8 @@
 #include "../src/storage/settingsrepository.h"
 
 void TestStorage::testProfileIsolation() {
-    Avila::Storage::SettingsRepository repoAlice("unit_alice");
-    Avila::Storage::SettingsRepository repoBob("unit_bob");
+    NeoNect::Storage::SettingsRepository repoAlice("unit_alice");
+    NeoNect::Storage::SettingsRepository repoBob("unit_bob");
 
     repoAlice.setUsername("alice");
     repoAlice.setAuthToken("token_alice_123");
@@ -24,7 +24,7 @@ void TestStorage::testProfileIsolation() {
 }
 
 void TestStorage::testGettersAndSetters() {
-    Avila::Storage::SettingsRepository repo("unit_test_main");
+    NeoNect::Storage::SettingsRepository repo("unit_test_main");
 
     repo.setServerUrl("http://custom.node:9000");
     QCOMPARE(repo.serverUrl(), "http://custom.node:9000");
@@ -43,7 +43,7 @@ void TestStorage::testGettersAndSetters() {
 }
 
 void TestStorage::testClearSession() {
-    Avila::Storage::SettingsRepository repo("unit_test_clear");
+    NeoNect::Storage::SettingsRepository repo("unit_test_clear");
 
     repo.setDeviceId("dev-persistent");
     repo.setUsername("logged_in_user");

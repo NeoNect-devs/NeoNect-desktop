@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: playerRoot
@@ -53,7 +53,7 @@ Rectangle {
             IconImage {
                 anchors.centerIn: parent
                 anchors.horizontalCenterOffset: playerRoot.isPlaying ? 0 : 1
-                source: playerRoot.isPlaying ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
+                source: playerRoot.isPlaying ? "qrc:/qt/qml/NeoNect/assets/icons/pause.svg" : "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
                 width: 16; height: 16
                 color: playerRoot.fromMe ? ThemeData.accentColor : "#FFFFFF"
             }

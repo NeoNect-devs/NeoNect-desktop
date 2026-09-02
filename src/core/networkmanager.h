@@ -24,13 +24,13 @@ class NetworkManager : public QObject {
 
 public:
     static NetworkManager* instance();
-    explicit NetworkManager(std::shared_ptr<Avila::Transport::IHttpTransport> transport = nullptr,
-                            std::shared_ptr<Avila::Storage::ISettingsRepository> storage = nullptr,
-                            std::shared_ptr<Avila::Crypto::ICryptoService> cryptoService = nullptr,
+    explicit NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport = nullptr,
+                            std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage = nullptr,
+                            std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService = nullptr,
                             QObject *parent = nullptr);
     ~NetworkManager() override = default;
 
-    void initializeCustom(std::shared_ptr<Avila::Transport::IHttpTransport> transport);
+    void initializeCustom(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport);
 
     QString serverUrl() const;
     QString token() const;
@@ -87,14 +87,14 @@ private:
     void setupServiceSignals();
     void autoRegisterDevice();
 
-    std::shared_ptr<Avila::Transport::IHttpTransport> m_transport;
-    std::shared_ptr<Avila::Storage::ISettingsRepository> m_storage;
-    std::shared_ptr<Avila::Crypto::ICryptoService> m_cryptoService;
+    std::shared_ptr<NeoNect::Transport::IHttpTransport> m_transport;
+    std::shared_ptr<NeoNect::Storage::ISettingsRepository> m_storage;
+    std::shared_ptr<NeoNect::Crypto::ICryptoService> m_cryptoService;
 
-    std::shared_ptr<Avila::Services::AuthService> m_authService;
-    std::shared_ptr<Avila::Services::DeviceService> m_deviceService;
-    std::shared_ptr<Avila::Services::RelayService> m_relayService;
-    std::shared_ptr<Avila::Services::FriendService> m_friendService;
+    std::shared_ptr<NeoNect::Services::AuthService> m_authService;
+    std::shared_ptr<NeoNect::Services::DeviceService> m_deviceService;
+    std::shared_ptr<NeoNect::Services::RelayService> m_relayService;
+    std::shared_ptr<NeoNect::Services::FriendService> m_friendService;
 
     bool m_isLoading{false};
 };

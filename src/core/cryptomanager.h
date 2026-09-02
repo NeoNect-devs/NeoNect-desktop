@@ -11,12 +11,12 @@ class CryptoManager : public QObject {
     Q_OBJECT
 public:
     static CryptoManager* instance();
-    explicit CryptoManager(std::shared_ptr<Avila::Crypto::ICryptoService> cryptoService = nullptr,
-                           std::shared_ptr<Avila::Storage::ISettingsRepository> settingsRepo = nullptr,
+    explicit CryptoManager(std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService = nullptr,
+                           std::shared_ptr<NeoNect::Storage::ISettingsRepository> settingsRepo = nullptr,
                            QObject *parent = nullptr);
     ~CryptoManager() override = default;
 
-    std::shared_ptr<Avila::Crypto::ICryptoService> service() const { return m_cryptoService; }
+    std::shared_ptr<NeoNect::Crypto::ICryptoService> service() const { return m_cryptoService; }
 
     Q_INVOKABLE void setProfile(const QString &profileName);
     Q_INVOKABLE QString getDeviceId();
@@ -31,6 +31,6 @@ signals:
 private:
     void ensureDeviceCredentials();
 
-    std::shared_ptr<Avila::Crypto::ICryptoService> m_cryptoService;
-    std::shared_ptr<Avila::Storage::ISettingsRepository> m_settingsRepo;
+    std::shared_ptr<NeoNect::Crypto::ICryptoService> m_cryptoService;
+    std::shared_ptr<NeoNect::Storage::ISettingsRepository> m_settingsRepo;
 };

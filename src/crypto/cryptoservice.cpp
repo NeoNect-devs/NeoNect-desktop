@@ -5,7 +5,7 @@
 #include <openssl/evp.h>
 #include <mutex>
 
-namespace Avila {
+namespace NeoNect {
 namespace Crypto {
 
 CryptoService::CryptoService() {
@@ -209,4 +209,4 @@ QByteArray CryptoService::decryptAesGcm(const QByteArray &cipherWithTag, const Q
 }
 
 } // namespace Crypto
-} // namespace Avila
+} // namespace NeoNect

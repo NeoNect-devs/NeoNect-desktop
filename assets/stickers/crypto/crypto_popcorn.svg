@@ -14,6 +14,6 @@
   <circle cx="60" cy="28" r="8" fill="#FFF59D"/>
   <!-- Text -->
   <rect x="42" y="72" width="36" height="16" rx="4" fill="#212121"/>
-  <text x="60" y="84" font-family="Segoe UI, Impact" font-size="10" font-weight="900" fill="#FFEB3B" text-anchor="middle">AVILA</text>
+  <text x="60" y="84" font-family="Segoe UI, Impact" font-size="10" font-weight="900" fill="#FFEB3B" text-anchor="middle">NEONECT</text>
   <text x="60" y="116" font-family="Segoe UI, Arial" font-size="10" font-weight="bold" fill="#FF7043" text-anchor="middle">CHILL & WATCH 🍿</text>
 </svg>

@@ -6,7 +6,7 @@
 #include <QNetworkReply>
 #include <functional>
 
-namespace Avila {
+namespace NeoNect {
 namespace Transport {
 
 using HttpResponseCallback = std::function<void(int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errorString)>;
@@ -27,4 +27,4 @@ public:
 };
 
 } // namespace Transport
-} // namespace Avila
+} // namespace NeoNect

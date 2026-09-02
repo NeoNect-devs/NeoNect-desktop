@@ -11,6 +11,6 @@ int main(int argc, char *argv[]) {
     qputenv("QT_MEDIA_BACKEND", "ffmpeg");
 #endif
 
-    Avila::Application app(argc, argv);
+    NeoNect::Application app(argc, argv);
     return app.run();
 }

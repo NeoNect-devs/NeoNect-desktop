@@ -83,7 +83,7 @@ void TestModels::testRichMessageInsertion() {
     QVariantMap stickerMsg;
     stickerMsg["messageId"] = "stk_001";
     stickerMsg["messageType"] = "sticker";
-    stickerMsg["mediaUrl"] = "qrc:/qt/qml/Avila/assets/stickers/duck/duck_happy.svg";
+    stickerMsg["mediaUrl"] = "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_happy.svg";
     stickerMsg["fileName"] = "Happy";
     stickerMsg["fromMe"] = true;
     stickerMsg["senderName"] = "Me";
@@ -92,7 +92,7 @@ void TestModels::testRichMessageInsertion() {
 
     QCOMPARE(model.rowCount(), 1);
     QCOMPARE(model.data(model.index(0), ChatMessageModel::MessageTypeRole).toString(), "sticker");
-    QCOMPARE(model.data(model.index(0), ChatMessageModel::MediaUrlRole).toString(), "qrc:/qt/qml/Avila/assets/stickers/duck/duck_happy.svg");
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::MediaUrlRole).toString(), "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_happy.svg");
     QCOMPARE(model.data(model.index(0), ChatMessageModel::MessageIdRole).toString(), "stk_001");
 
     // 2. Voice message

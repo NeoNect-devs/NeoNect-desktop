@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Item {
     id: notifRoot
@@ -28,7 +28,7 @@ Item {
         var duration = options.duration || 5000;
         var notifObj = {
             notifId: id,
-            title: options.title || "Avila Notification",
+            title: options.title || "NeoNect Notification",
             body: options.body || "",
             type: options.type || "message", // "message", "friend_request", "security", "system", "success", "error"
             avatar: options.avatar || "",
@@ -186,10 +186,10 @@ Item {
                             visible: model.avatar === "" && model.type !== "message"
                             anchors.centerIn: parent
                             source: {
-                                if (model.type === "friend_request") return "qrc:/qt/qml/Avila/assets/icons/friends.svg";
-                                if (model.type === "security") return "qrc:/qt/qml/Avila/assets/icons/alert-circle.svg";
-                                if (model.type === "success") return "qrc:/qt/qml/Avila/assets/icons/check.svg";
-                                return "qrc:/qt/qml/Avila/assets/icons/alert-circle.svg";
+                                if (model.type === "friend_request") return "qrc:/qt/qml/NeoNect/assets/icons/friends.svg";
+                                if (model.type === "security") return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
+                                if (model.type === "success") return "qrc:/qt/qml/NeoNect/assets/icons/check.svg";
+                                return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
                             }
                             width: 18; height: 18
                             color: {

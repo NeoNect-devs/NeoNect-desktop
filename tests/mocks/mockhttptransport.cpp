@@ -9,11 +9,11 @@
 #include <QDir>
 #include <QSaveFile>
 
-namespace Avila {
+namespace NeoNect {
 namespace Testing {
 
 static QString sharedStateFilePath() {
-    return QDir::tempPath() + "/avila_mock_shared_state.json";
+    return QDir::tempPath() + "/neonect_mock_shared_state.json";
 }
 
 MockHttpTransport::MockHttpTransport(bool enableSharedStorage, bool enableEchoBot, QObject *parent)
@@ -588,4 +588,4 @@ void MockHttpTransport::handleRelayAck(const QByteArray &data, Transport::HttpRe
 }
 
 } // namespace Testing
-} // namespace Avila
+} // namespace NeoNect

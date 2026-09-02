@@ -4,10 +4,10 @@
 #include "../src/crypto/cryptoservice.h"
 
 void TestCrypto::testEncryptionDecryptionRoundtrip() {
-    Avila::Crypto::CryptoService crypto;
+    NeoNect::Crypto::CryptoService crypto;
     crypto.deriveKeyFromPassphrase("test_secure_passphrase_123");
 
-    QByteArray plain = "Hello, this is a secret E2EE message over Avila!";
+    QByteArray plain = "Hello, this is a secret E2EE message over NeoNect!";
     auto payload = crypto.encryptAesGcm(plain);
 
     QVERIFY(payload.success);
@@ -20,21 +20,21 @@ void TestCrypto::testEncryptionDecryptionRoundtrip() {
 }
 
 void TestCrypto::testKeyDerivation() {
-    Avila::Crypto::CryptoService crypto1;
-    Avila::Crypto::CryptoService crypto2;
+    NeoNect::Crypto::CryptoService crypto1;
+    NeoNect::Crypto::CryptoService crypto2;
 
     QVERIFY(crypto1.deriveKeyFromPassphrase("my_secret_vault_pass"));
     QVERIFY(crypto2.deriveKeyFromPassphrase("my_secret_vault_pass"));
 
     QCOMPARE(crypto1.getMasterKey(), crypto2.getMasterKey());
 
-    Avila::Crypto::CryptoService crypto3;
+    NeoNect::Crypto::CryptoService crypto3;
     crypto3.deriveKeyFromPassphrase("different_passphrase");
     QVERIFY(crypto1.getMasterKey() != crypto3.getMasterKey());
 }
 
 void TestCrypto::testTamperedCiphertextRejection() {
-    Avila::Crypto::CryptoService crypto;
+    NeoNect::Crypto::CryptoService crypto;
     crypto.deriveKeyFromPassphrase("test_passphrase");
 
     QByteArray plain = "Top secret message content";
@@ -50,7 +50,7 @@ void TestCrypto::testTamperedCiphertextRejection() {
 }
 
 void TestCrypto::testTamperedTagRejection() {
-    Avila::Crypto::CryptoService crypto;
+    NeoNect::Crypto::CryptoService crypto;
     crypto.deriveKeyFromPassphrase("test_passphrase");
 
     QByteArray plain = "Confidential authentication data";
@@ -66,7 +66,7 @@ void TestCrypto::testTamperedTagRejection() {
 }
 
 void TestCrypto::testSecureBufferCleansing() {
-    Avila::Crypto::SecureBuffer buffer(32);
+    NeoNect::Crypto::SecureBuffer buffer(32);
     std::memset(buffer.data(), 0xAA, 32);
 
     QCOMPARE(buffer.size(), 32);
@@ -77,7 +77,7 @@ void TestCrypto::testSecureBufferCleansing() {
 }
 
 void TestCrypto::testRandomBytesGeneration() {
-    Avila::Crypto::CryptoService crypto;
+    NeoNect::Crypto::CryptoService crypto;
     QByteArray bytes1 = crypto.generateRandomBytes(32);
     QByteArray bytes2 = crypto.generateRandomBytes(32);
 

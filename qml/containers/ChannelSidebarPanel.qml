@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 import "../components"
 
 Rectangle {

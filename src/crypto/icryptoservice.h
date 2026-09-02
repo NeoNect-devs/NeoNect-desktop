@@ -4,7 +4,7 @@
 #include <QByteArray>
 #include "../common/types.h"
 
-namespace Avila {
+namespace NeoNect {
 namespace Crypto {
 
 class ICryptoService {
@@ -22,4 +22,4 @@ public:
 };
 
 } // namespace Crypto
-} // namespace Avila
+} // namespace NeoNect

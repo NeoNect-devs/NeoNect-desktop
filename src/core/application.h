@@ -5,7 +5,7 @@
 #include <QString>
 #include <memory>
 
-namespace Avila {
+namespace NeoNect {
 
 /**
  * @brief Application Controller / Bootstrap class managing lifecycle,
@@ -36,4 +36,4 @@ private:
     bool m_isMockMode{false};
 };
 
-} // namespace Avila
+} // namespace NeoNect

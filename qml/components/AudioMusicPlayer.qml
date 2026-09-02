@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
 import QtMultimedia
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: musicRoot
@@ -75,7 +75,7 @@ Rectangle {
 
             IconImage {
                 anchors.centerIn: parent
-                source: musicRoot.isPlaying ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
+                source: musicRoot.isPlaying ? "qrc:/qt/qml/NeoNect/assets/icons/pause.svg" : "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
                 width: 18; height: 18
                 color: musicRoot.fromMe ? ThemeData.accentColor : "#FFFFFF"
             }
@@ -113,7 +113,7 @@ Rectangle {
                 spacing: 6
 
                 IconImage {
-                    source: "qrc:/qt/qml/Avila/assets/icons/music.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/music.svg"
                     width: 14; height: 14
                     color: musicRoot.fromMe ? "#FFFFFF" : ThemeData.accentColor
                 }

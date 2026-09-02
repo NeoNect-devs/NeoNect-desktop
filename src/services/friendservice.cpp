@@ -4,7 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-namespace Avila {
+namespace NeoNect {
 namespace Services {
 
 FriendService::FriendService(std::shared_ptr<Transport::IHttpTransport> transport,
@@ -117,4 +117,4 @@ void FriendService::addFriend(const QString &username) {
 }
 
 } // namespace Services
-} // namespace Avila
+} // namespace NeoNect

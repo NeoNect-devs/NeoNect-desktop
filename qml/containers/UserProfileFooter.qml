@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila 1.0
-import Avila.Core 1.0
+import NeoNect 1.0
+import NeoNect.Core 1.0
 import "../components"
 
 Rectangle {
@@ -203,7 +203,7 @@ Rectangle {
                     color: friendsM.containsMouse ? "#1E201E" : "transparent"
                     IconImage {
                         anchors.centerIn: parent
-                        source: "qrc:/qt/qml/Avila/assets/icons/friends.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/friends.svg"
                         width: 16; height: 16
                         color: friendsM.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
                     }
@@ -215,7 +215,7 @@ Rectangle {
                     color: micM.containsMouse ? "#1E201E" : "transparent"
                     IconImage {
                         anchors.centerIn: parent
-                        source: "qrc:/qt/qml/Avila/assets/icons/mic.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/mic.svg"
                         width: 16; height: 16
                         color: micM.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
                     }
@@ -227,7 +227,7 @@ Rectangle {
                     color: deafenM.containsMouse ? "#1E201E" : "transparent"
                     IconImage {
                         anchors.centerIn: parent
-                        source: "qrc:/qt/qml/Avila/assets/icons/headphones.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/headphones.svg"
                         width: 16; height: 16
                         color: deafenM.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
                     }
@@ -239,7 +239,7 @@ Rectangle {
                     color: setM.containsMouse ? "#1E201E" : "transparent"
                     IconImage {
                         anchors.centerIn: parent
-                        source: "qrc:/qt/qml/Avila/assets/icons/settings.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/settings.svg"
                         width: 16; height: 16
                         color: setM.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
                     }

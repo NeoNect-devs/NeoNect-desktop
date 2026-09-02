@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_AUTOMOC_COMPILER_PREDEFS OFF CACHE BOOL "Disable predefs" FORCE)
 set(CMAKE_AUTOMOC_COMPILER_PREDEFS OFF)
 
-project(Avila VERSION 1.0 LANGUAGES CXX)
+project(NeoNect VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -90,7 +90,7 @@ endif()
 # =====================================================================
 # 4. Define the executable target (C++ ONLY)
 # =====================================================================
-qt_add_executable(AvilaApp
+qt_add_executable(NeoNectApp
     src/main.cpp
     src/themedata.h
 
@@ -125,14 +125,14 @@ qt_add_executable(AvilaApp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
 )
-set_target_properties(AvilaApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
+set_target_properties(NeoNectApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
 
 
 # =====================================================================
 # 5. Process the QML modules (Explicit List with SVG Assets)
 # =====================================================================
-qt_add_qml_module(AvilaApp
-    URI Avila
+qt_add_qml_module(NeoNectApp
+    URI NeoNect
     VERSION 1.0
     QML_FILES
         # --- Root QML Folder ---
@@ -146,13 +146,13 @@ qt_add_qml_module(AvilaApp
         qml/containers/UserProfileFooter.qml
 
         # --- Components Folder ---
-        qml/components/AvilaButton.qml
-        qml/components/AvilaMessageInput.qml
-        qml/components/AvilaTextField.qml
+        qml/components/NeoNectButton.qml
+        qml/components/NeoNectMessageInput.qml
+        qml/components/NeoNectTextField.qml
         qml/components/ChannelListItem.qml
         qml/components/CircularImage.qml
         qml/components/ScrollableArea.qml
-        qml/components/AvilaBrandButton.qml
+        qml/components/NeoNectBrandButton.qml
         qml/components/StickerPickerPanel.qml
         qml/components/VoiceRecorderBar.qml
         qml/components/VoiceMessagePlayer.qml
@@ -237,13 +237,13 @@ qt_add_qml_module(AvilaApp
         assets/stickers/pepe/pepe_cry.svg
 )
 
-set_target_properties(AvilaApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
-target_include_directories(AvilaApp PRIVATE src tests)
+set_target_properties(NeoNectApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
+target_include_directories(NeoNectApp PRIVATE src tests)
 
 # =====================================================================
 # 6. Pipeline Linking Operations
 # =====================================================================
-target_link_libraries(AvilaApp PRIVATE
+target_link_libraries(NeoNectApp PRIVATE
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
@@ -263,26 +263,26 @@ if(WIN32)
     find_program(WINDEPLOYQT_EXEC windeployqt HINTS "C:/Qt/6.11.2/mingw_64/bin")
 
     if(WINDEPLOYQT_EXEC)
-        add_custom_command(TARGET AvilaApp POST_BUILD
+        add_custom_command(TARGET NeoNectApp POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${OPENSSL_BIN_DIR}/libcrypto-4-x64.dll"
                 "${OPENSSL_BIN_DIR}/libssl-4-x64.dll"
                 "${MINGW_BIN_DIR}/libstdc++-6.dll"
                 "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
                 "${MINGW_BIN_DIR}/libwinpthread-1.dll"
-                $<TARGET_FILE_DIR:AvilaApp>
-            COMMAND "${WINDEPLOYQT_EXEC}" --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" "$<TARGET_FILE:AvilaApp>"
+                $<TARGET_FILE_DIR:NeoNectApp>
+            COMMAND "${WINDEPLOYQT_EXEC}" --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" "$<TARGET_FILE:NeoNectApp>"
             COMMENT "➔ Deploying OpenSSL, MinGW C++ runtime, and Qt DLLs via windeployqt..."
         )
     else()
-        add_custom_command(TARGET AvilaApp POST_BUILD
+        add_custom_command(TARGET NeoNectApp POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${OPENSSL_BIN_DIR}/libcrypto-4-x64.dll"
                 "${OPENSSL_BIN_DIR}/libssl-4-x64.dll"
                 "${MINGW_BIN_DIR}/libstdc++-6.dll"
                 "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
                 "${MINGW_BIN_DIR}/libwinpthread-1.dll"
-                $<TARGET_FILE_DIR:AvilaApp>
+                $<TARGET_FILE_DIR:NeoNectApp>
             COMMENT "➔ Deploying OpenSSL and MinGW C++ runtime DLLs..."
         )
     endif()
@@ -293,7 +293,7 @@ endif()
 # =====================================================================
 enable_testing()
 
-add_executable(AvilaTests
+add_executable(NeoNectTests
     tests/main_test.cpp
     tests/test_crypto.h tests/test_crypto.cpp
     tests/test_storage.h tests/test_storage.cpp
@@ -331,9 +331,9 @@ add_executable(AvilaTests
     src/core/audiomanager.h src/core/audiomanager.cpp
 )
 
-set_target_properties(AvilaTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
-target_include_directories(AvilaTests PRIVATE src tests)
-target_link_libraries(AvilaTests PRIVATE
+set_target_properties(NeoNectTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
+target_include_directories(NeoNectTests PRIVATE src tests)
+target_link_libraries(NeoNectTests PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Network
@@ -345,15 +345,15 @@ target_link_libraries(AvilaTests PRIVATE
 )
 
 if(WIN32)
-    add_custom_command(TARGET AvilaTests POST_BUILD
+    add_custom_command(TARGET NeoNectTests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "C:/Qt/6.11.2/mingw_64/bin/Qt6Test.dll"
-            $<TARGET_FILE_DIR:AvilaTests>
+            $<TARGET_FILE_DIR:NeoNectTests>
         COMMENT "➔ Deploying Qt6Test.dll for test runner..."
     )
 endif()
 
-add_test(NAME AvilaTestSuite COMMAND AvilaTests)
+add_test(NAME NeoNectTestSuite COMMAND NeoNectTests)
 if(WIN32)
-    set_tests_properties(AvilaTestSuite PROPERTIES ENVIRONMENT "PATH=C:/Qt/6.11.2/mingw_64/bin;C:/Qt/Tools/mingw1310_64/bin;${OPENSSL_ROOT_DIR}/bin;$ENV{PATH}")
+    set_tests_properties(NeoNectTestSuite PROPERTIES ENVIRONMENT "PATH=C:/Qt/6.11.2/mingw_64/bin;C:/Qt/Tools/mingw1310_64/bin;${OPENSSL_ROOT_DIR}/bin;$ENV{PATH}")
 endif()

@@ -8,7 +8,7 @@
 #include <QUuid>
 #include <QDebug>
 
-namespace Avila {
+namespace NeoNect {
 namespace Services {
 
 RelayService::RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
@@ -263,4 +263,4 @@ void RelayService::acknowledgeMessage(qint64 messageId) {
 }
 
 } // namespace Services
-} // namespace Avila
+} // namespace NeoNect

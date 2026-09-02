@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
 import QtMultimedia
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: lightboxRoot
@@ -195,7 +195,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: lightboxRoot.isWindowFullScreen ? "qrc:/qt/qml/Avila/assets/icons/minimize.svg" : "qrc:/qt/qml/Avila/assets/icons/maximize.svg"
+                    source: lightboxRoot.isWindowFullScreen ? "qrc:/qt/qml/NeoNect/assets/icons/minimize.svg" : "qrc:/qt/qml/NeoNect/assets/icons/maximize.svg"
                     width: 16; height: 16
                     color: "#FFFFFF"
                 }
@@ -217,7 +217,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/download.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/download.svg"
                     width: 18; height: 18
                     color: "#FFFFFF"
                 }
@@ -320,7 +320,7 @@ Rectangle {
             IconImage {
                 anchors.centerIn: parent
                 anchors.horizontalCenterOffset: 3
-                source: "qrc:/qt/qml/Avila/assets/icons/play.svg"
+                source: "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
                 width: 28; height: 28
                 color: "#FFFFFF"
             }
@@ -353,7 +353,7 @@ Rectangle {
 
                 IconImage {
                     Layout.alignment: Qt.AlignHCenter
-                    source: "qrc:/qt/qml/Avila/assets/icons/alert-circle.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg"
                     width: 40; height: 40
                     color: "#F1C40F"
                 }
@@ -386,7 +386,7 @@ Rectangle {
                         spacing: 8
 
                         IconImage {
-                            source: "qrc:/qt/qml/Avila/assets/icons/play.svg"
+                            source: "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
                             width: 14; height: 14
                             color: "#FFFFFF"
                         }
@@ -436,7 +436,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: lightboxRoot.isPlaying ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
+                    source: lightboxRoot.isPlaying ? "qrc:/qt/qml/NeoNect/assets/icons/pause.svg" : "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
                     width: 18; height: 18
                     color: "#FFFFFF"
                 }
@@ -512,7 +512,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: lightboxRoot.isWindowFullScreen ? "qrc:/qt/qml/Avila/assets/icons/minimize.svg" : "qrc:/qt/qml/Avila/assets/icons/maximize.svg"
+                    source: lightboxRoot.isWindowFullScreen ? "qrc:/qt/qml/NeoNect/assets/icons/minimize.svg" : "qrc:/qt/qml/NeoNect/assets/icons/maximize.svg"
                     width: 18; height: 18
                     color: "#FFFFFF"
                 }

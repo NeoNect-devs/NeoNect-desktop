@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
 import QtQuick.Dialogs
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: inputRoot
@@ -184,12 +184,12 @@ Rectangle {
                     IconImage {
                         anchors.centerIn: parent
                         source: {
-                            if (!inputRoot.draftAttachment) return "qrc:/qt/qml/Avila/assets/icons/file.svg";
+                            if (!inputRoot.draftAttachment) return "qrc:/qt/qml/NeoNect/assets/icons/file.svg";
                             var t = inputRoot.draftAttachment.type;
-                            if (t === "image") return "qrc:/qt/qml/Avila/assets/icons/image.svg";
-                            if (t === "video") return "qrc:/qt/qml/Avila/assets/icons/video.svg";
-                            if (t === "audio") return "qrc:/qt/qml/Avila/assets/icons/music.svg";
-                            return "qrc:/qt/qml/Avila/assets/icons/file.svg";
+                            if (t === "image") return "qrc:/qt/qml/NeoNect/assets/icons/image.svg";
+                            if (t === "video") return "qrc:/qt/qml/NeoNect/assets/icons/video.svg";
+                            if (t === "audio") return "qrc:/qt/qml/NeoNect/assets/icons/music.svg";
+                            return "qrc:/qt/qml/NeoNect/assets/icons/file.svg";
                         }
                         width: 18; height: 18
                         color: "#FFFFFF"
@@ -257,7 +257,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/plus-circle.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/plus-circle.svg"
                     width: 20; height: 20
                     color: attachMouse.containsMouse ? ThemeData.accentColor : ThemeData.textSecondary
                 }
@@ -348,7 +348,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/sticker.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/sticker.svg"
                     width: 20; height: 20
                     color: inputRoot.showStickerPicker ? ThemeData.accentColor : (stickerMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary)
                 }
@@ -371,7 +371,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/smile.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/smile.svg"
                     width: 20; height: 20
                     color: emojiMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
                 }
@@ -397,7 +397,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/mic.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/mic.svg"
                     width: 18; height: 18
                     color: micMouse.containsMouse ? ThemeData.accentColor : ThemeData.textSecondary
                 }
@@ -424,7 +424,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/send.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/send.svg"
                     width: 18; height: 18
                     color: "#FFFFFF"
                 }

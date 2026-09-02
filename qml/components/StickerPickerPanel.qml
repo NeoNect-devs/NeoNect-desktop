@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: pickerRoot
@@ -33,34 +33,34 @@ Rectangle {
 
     // Sticker Packs Data
     readonly property var duckStickers: [
-        { name: "Happy", url: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_happy.svg", pack: "duck" },
-        { name: "Love", url: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_love.svg", pack: "duck" },
-        { name: "Cool", url: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_cool.svg", pack: "duck" },
-        { name: "Party", url: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_party.svg", pack: "duck" },
-        { name: "Thinking", url: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_thinking.svg", pack: "duck" },
-        { name: "Angry", url: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_angry.svg", pack: "duck" },
-        { name: "Sad", url: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_sad.svg", pack: "duck" },
-        { name: "Thumbs Up", url: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_thumbsup.svg", pack: "duck" }
+        { name: "Happy", url: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_happy.svg", pack: "duck" },
+        { name: "Love", url: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_love.svg", pack: "duck" },
+        { name: "Cool", url: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_cool.svg", pack: "duck" },
+        { name: "Party", url: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_party.svg", pack: "duck" },
+        { name: "Thinking", url: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_thinking.svg", pack: "duck" },
+        { name: "Angry", url: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_angry.svg", pack: "duck" },
+        { name: "Sad", url: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_sad.svg", pack: "duck" },
+        { name: "Thumbs Up", url: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_thumbsup.svg", pack: "duck" }
     ]
 
     readonly property var cryptoStickers: [
-        { name: "Rocket Moon", url: "qrc:/qt/qml/Avila/assets/stickers/crypto/crypto_rocket.svg", pack: "crypto" },
-        { name: "Diamond Hands", url: "qrc:/qt/qml/Avila/assets/stickers/crypto/crypto_hodl.svg", pack: "crypto" },
-        { name: "Fire Lit", url: "qrc:/qt/qml/Avila/assets/stickers/crypto/crypto_fire.svg", pack: "crypto" },
-        { name: "Pure Gem", url: "qrc:/qt/qml/Avila/assets/stickers/crypto/crypto_diamond.svg", pack: "crypto" },
-        { name: "Popcorn", url: "qrc:/qt/qml/Avila/assets/stickers/crypto/crypto_popcorn.svg", pack: "crypto" },
-        { name: "Cheers", url: "qrc:/qt/qml/Avila/assets/stickers/crypto/crypto_cheers.svg", pack: "crypto" },
-        { name: "Giga Brain", url: "qrc:/qt/qml/Avila/assets/stickers/crypto/crypto_brain.svg", pack: "crypto" },
-        { name: "Hacker", url: "qrc:/qt/qml/Avila/assets/stickers/crypto/crypto_hacker.svg", pack: "crypto" }
+        { name: "Rocket Moon", url: "qrc:/qt/qml/NeoNect/assets/stickers/crypto/crypto_rocket.svg", pack: "crypto" },
+        { name: "Diamond Hands", url: "qrc:/qt/qml/NeoNect/assets/stickers/crypto/crypto_hodl.svg", pack: "crypto" },
+        { name: "Fire Lit", url: "qrc:/qt/qml/NeoNect/assets/stickers/crypto/crypto_fire.svg", pack: "crypto" },
+        { name: "Pure Gem", url: "qrc:/qt/qml/NeoNect/assets/stickers/crypto/crypto_diamond.svg", pack: "crypto" },
+        { name: "Popcorn", url: "qrc:/qt/qml/NeoNect/assets/stickers/crypto/crypto_popcorn.svg", pack: "crypto" },
+        { name: "Cheers", url: "qrc:/qt/qml/NeoNect/assets/stickers/crypto/crypto_cheers.svg", pack: "crypto" },
+        { name: "Giga Brain", url: "qrc:/qt/qml/NeoNect/assets/stickers/crypto/crypto_brain.svg", pack: "crypto" },
+        { name: "Hacker", url: "qrc:/qt/qml/NeoNect/assets/stickers/crypto/crypto_hacker.svg", pack: "crypto" }
     ]
 
     readonly property var pepeStickers: [
-        { name: "Coffee", url: "qrc:/qt/qml/Avila/assets/stickers/pepe/pepe_coffee.svg", pack: "pepe" },
-        { name: "Feels Good", url: "qrc:/qt/qml/Avila/assets/stickers/pepe/pepe_ok.svg", pack: "pepe" },
-        { name: "Deal With It", url: "qrc:/qt/qml/Avila/assets/stickers/pepe/pepe_sunglasses.svg", pack: "pepe" },
-        { name: "Smart Move", url: "qrc:/qt/qml/Avila/assets/stickers/pepe/pepe_smart.svg", pack: "pepe" },
-        { name: "Gamer", url: "qrc:/qt/qml/Avila/assets/stickers/pepe/pepe_gamer.svg", pack: "pepe" },
-        { name: "Feels Bad", url: "qrc:/qt/qml/Avila/assets/stickers/pepe/pepe_cry.svg", pack: "pepe" }
+        { name: "Coffee", url: "qrc:/qt/qml/NeoNect/assets/stickers/pepe/pepe_coffee.svg", pack: "pepe" },
+        { name: "Feels Good", url: "qrc:/qt/qml/NeoNect/assets/stickers/pepe/pepe_ok.svg", pack: "pepe" },
+        { name: "Deal With It", url: "qrc:/qt/qml/NeoNect/assets/stickers/pepe/pepe_sunglasses.svg", pack: "pepe" },
+        { name: "Smart Move", url: "qrc:/qt/qml/NeoNect/assets/stickers/pepe/pepe_smart.svg", pack: "pepe" },
+        { name: "Gamer", url: "qrc:/qt/qml/NeoNect/assets/stickers/pepe/pepe_gamer.svg", pack: "pepe" },
+        { name: "Feels Bad", url: "qrc:/qt/qml/NeoNect/assets/stickers/pepe/pepe_cry.svg", pack: "pepe" }
     ]
 
     readonly property var popularEmojis: [

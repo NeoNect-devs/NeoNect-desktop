@@ -4,7 +4,7 @@
 #include "../common/openssl_raii.h"
 #include <shared_mutex>
 
-namespace Avila {
+namespace NeoNect {
 namespace Crypto {
 
 class CryptoService : public ICryptoService {
@@ -27,4 +27,4 @@ private:
 };
 
 } // namespace Crypto
-} // namespace Avila
+} // namespace NeoNect

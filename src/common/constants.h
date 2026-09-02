@@ -3,7 +3,7 @@
 #include <QString>
 #include <cstddef>
 
-namespace Avila {
+namespace NeoNect {
 namespace Constants {
 
     // Network Endpoints
@@ -25,14 +25,14 @@ namespace Constants {
     inline constexpr std::size_t AES_GCM_IV_SIZE = 12;
     inline constexpr std::size_t AES_GCM_TAG_SIZE = 16;
     inline constexpr int PBKDF2_ITERATIONS = 10000;
-    inline constexpr const char* STATIC_SALT_VAULT = "AVILA_STATIC_NETWORK_SALT_VAULT";
+    inline constexpr const char* STATIC_SALT_VAULT = "NEONECT_STATIC_NETWORK_SALT_VAULT";
 
     // Timers & Intervals
     inline constexpr int RELAY_POLL_INTERVAL_MS = 2500;
     inline constexpr qint64 PRESENCE_TIMEOUT_SECS = 30;
 
     // Storage Keys
-    inline constexpr const char* SETTINGS_ROOT_GROUP = "Avila";
+    inline constexpr const char* SETTINGS_ROOT_GROUP = "NeoNect";
     inline constexpr const char* DEFAULT_PROFILE_GROUP = "DesktopClient";
     inline constexpr const char* KEY_SERVER_URL = "server_url";
     inline constexpr const char* KEY_AUTH_TOKEN = "auth_token";
@@ -42,4 +42,4 @@ namespace Constants {
     inline constexpr const char* KEY_FRIENDS = "friends";
 
 } // namespace Constants
-} // namespace Avila
+} // namespace NeoNect

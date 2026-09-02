@@ -11,24 +11,24 @@ NetworkManager* NetworkManager::instance() {
     return &_instance;
 }
 
-NetworkManager::NetworkManager(std::shared_ptr<Avila::Transport::IHttpTransport> transport,
-                               std::shared_ptr<Avila::Storage::ISettingsRepository> storage,
-                               std::shared_ptr<Avila::Crypto::ICryptoService> cryptoService,
+NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
+                               std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
+                               std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService,
                                QObject *parent)
     : QObject(parent),
-      m_storage(storage ? storage : std::make_shared<Avila::Storage::SettingsRepository>()),
+      m_storage(storage ? storage : std::make_shared<NeoNect::Storage::SettingsRepository>()),
       m_cryptoService(cryptoService ? cryptoService : CryptoManager::instance()->service()),
-      m_transport(transport ? transport : std::make_shared<Avila::Transport::HttpTransport>()) {
+      m_transport(transport ? transport : std::make_shared<NeoNect::Transport::HttpTransport>()) {
 
     // Configure transport with initial storage settings
     m_transport->setBaseUrl(m_storage->serverUrl());
     m_transport->setAuthToken(m_storage->authToken());
 
     // Instantiate domain services with dependency injection
-    m_authService = std::make_shared<Avila::Services::AuthService>(m_transport, m_storage, nullptr);
-    m_deviceService = std::make_shared<Avila::Services::DeviceService>(m_transport, m_storage, nullptr);
-    m_relayService = std::make_shared<Avila::Services::RelayService>(m_transport, m_storage, m_cryptoService, nullptr);
-    m_friendService = std::make_shared<Avila::Services::FriendService>(m_transport, m_storage, nullptr);
+    m_authService = std::make_shared<NeoNect::Services::AuthService>(m_transport, m_storage, nullptr);
+    m_deviceService = std::make_shared<NeoNect::Services::DeviceService>(m_transport, m_storage, nullptr);
+    m_relayService = std::make_shared<NeoNect::Services::RelayService>(m_transport, m_storage, m_cryptoService, nullptr);
+    m_friendService = std::make_shared<NeoNect::Services::FriendService>(m_transport, m_storage, nullptr);
 
     setupServiceSignals();
 
@@ -43,16 +43,16 @@ NetworkManager::NetworkManager(std::shared_ptr<Avila::Transport::IHttpTransport>
     }
 }
 
-void NetworkManager::initializeCustom(std::shared_ptr<Avila::Transport::IHttpTransport> transport) {
+void NetworkManager::initializeCustom(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport) {
     if (!transport) return;
     m_transport = transport;
     m_transport->setBaseUrl(m_storage->serverUrl());
     m_transport->setAuthToken(m_storage->authToken());
 
-    m_authService = std::make_shared<Avila::Services::AuthService>(m_transport, m_storage, nullptr);
-    m_deviceService = std::make_shared<Avila::Services::DeviceService>(m_transport, m_storage, nullptr);
-    m_relayService = std::make_shared<Avila::Services::RelayService>(m_transport, m_storage, m_cryptoService, nullptr);
-    m_friendService = std::make_shared<Avila::Services::FriendService>(m_transport, m_storage, nullptr);
+    m_authService = std::make_shared<NeoNect::Services::AuthService>(m_transport, m_storage, nullptr);
+    m_deviceService = std::make_shared<NeoNect::Services::DeviceService>(m_transport, m_storage, nullptr);
+    m_relayService = std::make_shared<NeoNect::Services::RelayService>(m_transport, m_storage, m_cryptoService, nullptr);
+    m_friendService = std::make_shared<NeoNect::Services::FriendService>(m_transport, m_storage, nullptr);
 
     setupServiceSignals();
     m_friendService->loadFriends();
@@ -65,22 +65,22 @@ void NetworkManager::initializeCustom(std::shared_ptr<Avila::Transport::IHttpTra
 
 void NetworkManager::setupServiceSignals() {
     // Auth Service Connections
-    connect(m_authService.get(), &Avila::Services::AuthService::verificationResult, this, [this](bool success, const QString &message) {
+    connect(m_authService.get(), &NeoNect::Services::AuthService::verificationResult, this, [this](bool success, const QString &message) {
         setIsLoading(false);
         emit serverUrlChanged();
         emit verificationResult(success, message);
     });
 
-    connect(m_authService.get(), &Avila::Services::AuthService::availabilityResult, this, [this](const QString &username, bool available, const QString &error) {
+    connect(m_authService.get(), &NeoNect::Services::AuthService::availabilityResult, this, [this](const QString &username, bool available, const QString &error) {
         emit availabilityResult(username, available, error);
     });
 
-    connect(m_authService.get(), &Avila::Services::AuthService::registrationResult, this, [this](bool success, const QString &message) {
+    connect(m_authService.get(), &NeoNect::Services::AuthService::registrationResult, this, [this](bool success, const QString &message) {
         setIsLoading(false);
         emit registrationResult(success, message);
     });
 
-    connect(m_authService.get(), &Avila::Services::AuthService::loginResult, this, [this](bool success, const QString &tokenOrError) {
+    connect(m_authService.get(), &NeoNect::Services::AuthService::loginResult, this, [this](bool success, const QString &tokenOrError) {
         setIsLoading(false);
         if (success) {
             emit tokenChanged();
@@ -91,7 +91,7 @@ void NetworkManager::setupServiceSignals() {
         emit loginResult(success, tokenOrError);
     });
 
-    connect(m_authService.get(), &Avila::Services::AuthService::userProfileFetched, this, [this](bool success, const QString &username) {
+    connect(m_authService.get(), &NeoNect::Services::AuthService::userProfileFetched, this, [this](bool success, const QString &username) {
         if (success) {
             emit currentUsernameChanged();
         }
@@ -99,22 +99,22 @@ void NetworkManager::setupServiceSignals() {
     });
 
     // Device Service Connections
-    connect(m_deviceService.get(), &Avila::Services::DeviceService::deviceRegistrationResult, this, [this](bool success, const QString &message) {
+    connect(m_deviceService.get(), &NeoNect::Services::DeviceService::deviceRegistrationResult, this, [this](bool success, const QString &message) {
         m_relayService->startPolling();
         emit deviceRegistrationResult(success, message);
     });
 
-    connect(m_deviceService.get(), &Avila::Services::DeviceService::deviceKeyFetched, this, &NetworkManager::deviceKeyFetched);
+    connect(m_deviceService.get(), &NeoNect::Services::DeviceService::deviceKeyFetched, this, &NetworkManager::deviceKeyFetched);
 
     // Relay Service Connections
-    connect(m_relayService.get(), &Avila::Services::RelayService::incomingRelayMessageReceived, this, [this](const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp) {
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::incomingRelayMessageReceived, this, [this](const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp) {
         if (fromUsername.toLower() != currentUsername().toLower() && fromUsername != "Anonymous") {
             m_friendService->updateLastSeen(fromUsername);
         }
         emit incomingRelayMessageReceived(fromUsername, target, text, timestamp);
     });
 
-    connect(m_relayService.get(), &Avila::Services::RelayService::incomingRichMessageReceived, this, [this](const QVariantMap &messageData) {
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::incomingRichMessageReceived, this, [this](const QVariantMap &messageData) {
         QString fromUsername = messageData.value("sender").toString();
         if (fromUsername.toLower() != currentUsername().toLower() && fromUsername != "Anonymous") {
             m_friendService->updateLastSeen(fromUsername);
@@ -122,30 +122,30 @@ void NetworkManager::setupServiceSignals() {
         emit incomingRichMessageReceived(messageData);
     });
 
-    connect(m_relayService.get(), &Avila::Services::RelayService::secureMessageTransmitted, this, [this](const QString &targetUser, bool success) {
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::secureMessageTransmitted, this, [this](const QString &targetUser, bool success) {
         if (success) {
             m_friendService->updateLastSeen(targetUser);
         }
         emit secureMessageTransmitted(targetUser, success);
     });
 
-    connect(m_relayService.get(), &Avila::Services::RelayService::messageTransmissionStatus, this, &NetworkManager::messageTransmissionStatus);
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::messageTransmissionStatus, this, &NetworkManager::messageTransmissionStatus);
 
-    connect(m_relayService.get(), &Avila::Services::RelayService::sessionUnauthorized, this, [this](const QString &message) {
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::sessionUnauthorized, this, [this](const QString &message) {
         emit tokenChanged();
         emit currentUsernameChanged();
         emit loginResult(false, message);
     });
 
-    connect(m_relayService.get(), &Avila::Services::RelayService::deviceRegistrationRequested, this, &NetworkManager::autoRegisterDevice);
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::deviceRegistrationRequested, this, &NetworkManager::autoRegisterDevice);
 
     // Friend Service Connections
-    connect(m_friendService.get(), &Avila::Services::FriendService::friendsListChanged, this, [this](const QStringList&) {
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::friendsListChanged, this, [this](const QStringList&) {
         emit friendsChanged();
     });
 
-    connect(m_friendService.get(), &Avila::Services::FriendService::addFriendResult, this, &NetworkManager::addFriendResult);
-    connect(m_friendService.get(), &Avila::Services::FriendService::friendStatusUpdated, this, &NetworkManager::friendStatusUpdated);
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::addFriendResult, this, &NetworkManager::addFriendResult);
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::friendStatusUpdated, this, &NetworkManager::friendStatusUpdated);
 }
 
 void NetworkManager::autoRegisterDevice() {

@@ -5,7 +5,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-namespace Avila {
+namespace NeoNect {
 namespace Services {
 
 AuthService::AuthService(std::shared_ptr<Transport::IHttpTransport> transport,
@@ -169,4 +169,4 @@ void AuthService::fetchUserProfile() {
 }
 
 } // namespace Services
-} // namespace Avila
+} // namespace NeoNect

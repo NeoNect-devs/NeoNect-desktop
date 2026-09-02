@@ -8,7 +8,7 @@
 #include <mutex>
 #include <vector>
 
-namespace Avila {
+namespace NeoNect {
 namespace Testing {
 
 struct MockQueuedMessage {
@@ -74,7 +74,7 @@ private:
     void handleRelayAck(const QByteArray &data, Transport::HttpResponseCallback callback);
 
     mutable std::recursive_mutex m_mutex;
-    QString m_baseUrl{"http://mock.avila.local"};
+    QString m_baseUrl{"http://mock.neonect.local"};
     QString m_activeToken;
     bool m_enableSharedStorage{false};
     bool m_enableEchoBot{false};
@@ -89,4 +89,4 @@ private:
 };
 
 } // namespace Testing
-} // namespace Avila
+} // namespace NeoNect

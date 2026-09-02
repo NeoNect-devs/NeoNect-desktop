@@ -3,3 +3,4 @@ build/
 Backend/
 backend/
 *.log
+.qmlls.ini

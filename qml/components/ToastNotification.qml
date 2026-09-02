@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: toastRoot
@@ -66,7 +66,7 @@ Rectangle {
 
             IconImage {
                 anchors.centerIn: parent
-                source: type === "error" ? "qrc:/qt/qml/Avila/assets/icons/alert-circle.svg" : "qrc:/qt/qml/Avila/assets/icons/refresh.svg"
+                source: type === "error" ? "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg" : "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
                 width: 16; height: 16
                 color: type === "error" ? "#E53935" : (type === "warning" ? "#FFA000" : (type === "success" ? "#23A55A" : "#0A84FF"))
             }

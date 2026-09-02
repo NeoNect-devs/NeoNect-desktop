@@ -14,7 +14,7 @@
 #include <iostream>
 #include <fstream>
 
-namespace Avila {
+namespace NeoNect {
 
 static void customLogHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
     Q_UNUSED(type);
@@ -38,7 +38,7 @@ Application::Application(int &argc, char **argv) {
 #endif
 
     m_app = std::make_unique<QGuiApplication>(argc, argv);
-    QGuiApplication::setApplicationName("Avila");
+    QGuiApplication::setApplicationName("NeoNect");
     QGuiApplication::setApplicationVersion("1.0");
     QGuiApplication::setQuitOnLastWindowClosed(true);
 
@@ -54,7 +54,7 @@ void Application::setupLogging() {
 
 void Application::parseCommandLine() {
     QCommandLineParser parser;
-    parser.setApplicationDescription("Avila Secure E2EE Desktop Client");
+    parser.setApplicationDescription("NeoNect Secure E2EE Desktop Client");
     parser.addHelpOption();
     parser.addVersionOption();
 
@@ -95,10 +95,10 @@ void Application::registerQmlTypes() {
     m_engine->rootContext()->setContextProperty("ThemeData", ThemeData::instance());
     m_engine->rootContext()->setContextProperty("appProfile", m_profile);
 
-    qmlRegisterSingletonInstance("Avila.Core", 1, 0, "NetworkManager", NetworkManager::instance());
-    qmlRegisterSingletonInstance("Avila.Core", 1, 0, "CryptoManager", CryptoManager::instance());
-    qmlRegisterSingletonInstance("Avila.Core", 1, 0, "AudioManager", AudioManager::instance());
-    qmlRegisterType<ChatMessageModel>("Avila.Core", 1, 0, "ChatMessageModel");
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NetworkManager", NetworkManager::instance());
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "CryptoManager", CryptoManager::instance());
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "AudioManager", AudioManager::instance());
+    qmlRegisterType<ChatMessageModel>("NeoNect.Core", 1, 0, "ChatMessageModel");
 }
 
 bool Application::loadMainUi() {
@@ -113,7 +113,7 @@ bool Application::loadMainUi() {
                      },
                      Qt::QueuedConnection);
 
-    m_engine->loadFromModule("Avila", "Main");
+    m_engine->loadFromModule("NeoNect", "Main");
 
     if (m_engine->rootObjects().isEmpty()) {
         std::cerr << "CRITICAL: engine.rootObjects() is empty!" << std::endl;
@@ -129,4 +129,4 @@ int Application::run() {
     return m_app->exec();
 }
 
-} // namespace Avila
+} // namespace NeoNect

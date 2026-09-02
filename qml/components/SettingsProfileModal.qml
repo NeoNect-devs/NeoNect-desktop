@@ -3,7 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: modalRoot
@@ -19,8 +19,8 @@ Rectangle {
 
     property string currentTab: "profile" // "profile", "appearance", "notifications", "privacy", "logout"
     property string currentStatus: "online"
-    property string userBio: "Decentralized E2EE Avila Communicator"
-    property string customDisplayName: (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.replace(/^\w/, c => c.toUpperCase()) : "Avila User"
+    property string userBio: "Decentralized E2EE NeoNect Communicator"
+    property string customDisplayName: (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.replace(/^\w/, c => c.toUpperCase()) : "NeoNect User"
     property int selectedThemeIndex: 0
     property string selectedAccentColor: "#0A84FF"
 
@@ -84,7 +84,7 @@ Rectangle {
                     }
 
                     Text {
-                        text: "Avila Settings & Profile"
+                        text: "NeoNect Settings & Profile"
                         color: "#FFFFFF"
                         font.family: "Segoe UI"
                         font.pixelSize: 15
@@ -189,25 +189,25 @@ Rectangle {
                         NavTabButton {
                             tabId: "profile"
                             tabTitle: "My Profile"
-                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/user.svg"
+                            tabIconSource: "qrc:/qt/qml/NeoNect/assets/icons/user.svg"
                         }
 
                         NavTabButton {
                             tabId: "appearance"
                             tabTitle: "Appearance"
-                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/palette.svg"
+                            tabIconSource: "qrc:/qt/qml/NeoNect/assets/icons/palette.svg"
                         }
 
                         NavTabButton {
                             tabId: "notifications"
                             tabTitle: "Notifications"
-                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/bell.svg"
+                            tabIconSource: "qrc:/qt/qml/NeoNect/assets/icons/bell.svg"
                         }
 
                         NavTabButton {
                             tabId: "privacy"
                             tabTitle: "Privacy & E2EE"
-                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/lock.svg"
+                            tabIconSource: "qrc:/qt/qml/NeoNect/assets/icons/lock.svg"
                         }
 
                         Item {
@@ -229,7 +229,7 @@ Rectangle {
                         NavTabButton {
                             tabId: "logout"
                             tabTitle: "Log Out"
-                            tabIconSource: "qrc:/qt/qml/Avila/assets/icons/log-out.svg"
+                            tabIconSource: "qrc:/qt/qml/NeoNect/assets/icons/log-out.svg"
                             isDanger: true
                         }
                     }
@@ -698,7 +698,7 @@ Rectangle {
                                 font.pixelSize: 12
                             }
 
-                            AvilaButton {
+                            NeoNectButton {
                                 text: "⚡ Send Live Test Notification"
                                 highlighted: true
                                 Layout.preferredWidth: 240
@@ -737,7 +737,7 @@ Rectangle {
                                     spacing: 10
 
                                     IconImage {
-                                        source: "qrc:/qt/qml/Avila/assets/icons/shield.svg"
+                                        source: "qrc:/qt/qml/NeoNect/assets/icons/shield.svg"
                                         width: 24; height: 24
                                         color: "#23A55A"
                                         Layout.alignment: Qt.AlignVCenter
@@ -798,7 +798,7 @@ Rectangle {
                             spacing: 16
 
                             Text {
-                                text: "Log Out of Avila"
+                                text: "Log Out of NeoNect"
                                 color: "#FF5252"
                                 font.family: "Segoe UI"
                                 font.pixelSize: 16
@@ -818,7 +818,7 @@ Rectangle {
                                 spacing: 12
                                 Layout.topMargin: 12
 
-                                AvilaButton {
+                                NeoNectButton {
                                     text: "Cancel"
                                     highlighted: false
                                     Layout.preferredWidth: 120

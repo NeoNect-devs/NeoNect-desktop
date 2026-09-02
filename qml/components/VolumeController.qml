@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Item {
     id: volControlRoot
@@ -41,7 +41,7 @@ Item {
 
             IconImage {
                 anchors.centerIn: parent
-                source: (volControlRoot.isMuted || volControlRoot.volume === 0) ? "qrc:/qt/qml/Avila/assets/icons/volume-x.svg" : "qrc:/qt/qml/Avila/assets/icons/volume-2.svg"
+                source: (volControlRoot.isMuted || volControlRoot.volume === 0) ? "qrc:/qt/qml/NeoNect/assets/icons/volume-x.svg" : "qrc:/qt/qml/NeoNect/assets/icons/volume-2.svg"
                 width: volControlRoot.iconSize
                 height: volControlRoot.iconSize
                 color: (volControlRoot.isMuted || volControlRoot.volume === 0) ? Qt.rgba(255, 255, 255, 0.6) : volControlRoot.textColor

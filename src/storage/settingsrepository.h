@@ -5,7 +5,7 @@
 #include <memory>
 #include <mutex>
 
-namespace Avila {
+namespace NeoNect {
 namespace Storage {
 
 class SettingsRepository : public ISettingsRepository {
@@ -44,4 +44,4 @@ private:
 };
 
 } // namespace Storage
-} // namespace Avila
+} // namespace NeoNect

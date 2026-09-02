@@ -6,7 +6,7 @@
 #include <openssl/bio.h>
 #include <openssl/crypto.h>
 
-namespace Avila {
+namespace NeoNect {
 namespace Crypto {
 
 // Custom deleters for OpenSSL C-style handles
@@ -94,4 +94,4 @@ private:
 };
 
 } // namespace Crypto
-} // namespace Avila
+} // namespace NeoNect

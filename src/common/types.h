@@ -6,7 +6,7 @@
 #include <optional>
 #include <functional>
 
-namespace Avila {
+namespace NeoNect {
 
 enum class ConnectionStatus {
     Disconnected,
@@ -69,4 +69,4 @@ struct ServiceResult {
 
 using VoidResult = ServiceResult<std::monostate>;
 
-} // namespace Avila
+} // namespace NeoNect

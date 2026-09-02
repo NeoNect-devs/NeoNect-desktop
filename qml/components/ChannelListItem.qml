@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: itemRoot
@@ -51,7 +51,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/friends.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/friends.svg"
                     width: 18; height: 18
                     color: itemRoot.isActive ? "#0A84FF" : (mouseArea.containsMouse ? "#FFFFFF" : "#949BA4")
                 }
@@ -66,7 +66,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/bookmark.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/bookmark.svg"
                     width: 18; height: 18
                     color: itemRoot.isActive ? "#00E5FF" : (mouseArea.containsMouse ? "#00E5FF" : "#80848E")
                 }
@@ -76,7 +76,7 @@ Rectangle {
             IconImage {
                 visible: !itemRoot.isSpecialNav && !itemRoot.isDM
                 anchors.centerIn: parent
-                source: "qrc:/qt/qml/Avila/assets/icons/hash.svg"
+                source: "qrc:/qt/qml/NeoNect/assets/icons/hash.svg"
                 width: 18; height: 18
                 color: itemRoot.isActive ? ThemeData.textPrimary : ThemeData.textSecondary
             }

@@ -1,7 +1,7 @@
-// qml/components/AvilaBrandButton.qml
+// qml/components/NeoNectBrandButton.qml
 import QtQuick
 import QtQuick.Layouts
-import Avila 1.0
+import NeoNect 1.0
 
 Item {
     id: brandRoot
@@ -98,15 +98,67 @@ Item {
                 }
             }
 
-            Text {
-                text: "AVILA"
-                color: ThemeData.textPrimary
-                font.family: "Segoe UI"
-                font.pixelSize: 14
-                font.weight: Font.Black
-                font.letterSpacing: 1.8
-                Layout.fillWidth: true
-                elide: Text.ElideRight
+            Row {
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 0
+
+                // "Neo": Clean, high-contrast off-white (#F0F4F8)
+                Text {
+                    text: "Neo"
+                    color: "#F0F4F8"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 14
+                    font.weight: Font.Bold
+                }
+
+                // "Nect": Soft neon cyan (#C6EBF9) with soft cyan glow on hover
+                Item {
+                    width: nectText.implicitWidth
+                    height: nectText.implicitHeight
+
+                    // Soft cyan outer glow layer 1
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Nect"
+                        color: "#C6EBF9"
+                        font.family: nectText.font.family
+                        font.pixelSize: nectText.font.pixelSize
+                        font.weight: nectText.font.weight
+                        opacity: brandRoot.isHovered ? 0.45 : 0.0
+                        scale: 1.12
+
+                        Behavior on opacity {
+                            NumberAnimation { duration: 200 }
+                        }
+                    }
+
+                    // Soft cyan outer glow layer 2
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Nect"
+                        color: "#C6EBF9"
+                        font.family: nectText.font.family
+                        font.pixelSize: nectText.font.pixelSize
+                        font.weight: nectText.font.weight
+                        opacity: brandRoot.isHovered ? 0.25 : 0.0
+                        scale: 1.25
+
+                        Behavior on opacity {
+                            NumberAnimation { duration: 200 }
+                        }
+                    }
+
+                    // Foreground "Nect" text
+                    Text {
+                        id: nectText
+                        anchors.centerIn: parent
+                        text: "Nect"
+                        color: "#C6EBF9"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 14
+                        font.weight: Font.Bold
+                    }
+                }
             }
         }
 

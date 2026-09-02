@@ -5,7 +5,7 @@
 #include "../transport/ihttptransport.h"
 #include "../storage/isettingsrepository.h"
 
-namespace Avila {
+namespace NeoNect {
 namespace Services {
 
 class DeviceService : public QObject {
@@ -29,4 +29,4 @@ private:
 };
 
 } // namespace Services
-} // namespace Avila
+} // namespace NeoNect

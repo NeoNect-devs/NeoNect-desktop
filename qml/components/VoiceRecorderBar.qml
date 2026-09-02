@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: recorderBarRoot
@@ -82,7 +82,7 @@ Rectangle {
 
             IconImage {
                 anchors.centerIn: parent
-                source: "qrc:/qt/qml/Avila/assets/icons/trash.svg"
+                source: "qrc:/qt/qml/NeoNect/assets/icons/trash.svg"
                 width: 18; height: 18
                 color: "#E53935"
             }
@@ -107,7 +107,7 @@ Rectangle {
 
             IconImage {
                 anchors.centerIn: parent
-                source: "qrc:/qt/qml/Avila/assets/icons/send.svg"
+                source: "qrc:/qt/qml/NeoNect/assets/icons/send.svg"
                 width: 16; height: 16
                 color: "#FFFFFF"
             }

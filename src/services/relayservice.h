@@ -9,7 +9,7 @@
 #include "../storage/isettingsrepository.h"
 #include "../crypto/icryptoservice.h"
 
-namespace Avila {
+namespace NeoNect {
 namespace Services {
 
 class RelayService : public QObject {
@@ -51,4 +51,4 @@ private:
 };
 
 } // namespace Services
-} // namespace Avila
+} // namespace NeoNect

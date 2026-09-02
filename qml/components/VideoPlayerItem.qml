@@ -3,7 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
 import QtMultimedia
-import Avila.Core 1.0
+import NeoNect.Core 1.0
 
 Rectangle {
     id: videoRoot
@@ -133,7 +133,7 @@ Rectangle {
         IconImage {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: -8
-            source: "qrc:/qt/qml/Avila/assets/icons/video.svg"
+            source: "qrc:/qt/qml/NeoNect/assets/icons/video.svg"
             width: 64; height: 64
             color: Qt.rgba(255, 255, 255, 0.08)
         }
@@ -183,7 +183,7 @@ Rectangle {
         IconImage {
             anchors.centerIn: parent
             anchors.horizontalCenterOffset: 2
-            source: "qrc:/qt/qml/Avila/assets/icons/play.svg"
+            source: "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
             width: 22; height: 22
             color: "#FFFFFF"
         }
@@ -231,7 +231,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: videoRoot.isPlaying ? "qrc:/qt/qml/Avila/assets/icons/pause.svg" : "qrc:/qt/qml/Avila/assets/icons/play.svg"
+                    source: videoRoot.isPlaying ? "qrc:/qt/qml/NeoNect/assets/icons/pause.svg" : "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
                     width: 14; height: 14
                     color: "#FFFFFF"
                 }
@@ -309,7 +309,7 @@ Rectangle {
 
                 IconImage {
                     anchors.centerIn: parent
-                    source: "qrc:/qt/qml/Avila/assets/icons/maximize.svg"
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/maximize.svg"
                     width: 14; height: 14
                     color: "#FFFFFF"
                 }
@@ -341,7 +341,7 @@ Rectangle {
 
             IconImage {
                 Layout.alignment: Qt.AlignHCenter
-                source: "qrc:/qt/qml/Avila/assets/icons/alert-circle.svg"
+                source: "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg"
                 width: 32; height: 32
                 color: "#F1C40F"
             }
@@ -374,7 +374,7 @@ Rectangle {
                     spacing: 6
 
                     IconImage {
-                        source: "qrc:/qt/qml/Avila/assets/icons/play.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
                         width: 14; height: 14
                         color: "#FFFFFF"
                     }

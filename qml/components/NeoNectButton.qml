@@ -1,7 +1,7 @@
-// qml/containers/AvilaButton.qml
+// qml/containers/NeoNectButton.qml
 import QtQuick
 import QtQuick.Controls
-import Avila 1.0
+import NeoNect 1.0
 
 Item {
     id: control

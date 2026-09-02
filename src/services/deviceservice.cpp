@@ -4,7 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
-namespace Avila {
+namespace NeoNect {
 namespace Services {
 
 DeviceService::DeviceService(std::shared_ptr<Transport::IHttpTransport> transport,
@@ -56,4 +56,4 @@ void DeviceService::fetchDevicePublicKey(const QString &deviceId) {
 }
 
 } // namespace Services
-} // namespace Avila
+} // namespace NeoNect

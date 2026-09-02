@@ -75,7 +75,7 @@ void AudioManager::setVolume(qreal vol) {
 #ifdef _WIN32
     if (m_isMciActive) {
         int mciVol = static_cast<int>(m_volume * 1000);
-        std::wstring volCmd = L"setaudio avila_audio volume to " + std::to_wstring(mciVol);
+        std::wstring volCmd = L"setaudio neonect_audio volume to " + std::to_wstring(mciVol);
         mciSendStringW(volCmd.c_str(), NULL, 0, NULL);
     }
 #endif
@@ -98,7 +98,7 @@ void AudioManager::toggleMute() {
 #ifdef _WIN32
     if (m_isMciActive) {
         int mciVol = static_cast<int>(m_volume * 1000);
-        std::wstring volCmd = L"setaudio avila_audio volume to " + std::to_wstring(mciVol);
+        std::wstring volCmd = L"setaudio neonect_audio volume to " + std::to_wstring(mciVol);
         mciSendStringW(volCmd.c_str(), NULL, 0, NULL);
     }
 #endif
@@ -129,22 +129,22 @@ bool AudioManager::playViaMci(const QString &filePath) {
         wpath = shortPath;
     }
 
-    std::wstring openCmd = L"open \"" + wpath + L"\" type mpegvideo alias avila_audio";
+    std::wstring openCmd = L"open \"" + wpath + L"\" type mpegvideo alias neonect_audio";
     MCIERROR err = mciSendStringW(openCmd.c_str(), NULL, 0, NULL);
     if (err != 0) {
-        openCmd = L"open \"" + wpath + L"\" alias avila_audio";
+        openCmd = L"open \"" + wpath + L"\" alias neonect_audio";
         err = mciSendStringW(openCmd.c_str(), NULL, 0, NULL);
         if (err != 0) return false;
     }
 
-    mciSendStringW(L"set avila_audio time format milliseconds", NULL, 0, NULL);
+    mciSendStringW(L"set neonect_audio time format milliseconds", NULL, 0, NULL);
 
     int mciVol = static_cast<int>((m_isMuted ? 0.0 : m_volume) * 1000);
-    std::wstring volCmd = L"setaudio avila_audio volume to " + std::to_wstring(mciVol);
+    std::wstring volCmd = L"setaudio neonect_audio volume to " + std::to_wstring(mciVol);
     mciSendStringW(volCmd.c_str(), NULL, 0, NULL);
 
     wchar_t lenBuf[128];
-    if (mciSendStringW(L"status avila_audio length", lenBuf, 128, NULL) == 0) {
+    if (mciSendStringW(L"status neonect_audio length", lenBuf, 128, NULL) == 0) {
         int len = QString::fromWCharArray(lenBuf).toInt();
         if (len > 0) {
             m_totalDuration = len;
@@ -152,7 +152,7 @@ bool AudioManager::playViaMci(const QString &filePath) {
         }
     }
 
-    mciSendStringW(L"play avila_audio", NULL, 0, NULL);
+    mciSendStringW(L"play neonect_audio", NULL, 0, NULL);
     m_isMciActive = true;
     return true;
 #else
@@ -164,7 +164,7 @@ bool AudioManager::playViaMci(const QString &filePath) {
 void AudioManager::pauseMci() {
 #ifdef _WIN32
     if (m_isMciActive) {
-        mciSendStringW(L"pause avila_audio", NULL, 0, NULL);
+        mciSendStringW(L"pause neonect_audio", NULL, 0, NULL);
     }
 #endif
 }
@@ -172,7 +172,7 @@ void AudioManager::pauseMci() {
 void AudioManager::resumeMci() {
 #ifdef _WIN32
     if (m_isMciActive) {
-        mciSendStringW(L"resume avila_audio", NULL, 0, NULL);
+        mciSendStringW(L"resume neonect_audio", NULL, 0, NULL);
     }
 #endif
 }
@@ -180,7 +180,7 @@ void AudioManager::resumeMci() {
 void AudioManager::seekMci(int positionMs) {
 #ifdef _WIN32
     if (m_isMciActive) {
-        std::wstring seekCmd = L"play avila_audio from " + std::to_wstring(positionMs);
+        std::wstring seekCmd = L"play neonect_audio from " + std::to_wstring(positionMs);
         mciSendStringW(seekCmd.c_str(), NULL, 0, NULL);
     }
 #endif
@@ -189,8 +189,8 @@ void AudioManager::seekMci(int positionMs) {
 void AudioManager::stopMci() {
 #ifdef _WIN32
     if (m_isMciActive) {
-        mciSendStringW(L"stop avila_audio", NULL, 0, NULL);
-        mciSendStringW(L"close avila_audio", NULL, 0, NULL);
+        mciSendStringW(L"stop neonect_audio", NULL, 0, NULL);
+        mciSendStringW(L"close neonect_audio", NULL, 0, NULL);
         m_isMciActive = false;
     }
 #endif
@@ -799,7 +799,7 @@ void AudioManager::onPlaybackTimerTick() {
     if (m_isMciActive) {
 #ifdef _WIN32
         wchar_t posBuf[128];
-        if (mciSendStringW(L"status avila_audio position", posBuf, 128, NULL) == 0) {
+        if (mciSendStringW(L"status neonect_audio position", posBuf, 128, NULL) == 0) {
             int pos = QString::fromWCharArray(posBuf).toInt();
             if (pos >= 0) {
                 m_currentPosition = pos;

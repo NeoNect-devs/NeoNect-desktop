@@ -2,7 +2,7 @@
 #include "httptransport.h"
 #include <QUrlQuery>
 
-namespace Avila {
+namespace NeoNect {
 namespace Transport {
 
 HttpTransport::HttpTransport(QNetworkAccessManager *nam, QObject *parent)
@@ -112,4 +112,4 @@ void HttpTransport::deleteResource(const QString &endpoint, HttpResponseCallback
 }
 
 } // namespace Transport
-} // namespace Avila
+} // namespace NeoNect

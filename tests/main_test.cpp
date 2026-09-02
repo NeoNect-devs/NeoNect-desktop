@@ -18,7 +18,7 @@ int main(int argc, char *argv[]) {
     int status = 0;
 
     std::cout << "\n==========================================" << std::endl;
-    std::cout << "  RUNNING AVILA DESKTOP TEST SUITES" << std::endl;
+    std::cout << "  RUNNING NEONECT DESKTOP TEST SUITES" << std::endl;
     std::cout << "==========================================\n" << std::endl;
 
     {
@@ -42,34 +42,34 @@ int main(int argc, char *argv[]) {
     {
         TestServices ts;
         std::cout << "--> Testing testAuthServiceFlow..." << std::endl;
-        int r1 = QTest::qExec(&ts, QStringList() << "AvilaTests" << "testAuthServiceFlow");
+        int r1 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testAuthServiceFlow");
         std::cout << "    Result: " << (r1 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testDeviceServiceFlow..." << std::endl;
-        int r2 = QTest::qExec(&ts, QStringList() << "AvilaTests" << "testDeviceServiceFlow");
+        int r2 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testDeviceServiceFlow");
         std::cout << "    Result: " << (r2 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testRelayServiceFlowAndDeduplication..." << std::endl;
-        int r3 = QTest::qExec(&ts, QStringList() << "AvilaTests" << "testRelayServiceFlowAndDeduplication");
+        int r3 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRelayServiceFlowAndDeduplication");
         std::cout << "    Result: " << (r3 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testFriendServiceFlow..." << std::endl;
-        int r4 = QTest::qExec(&ts, QStringList() << "AvilaTests" << "testFriendServiceFlow");
+        int r4 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testFriendServiceFlow");
         std::cout << "    Result: " << (r4 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testNetworkManagerFacadeIntegration..." << std::endl;
-        int r5 = QTest::qExec(&ts, QStringList() << "AvilaTests" << "testNetworkManagerFacadeIntegration");
+        int r5 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testNetworkManagerFacadeIntegration");
         std::cout << "    Result: " << (r5 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testTwoClientChatExchange..." << std::endl;
-        int r6 = QTest::qExec(&ts, QStringList() << "AvilaTests" << "testTwoClientChatExchange");
+        int r6 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testTwoClientChatExchange");
         std::cout << "    Result: " << (r6 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         status |= (r1 | r2 | r3 | r4 | r5 | r6);
     }
 
     std::cout << "\n==========================================" << std::endl;
-    std::cout << (status == 0 ? "  ALL AVILA TESTS PASSED SUCCESSFULLY! [100%]" : "  SOME TESTS FAILED!") << std::endl;
+    std::cout << (status == 0 ? "  ALL NEONECT TESTS PASSED SUCCESSFULLY! [100%]" : "  SOME TESTS FAILED!") << std::endl;
     std::cout << "==========================================\n" << std::endl;
 
     return status;

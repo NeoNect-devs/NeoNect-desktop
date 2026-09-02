@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
-import Avila.Core 1.0
-import Avila 1.0
+import NeoNect.Core 1.0
+import NeoNect 1.0
 import "components"
 import "containers"
 
@@ -169,13 +169,13 @@ Item {
 
     property var defaultHistories: ({
         "server1:welcome-rules": [
-            { messageId: "d1", text: "Welcome to Danisa / Avila secure E2EE node server!", fromMe: false, senderName: "System", senderAvatar: "🛠️", messageType: "text", status: "sent", timestamp: 1620000000 },
+            { messageId: "d1", text: "Welcome to Danisa / NeoNect secure E2EE node server!", fromMe: false, senderName: "System", senderAvatar: "🛠️", messageType: "text", status: "sent", timestamp: 1620000000 },
             { messageId: "d2", text: "All conversations here are relayed client-side using OpenSSL 4.0.0 AES-256-GCM.", fromMe: false, senderName: "System", senderAvatar: "🛠️", messageType: "text", status: "sent", timestamp: 1620000010 }
         ],
         "server1:general": [
             { messageId: "d3", text: "Hello! Is anyone online?", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "text", status: "sent", timestamp: 1620000020 },
             { messageId: "d4", text: "Hey Alex! Yes, testing live E2EE relay messaging.", fromMe: false, senderName: "Beatrice", senderAvatar: "B", messageType: "text", status: "sent", timestamp: 1620000030 },
-            { messageId: "d5", text: "", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "sticker", mediaUrl: "qrc:/qt/qml/Avila/assets/stickers/duck/duck_happy.svg", fileName: "Happy", status: "sent", timestamp: 1620000040 }
+            { messageId: "d5", text: "", fromMe: false, senderName: "Alex", senderAvatar: "A", messageType: "sticker", mediaUrl: "qrc:/qt/qml/NeoNect/assets/stickers/duck/duck_happy.svg", fileName: "Happy", status: "sent", timestamp: 1620000040 }
         ],
         "dms:alex": [
             { messageId: "d6", text: "Hey Alex, are you available for a quick sync later today?", fromMe: true, senderName: "Me", senderAvatar: "", messageType: "text", status: "seen", timestamp: 1620000050 },
@@ -422,7 +422,7 @@ Item {
                     // Server Channel Icon
                     IconImage {
                         visible: root.selectedServer !== "dms"
-                        source: "qrc:/qt/qml/Avila/assets/icons/hash.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/hash.svg"
                         width: 18; height: 18
                         color: ThemeData.textSecondary
                         Layout.alignment: Qt.AlignVCenter
@@ -431,7 +431,7 @@ Item {
                     // Saved Messages Vector Icon
                     IconImage {
                         visible: root.selectedServer === "dms" && root.activeChannel === "saved-messages"
-                        source: "qrc:/qt/qml/Avila/assets/icons/bookmark.svg"
+                        source: "qrc:/qt/qml/NeoNect/assets/icons/bookmark.svg"
                         width: 20; height: 20
                         color: "#00E5FF"
                         Layout.alignment: Qt.AlignVCenter
@@ -493,7 +493,7 @@ Item {
 
                         IconImage {
                             anchors.centerIn: parent
-                            source: "qrc:/qt/qml/Avila/assets/icons/users.svg"
+                            source: "qrc:/qt/qml/NeoNect/assets/icons/users.svg"
                             width: 20; height: 20
                             color: membersPanel.expanded ? ThemeData.textPrimary : ThemeData.textSecondary
                         }
@@ -671,7 +671,7 @@ Item {
 
                                         IconImage {
                                             anchors.centerIn: parent
-                                            source: "qrc:/qt/qml/Avila/assets/icons/refresh.svg"
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
                                             width: 14; height: 14
                                             color: "#FFFFFF"
                                         }
@@ -884,7 +884,7 @@ Item {
 
                                                             IconImage {
                                                                 Layout.alignment: Qt.AlignHCenter
-                                                                source: "qrc:/qt/qml/Avila/assets/icons/file.svg"
+                                                                source: "qrc:/qt/qml/NeoNect/assets/icons/file.svg"
                                                                 width: 16; height: 16
                                                                 color: delegateRoot.isMe ? ThemeData.accentColor : ThemeData.accentColor
                                                             }
@@ -1011,7 +1011,7 @@ Item {
                                                     IconImage {
                                                         visible: model.status === "sent"
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        source: "qrc:/qt/qml/Avila/assets/icons/check.svg"
+                                                        source: "qrc:/qt/qml/NeoNect/assets/icons/check.svg"
                                                         width: 12; height: 12
                                                         color: Qt.rgba(255, 255, 255, 0.7)
                                                     }
@@ -1020,7 +1020,7 @@ Item {
                                                     IconImage {
                                                         visible: model.status === "delivered"
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        source: "qrc:/qt/qml/Avila/assets/icons/check-check.svg"
+                                                        source: "qrc:/qt/qml/NeoNect/assets/icons/check-check.svg"
                                                         width: 13; height: 13
                                                         color: "#FFFFFF"
                                                     }
@@ -1033,7 +1033,7 @@ Item {
 
                                                         IconImage {
                                                             anchors.verticalCenter: parent.verticalCenter
-                                                            source: "qrc:/qt/qml/Avila/assets/icons/check-check.svg"
+                                                            source: "qrc:/qt/qml/NeoNect/assets/icons/check-check.svg"
                                                             width: 13; height: 13
                                                             color: "#00E5FF"
                                                         }
@@ -1052,7 +1052,7 @@ Item {
                                                     IconImage {
                                                         visible: model.status === "failed"
                                                         anchors.verticalCenter: parent.verticalCenter
-                                                        source: "qrc:/qt/qml/Avila/assets/icons/alert-circle.svg"
+                                                        source: "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg"
                                                         width: 12; height: 12
                                                         color: "#FF5252"
                                                     }
@@ -1070,7 +1070,7 @@ Item {
 
                                         IconImage {
                                             anchors.centerIn: parent
-                                            source: "qrc:/qt/qml/Avila/assets/icons/refresh.svg"
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
                                             width: 14; height: 14
                                             color: "#FFFFFF"
                                         }
@@ -1100,7 +1100,7 @@ Item {
 
                                 IconImage {
                                     Layout.alignment: Qt.AlignHCenter
-                                    source: root.selectedServer === "dms" ? "qrc:/qt/qml/Avila/assets/icons/friends.svg" : "qrc:/qt/qml/Avila/assets/icons/hash.svg"
+                                    source: root.selectedServer === "dms" ? "qrc:/qt/qml/NeoNect/assets/icons/friends.svg" : "qrc:/qt/qml/NeoNect/assets/icons/hash.svg"
                                     width: 32; height: 32
                                     color: "#4E5058"
                                 }
@@ -1200,7 +1200,7 @@ Item {
 
                                 IconImage {
                                     anchors.centerIn: parent
-                                    source: "qrc:/qt/qml/Avila/assets/icons/download.svg"
+                                    source: "qrc:/qt/qml/NeoNect/assets/icons/download.svg"
                                     width: 32; height: 32
                                     color: "#00E5FF"
                                     rotation: 180
@@ -1292,7 +1292,7 @@ Item {
                 }
 
                 // ─── MESSAGE INPUT SECTION ───
-                AvilaMessageInput {
+                NeoNectMessageInput {
                     id: messageInput
                     Layout.fillWidth: true
                     Layout.margins: 12
@@ -1435,7 +1435,7 @@ Item {
                     width: parent.width
                 }
 
-                AvilaTextField {
+                NeoNectTextField {
                     id: friendInput
                     width: parent.width
                     placeholderText: "Enter username (e.g. alex)"
@@ -1452,7 +1452,7 @@ Item {
                     width: parent.width
                     spacing: 12
 
-                    AvilaButton {
+                    NeoNectButton {
                         text: "Cancel"
                         width: (parent.width - 12) / 2
                         highlighted: false
@@ -1462,7 +1462,7 @@ Item {
                         }
                     }
 
-                    AvilaButton {
+                    NeoNectButton {
                         text: "Add Friend"
                         width: (parent.width - 12) / 2
                         enabled: friendInput.text.trim() !== ""
