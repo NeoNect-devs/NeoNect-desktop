@@ -104,10 +104,11 @@ void HttpTransport::post(const QString &endpoint, const QByteArray &jsonData, Ht
     handleReply(reply, std::move(callback));
 }
 
-void HttpTransport::deleteResource(const QString &endpoint, HttpResponseCallback callback) {
+void HttpTransport::deleteResource(const QString &endpoint, HttpResponseCallback callback, const QByteArray &jsonData) {
     QUrl url = buildUrl(endpoint, {});
-    QNetworkRequest req = createRequest(url, false);
-    QNetworkReply *reply = m_nam->sendCustomRequest(req, "DELETE");
+    bool hasBody = !jsonData.isEmpty();
+    QNetworkRequest req = createRequest(url, hasBody);
+    QNetworkReply *reply = hasBody ? m_nam->sendCustomRequest(req, "DELETE", jsonData) : m_nam->sendCustomRequest(req, "DELETE");
     handleReply(reply, std::move(callback));
 }
 

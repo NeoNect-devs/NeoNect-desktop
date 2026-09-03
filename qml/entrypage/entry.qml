@@ -1,6 +1,7 @@
 // qml/entrypage/entry.qml
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.impl
 import NeoNect.Core 1.0
 import "../containers"
 import "../components"
@@ -10,9 +11,21 @@ Item {
     anchors.fill: parent
 
     readonly property bool showTitleBackButton: currentScreen !== "server"
-    property string currentScreen: "server" // "server", "login", "signup"
+    property string currentScreen: "server" // "server", "login", "signup", "bookmarks", "bookmark_edit"
     property bool isServerReady: false
     property string serverStatusText: ""
+
+    // Bookmark states & properties
+    property bool isEditingBookmark: false
+    property string editBmId: ""
+    property string editBmName: ""
+    property string editBmServer: ""
+    property string editBmUser: ""
+    property string editBmPass: ""
+    property bool showBmPassword: false
+    property string bookmarkErrorText: ""
+    property string connectingBookmarkId: ""
+    property bool saveAsBookmark: false
 
     // Form status states
     property string loginErrorText: ""
@@ -29,9 +42,40 @@ Item {
     property bool showRegPassword: false
 
     function goBack() {
-        if (currentScreen !== "server") {
+        if (currentScreen === "bookmark_edit") {
+            currentScreen = "bookmarks";
+        } else if (currentScreen !== "server") {
             currentScreen = "server";
         }
+    }
+
+    // ─── RESPONSIVE GEOMETRY BASED ON WINDOW SIZE ──────────────────────────
+    readonly property real responsiveCardWidth: {
+        var base = (currentScreen === "bookmarks" || currentScreen === "bookmark_edit") ? 460 : 420;
+        if (entryRoot.width > 1200) {
+            base = Math.min(entryRoot.width * 0.42, 520);
+        } else if (entryRoot.width > 900) {
+            base = Math.min(entryRoot.width * 0.48, 470);
+        }
+        return Math.min(base, entryRoot.width - 32);
+    }
+
+    readonly property real maxCardHeight: Math.max(300, entryRoot.height - (entryRoot.height < 600 ? 20 : 36))
+
+    readonly property real targetCardHeight: {
+        var preferred = 405;
+        if (currentScreen === "signup") {
+            preferred = 525;
+        } else if (currentScreen === "login") {
+            preferred = 460;
+        } else if (currentScreen === "bookmarks") {
+            preferred = NetworkManager.bookmarks.length === 0 ? 410 : 480;
+        } else if (currentScreen === "bookmark_edit") {
+            preferred = 475;
+        } else {
+            preferred = 405; // "server"
+        }
+        return Math.min(maxCardHeight, preferred);
     }
 
     Rectangle {
@@ -40,8 +84,9 @@ Item {
 
         // Background subtle ambient radial glow
         Rectangle {
-            width: 500; height: 500
-            radius: 250
+            width: Math.min(entryRoot.width * 0.7, 500)
+            height: width
+            radius: width / 2
             anchors.centerIn: parent
             color: ThemeData.accentColor
             opacity: 0.04
@@ -50,31 +95,32 @@ Item {
 
     Rectangle {
         id: formCard
-        width: 420
-        height: currentScreen === "signup" ? 640 : (currentScreen === "login" ? 530 : 500)
-        radius: 20
+        width: entryRoot.responsiveCardWidth
+        height: entryRoot.targetCardHeight
+        radius: 16
         color: ThemeData.panelBackground
         anchors.centerIn: parent
         border.color: Qt.rgba(1, 1, 1, 0.08)
         border.width: 1
 
-        Behavior on height { NumberAnimation { duration: 250; easing.type: Easing.InOutQuad } }
+        Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+        Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
 
         Column {
             id: mainColumn
             anchors.fill: parent
-            anchors.margins: 24
-            spacing: 14
+            anchors.margins: entryRoot.height < 600 ? 16 : 22
+            spacing: entryRoot.height < 600 ? 8 : 12
 
             // ─── BRAND HEADER ──────────────────────────────────────────────
             Column {
                 width: parent.width
-                spacing: 6
+                spacing: 3
 
                 Image {
                     source: "qrc:/qt/qml/NeoNect/assets/logo.png"
-                    width: 56
-                    height: 56
+                    width: entryRoot.height < 600 ? 40 : 46
+                    height: width
                     fillMode: Image.PreserveAspectFit
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
@@ -82,14 +128,16 @@ Item {
                 Text {
                     text: "DANISA / NEONECT"
                     color: ThemeData.textPrimary
-                    font.pointSize: ThemeData.fontSizeHeader + 2
+                    font.pointSize: entryRoot.height < 600 ? ThemeData.fontSizeHeader : (ThemeData.fontSizeHeader + 1)
                     font.bold: true
-                    font.letterSpacing: 2
+                    font.letterSpacing: 1.5
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
 
                 Text {
                     text: entryRoot.currentScreen === "server" ? "Zero-Knowledge Relay Server Connection" :
+                          entryRoot.currentScreen === "bookmarks" ? "TeamSpeak-Style Server Bookmarks" :
+                          entryRoot.currentScreen === "bookmark_edit" ? (entryRoot.isEditingBookmark ? "Edit Server Connection Profile" : "Create New Server Bookmark") :
                           entryRoot.currentScreen === "login" ? "Welcome back! Sign in to continue" : "Create your secure end-to-end encrypted account"
                     color: ThemeData.textSecondary
                     font.pointSize: ThemeData.fontSizeNormal - 3
@@ -100,20 +148,20 @@ Item {
             // ─── NAVIGATION TAB SEGMENT (LOGIN vs SIGNUP) ─────────────────
             Rectangle {
                 width: parent.width
-                height: 38
-                radius: 10
+                height: 34
+                radius: 8
                 color: Qt.rgba(0, 0, 0, 0.25)
                 border.color: Qt.rgba(1, 1, 1, 0.05)
-                visible: entryRoot.currentScreen !== "server"
+                visible: entryRoot.currentScreen === "login" || entryRoot.currentScreen === "signup"
 
                 Row {
                     anchors.fill: parent
-                    anchors.margins: 3
+                    anchors.margins: 2
 
                     Rectangle {
                         width: parent.width / 2
                         height: parent.height
-                        radius: 8
+                        radius: 6
                         color: entryRoot.currentScreen === "login" ? ThemeData.accentColor : "transparent"
 
                         Text {
@@ -139,7 +187,7 @@ Item {
                     Rectangle {
                         width: parent.width / 2
                         height: parent.height
-                        radius: 8
+                        radius: 6
                         color: entryRoot.currentScreen === "signup" ? ThemeData.accentColor : "transparent"
 
                         Text {
@@ -169,7 +217,9 @@ Item {
                 width: parent.width
                 height: parent.height - y
                 contentHeight: entryRoot.currentScreen === "server" ? serverView.implicitHeight :
-                               (entryRoot.currentScreen === "login" ? loginView.implicitHeight : signupView.implicitHeight)
+                               (entryRoot.currentScreen === "login" ? loginView.implicitHeight :
+                               (entryRoot.currentScreen === "bookmarks" ? bookmarksView.implicitHeight :
+                               (entryRoot.currentScreen === "bookmark_edit" ? bookmarkEditView.implicitHeight : signupView.implicitHeight)))
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
 
@@ -182,7 +232,7 @@ Item {
                 Column {
                     id: serverView
                     width: parent.width
-                    spacing: 14
+                    spacing: 11
                     visible: entryRoot.currentScreen === "server"
                     anchors.top: parent.top
 
@@ -197,7 +247,8 @@ Item {
                     NeoNectTextField {
                         id: serverInput
                         width: parent.width
-                        placeholderText: "e.g., http://localhost:8090 or neonect.chat"
+                        height: 42
+                        placeholderText: "e.g., http://localhost:8080 or neonect.chat"
                         text: NetworkManager.serverUrl
 
                         onTextChanged: {
@@ -214,7 +265,7 @@ Item {
                     // Status Badge Chip
                     Rectangle {
                         width: parent.width
-                        height: 36
+                        height: 32
                         radius: 8
                         color: entryRoot.isServerReady ? Qt.rgba(0.14, 0.65, 0.35, 0.15) :
                                serverInput.text.trim() === "" ? "transparent" : Qt.rgba(0.93, 0.32, 0.32, 0.15)
@@ -226,20 +277,21 @@ Item {
                         Text {
                             text: entryRoot.serverStatusText
                             color: entryRoot.isServerReady ? "#23a55a" : "#ef5350"
-                            font.pointSize: ThemeData.fontSizeNormal - 2
+                            font.pointSize: ThemeData.fontSizeNormal - 3
                             anchors.centerIn: parent
                         }
                     }
 
-                    Item { width: 1; height: 6 }
+                    Item { width: 1; height: 2 }
 
                     Row {
                         width: parent.width
-                        spacing: 12
+                        spacing: 10
 
                         NeoNectButton {
                             text: "Log In"
                             width: (parent.width - parent.spacing) / 2
+                            height: 40
                             enabled: entryRoot.isServerReady && !NetworkManager.isLoading
                             highlighted: true
                             onClicked: entryRoot.currentScreen = "login"
@@ -248,40 +300,68 @@ Item {
                         NeoNectButton {
                             text: "Register"
                             width: (parent.width - parent.spacing) / 2
+                            height: 40
                             enabled: entryRoot.isServerReady && !NetworkManager.isLoading
                             highlighted: false
                             onClicked: entryRoot.currentScreen = "signup"
                         }
                     }
 
-                    NeoNectButton {
+                    // Bookmarks launcher button
+                    Rectangle {
                         width: parent.width
-                        height: 42
-                        text: "⚡ Quick Connect (@" + (typeof appProfile !== "undefined" && appProfile !== "" ? appProfile : "demo") + ")"
-                        enabled: entryRoot.isServerReady && !NetworkManager.isLoading
-                        highlighted: true
-                        onClicked: {
-                            var u = (typeof appProfile !== "undefined" && appProfile !== "") ? appProfile : "alice";
-                            entryRoot.quickConnectUser = u;
-                            NetworkManager.loginUser(u, "password123");
+                        height: 40
+                        radius: 8
+                        color: bmMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(1, 1, 1, 0.04)
+                        border.color: Qt.rgba(1, 1, 1, 0.12)
+                        border.width: 1
+
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 8
+
+                            IconImage {
+                                source: "qrc:/qt/qml/NeoNect/assets/icons/bookmark.svg"
+                                width: 15
+                                height: 15
+                                color: ThemeData.accentColor
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            Text {
+                                text: "Server Bookmarks" + (NetworkManager.bookmarks.length > 0 ? " (" + NetworkManager.bookmarks.length + ")" : "")
+                                color: ThemeData.textPrimary
+                                font.bold: true
+                                font.pointSize: ThemeData.fontSizeNormal - 2
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        MouseArea {
+                            id: bmMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                entryRoot.bookmarkErrorText = "";
+                                entryRoot.currentScreen = "bookmarks";
+                            }
                         }
                     }
                 }
-
-
 
                 // ─── SCREEN 2: USER LOGIN ──────────────────────────────────
                 Column {
                     id: loginView
                     width: parent.width
-                    spacing: 12
+                    spacing: 10
                     visible: entryRoot.currentScreen === "login"
                     anchors.top: parent.top
 
                     // Error Notification Chip
                     Rectangle {
                         width: parent.width
-                        height: 36
+                        height: 32
                         radius: 8
                         color: Qt.rgba(0.93, 0.32, 0.32, 0.15)
                         border.color: "#ef5350"
@@ -298,7 +378,7 @@ Item {
 
                     Column {
                         width: parent.width
-                        spacing: 4
+                        spacing: 3
                         Label {
                             text: "USERNAME"
                             color: ThemeData.textSecondary
@@ -308,13 +388,14 @@ Item {
                         NeoNectTextField {
                             id: loginUser
                             width: parent.width
+                            height: 42
                             placeholderText: "Enter your username"
                         }
                     }
 
                     Column {
                         width: parent.width
-                        spacing: 4
+                        spacing: 3
                         Label {
                             text: "PASSWORD"
                             color: ThemeData.textSecondary
@@ -323,7 +404,7 @@ Item {
                         }
                         Item {
                             width: parent.width
-                            height: 46
+                            height: 42
                             NeoNectTextField {
                                 id: loginPass
                                 anchors.fill: parent
@@ -336,7 +417,7 @@ Item {
                                 font.pointSize: ThemeData.fontSizeNormal - 3
                                 font.bold: true
                                 anchors.right: parent.right
-                                anchors.rightMargin: 14
+                                anchors.rightMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 z: 10
                                 MouseArea {
@@ -348,11 +429,54 @@ Item {
                         }
                     }
 
-                    Item { width: 1; height: 6 }
+                    // Save as Bookmark Checkbox Row
+                    Row {
+                        width: parent.width
+                        spacing: 8
+
+                        Rectangle {
+                            width: 16; height: 16; radius: 4
+                            color: entryRoot.saveAsBookmark ? ThemeData.accentColor : "transparent"
+                            border.color: entryRoot.saveAsBookmark ? ThemeData.accentColor : Qt.rgba(1, 1, 1, 0.3)
+                            border.width: 1
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✓"
+                                color: "#ffffff"
+                                font.pointSize: 9
+                                font.bold: true
+                                visible: entryRoot.saveAsBookmark
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: entryRoot.saveAsBookmark = !entryRoot.saveAsBookmark
+                            }
+                        }
+
+                        Text {
+                            text: "Save as Bookmark for easier login"
+                            color: ThemeData.textSecondary
+                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            anchors.verticalCenter: parent.verticalCenter
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: entryRoot.saveAsBookmark = !entryRoot.saveAsBookmark
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 2 }
 
                     NeoNectButton {
                         text: NetworkManager.isLoading ? "Signing In..." : "Sign In"
                         width: parent.width
+                        height: 40
                         enabled: loginUser.text.trim() !== "" && loginPass.text !== "" && !NetworkManager.isLoading
                         highlighted: true
                         onClicked: {
@@ -362,19 +486,19 @@ Item {
                     }
                 }
 
-                // ─── SCREEN 3: USER SIGNUP ─────────────────────────────────
+                // ─── SCREEN 3: USER REGISTRATION ───────────────────────────
                 Column {
                     id: signupView
                     width: parent.width
-                    spacing: 10
+                    spacing: 8
                     visible: entryRoot.currentScreen === "signup"
                     anchors.top: parent.top
 
                     // Error / Success Chip
                     Rectangle {
                         width: parent.width
-                        height: 34
-                        radius: 8
+                        height: 30
+                        radius: 6
                         color: entryRoot.regSuccessText !== "" ? Qt.rgba(0.14, 0.65, 0.35, 0.15) : Qt.rgba(0.93, 0.32, 0.32, 0.15)
                         border.color: entryRoot.regSuccessText !== "" ? "#23a55a" : "#ef5350"
                         border.width: 1
@@ -388,10 +512,10 @@ Item {
                         }
                     }
 
-                    // Username Field with Live Availability
+                    // Username Field
                     Column {
                         width: parent.width
-                        spacing: 4
+                        spacing: 2
                         Label {
                             text: "USERNAME"
                             color: ThemeData.textSecondary
@@ -401,6 +525,7 @@ Item {
                         NeoNectTextField {
                             id: regUser
                             width: parent.width
+                            height: 40
                             placeholderText: "Choose a username"
                             onTextChanged: {
                                 if (text.trim().length >= 3) {
@@ -423,15 +548,15 @@ Item {
                             text: entryRoot.usernameStatusText
                             color: entryRoot.isUsernameAvailable ? "#23a55a" :
                                    entryRoot.isCheckingAvailability ? ThemeData.textSecondary : "#ef5350"
-                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            font.pointSize: ThemeData.fontSizeNormal - 4
                             visible: text !== ""
                         }
                     }
 
-                    // Password Field & Strength Indicator
+                    // Password Field & Strength
                     Column {
                         width: parent.width
-                        spacing: 4
+                        spacing: 2
                         Label {
                             text: "PASSWORD"
                             color: ThemeData.textSecondary
@@ -440,11 +565,11 @@ Item {
                         }
                         Item {
                             width: parent.width
-                            height: 46
+                            height: 40
                             NeoNectTextField {
                                 id: regPass
                                 anchors.fill: parent
-                                placeholderText: "Min 8 chars, letters & numbers (e.g. pass1234)"
+                                placeholderText: "Min 8 chars, letters & numbers"
                                 echoMode: entryRoot.showRegPassword ? TextInput.Normal : TextInput.Password
                             }
 
@@ -454,7 +579,7 @@ Item {
                                 font.pointSize: ThemeData.fontSizeNormal - 3
                                 font.bold: true
                                 anchors.right: parent.right
-                                anchors.rightMargin: 14
+                                anchors.rightMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 z: 10
                                 MouseArea {
@@ -465,31 +590,40 @@ Item {
                             }
                         }
 
+                        // Password Complexity Helper
+                        Text {
+                            text: (regPass.text.length > 0 && (regPass.text.length < 8 || !/[a-zA-Z]/.test(regPass.text) || !/[0-9]/.test(regPass.text))) ?
+                                  "❌ Must be at least 8 chars with letters & numbers" : ""
+                            color: "#ef5350"
+                            font.pointSize: ThemeData.fontSizeNormal - 4
+                            visible: text !== ""
+                        }
+
                         // Strength Progress Bar
                         Row {
                             width: parent.width
                             spacing: 4
                             visible: regPass.text.length > 0
-                            property int score: (regPass.text.length >= 6 ? 1 : 0) +
-                                                (/[0-9]/.test(regPass.text) ? 1 : 0) +
-                                                (/[A-Z]/.test(regPass.text) || /[^a-zA-Z0-9]/.test(regPass.text) ? 1 : 0)
+                            property int score: (regPass.text.length >= 8 ? 1 : 0) +
+                                                (/[0-9]/.test(regPass.text) && /[a-zA-Z]/.test(regPass.text) ? 1 : 0) +
+                                                (/[A-Z]/.test(regPass.text) && /[^a-zA-Z0-9]/.test(regPass.text) ? 1 : 0)
 
                             Rectangle {
                                 width: (parent.width - 8) / 3
-                                height: 4
-                                radius: 2
+                                height: 3
+                                radius: 1.5
                                 color: parent.score >= 1 ? (parent.score === 1 ? "#ef5350" : parent.score === 2 ? "#ffa726" : "#23a55a") : Qt.rgba(1,1,1,0.1)
                             }
                             Rectangle {
                                 width: (parent.width - 8) / 3
-                                height: 4
-                                radius: 2
+                                height: 3
+                                radius: 1.5
                                 color: parent.score >= 2 ? (parent.score === 2 ? "#ffa726" : "#23a55a") : Qt.rgba(1,1,1,0.1)
                             }
                             Rectangle {
                                 width: (parent.width - 8) / 3
-                                height: 4
-                                radius: 2
+                                height: 3
+                                radius: 1.5
                                 color: parent.score >= 3 ? "#23a55a" : Qt.rgba(1,1,1,0.1)
                             }
                         }
@@ -498,7 +632,7 @@ Item {
                     // Confirm Password Field
                     Column {
                         width: parent.width
-                        spacing: 4
+                        spacing: 2
                         Label {
                             text: "CONFIRM PASSWORD"
                             color: ThemeData.textSecondary
@@ -508,6 +642,7 @@ Item {
                         NeoNectTextField {
                             id: regConfirmPass
                             width: parent.width
+                            height: 40
                             placeholderText: "Re-enter your password"
                             echoMode: entryRoot.showRegPassword ? TextInput.Normal : TextInput.Password
                         }
@@ -515,18 +650,21 @@ Item {
                             text: regConfirmPass.text === "" ? "" :
                                   (regConfirmPass.text === regPass.text ? "✔ Passwords match" : "❌ Passwords do not match")
                             color: regConfirmPass.text === regPass.text ? "#23a55a" : "#ef5350"
-                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            font.pointSize: ThemeData.fontSizeNormal - 4
                             visible: text !== ""
                         }
                     }
 
-                    Item { width: 1; height: 4 }
+                    Item { width: 1; height: 2 }
 
                     NeoNectButton {
                         text: NetworkManager.isLoading ? "Creating Account..." : "Create Account"
                         width: parent.width
+                        height: 40
                         enabled: regUser.text.trim().length >= 3 &&
-                                 regPass.text !== "" &&
+                                 regPass.text.length >= 8 &&
+                                 /[a-zA-Z]/.test(regPass.text) &&
+                                 /[0-9]/.test(regPass.text) &&
                                  regPass.text === regConfirmPass.text &&
                                  !NetworkManager.isLoading &&
                                  !entryRoot.usernameStatusText.startsWith("❌")
@@ -535,6 +673,432 @@ Item {
                             entryRoot.regErrorText = ""
                             entryRoot.regSuccessText = ""
                             NetworkManager.registerUser(regUser.text.trim(), regPass.text)
+                        }
+                    }
+                }
+
+                // ─── SCREEN 4: BOOKMARKS LIST (TEAMSPEAK STYLE) ───────────
+                Column {
+                    id: bookmarksView
+                    width: parent.width
+                    spacing: 10
+                    visible: entryRoot.currentScreen === "bookmarks"
+                    anchors.top: parent.top
+
+                    // Header Row with Title and "+ New Bookmark"
+                    Row {
+                        width: parent.width
+                        Item {
+                            width: parent.width - newBmBtn.width
+                            height: 30
+                            Text {
+                                text: "SAVED SERVERS"
+                                color: ThemeData.textSecondary
+                                font.pointSize: ThemeData.fontSizeNormal - 3
+                                font.bold: true
+                                font.letterSpacing: 1
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                        NeoNectButton {
+                            id: newBmBtn
+                            text: "+ New Bookmark"
+                            height: 28
+                            fontSize: ThemeData.fontSizeNormal - 3
+                            highlighted: false
+                            onClicked: {
+                                entryRoot.editBmId = "";
+                                entryRoot.editBmName = "";
+                                entryRoot.editBmServer = NetworkManager.serverUrl !== "" ? NetworkManager.serverUrl : "http://localhost:8080";
+                                entryRoot.editBmUser = "";
+                                entryRoot.editBmPass = "";
+                                entryRoot.isEditingBookmark = false;
+                                entryRoot.bookmarkErrorText = "";
+                                entryRoot.currentScreen = "bookmark_edit";
+                            }
+                        }
+                    }
+
+                    // Error Notification Chip if connecting failed
+                    Rectangle {
+                        width: parent.width
+                        height: 32
+                        radius: 8
+                        color: Qt.rgba(0.93, 0.32, 0.32, 0.15)
+                        border.color: "#ef5350"
+                        border.width: 1
+                        visible: entryRoot.bookmarkErrorText !== ""
+
+                        Text {
+                            text: "⚠️ " + entryRoot.bookmarkErrorText
+                            color: "#ef5350"
+                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            anchors.centerIn: parent
+                        }
+                    }
+
+                    // Empty State
+                    Column {
+                        width: parent.width
+                        spacing: 8
+                        visible: NetworkManager.bookmarks.length === 0
+                        topPadding: 12
+                        bottomPadding: 12
+
+                        Rectangle {
+                            width: 44; height: 44
+                            radius: 22
+                            color: Qt.rgba(1, 1, 1, 0.05)
+                            border.color: Qt.rgba(1, 1, 1, 0.1)
+                            border.width: 1
+                            anchors.horizontalCenter: parent.horizontalCenter
+
+                            IconImage {
+                                source: "qrc:/qt/qml/NeoNect/assets/icons/bookmark.svg"
+                                width: 22; height: 22
+                                color: ThemeData.accentColor
+                                anchors.centerIn: parent
+                            }
+                        }
+
+                        Text {
+                            text: "No Bookmarks Saved"
+                            color: ThemeData.textPrimary
+                            font.bold: true
+                            font.pointSize: ThemeData.fontSizeNormal - 1
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+
+                        Text {
+                            text: "Save your favorite servers, usernames, and passwords\nfor instant 1-click connection, like TeamSpeak."
+                            color: ThemeData.textSecondary
+                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            horizontalAlignment: Text.AlignHCenter
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+
+                        Item { width: 1; height: 4 }
+
+                        NeoNectButton {
+                            text: "+ Add Your First Bookmark"
+                            height: 34
+                            fontSize: ThemeData.fontSizeNormal - 2
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            highlighted: true
+                            onClicked: {
+                                entryRoot.editBmId = "";
+                                entryRoot.editBmName = "";
+                                entryRoot.editBmServer = NetworkManager.serverUrl !== "" ? NetworkManager.serverUrl : "http://localhost:8080";
+                                entryRoot.editBmUser = "";
+                                entryRoot.editBmPass = "";
+                                entryRoot.isEditingBookmark = false;
+                                entryRoot.bookmarkErrorText = "";
+                                entryRoot.currentScreen = "bookmark_edit";
+                            }
+                        }
+                    }
+
+                    // Bookmarks Scrollable Area
+                    Item {
+                        width: parent.width
+                        height: Math.min(NetworkManager.bookmarks.length * 58 + Math.max(0, NetworkManager.bookmarks.length - 1) * 6, 230)
+                        visible: NetworkManager.bookmarks.length > 0
+                        clip: true
+
+                        ListView {
+                            anchors.fill: parent
+                            spacing: 6
+                            model: NetworkManager.bookmarks
+                            boundsBehavior: Flickable.StopAtBounds
+
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                                active: true
+                            }
+
+                            delegate: Rectangle {
+                                id: bmItem
+                                width: parent.width
+                                height: 52
+                                radius: 8
+                                color: bmItemMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.06) : Qt.rgba(0, 0, 0, 0.25)
+                                border.color: bmItemMouse.containsMouse ? ThemeData.accentColor : Qt.rgba(1, 1, 1, 0.08)
+                                border.width: 1
+
+                                MouseArea {
+                                    id: bmItemMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    z: 0
+                                }
+
+                                Row {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 10
+                                    anchors.rightMargin: 8
+                                    spacing: 8
+                                    z: 1
+
+                                    IconImage {
+                                        source: "qrc:/qt/qml/NeoNect/assets/icons/bookmark.svg"
+                                        width: 16; height: 16
+                                        color: ThemeData.accentColor
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+
+                                    Column {
+                                        width: parent.width - 16 - 8 - actionRow.width - 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 2
+
+                                        Text {
+                                            width: parent.width
+                                            text: modelData.name || modelData.serverUrl
+                                            color: ThemeData.textPrimary
+                                            font.bold: true
+                                            font.pointSize: ThemeData.fontSizeNormal - 2
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Row {
+                                            spacing: 4
+                                            Text {
+                                                text: modelData.username ? ("@" + modelData.username) : ""
+                                                color: ThemeData.accentColor
+                                                font.bold: true
+                                                font.pointSize: ThemeData.fontSizeNormal - 4
+                                                visible: text !== ""
+                                            }
+                                            Text {
+                                                text: "• " + modelData.serverUrl
+                                                color: ThemeData.textSecondary
+                                                font.pointSize: ThemeData.fontSizeNormal - 4
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
+
+                                    Row {
+                                        id: actionRow
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 5
+
+                                        NeoNectButton {
+                                            text: (entryRoot.connectingBookmarkId === modelData.id && NetworkManager.isLoading) ? "Connecting..." : "Connect"
+                                            height: 28
+                                            width: 76
+                                            fontSize: ThemeData.fontSizeNormal - 3.5
+                                            highlighted: true
+                                            enabled: !NetworkManager.isLoading
+                                            onClicked: {
+                                                entryRoot.connectingBookmarkId = modelData.id;
+                                                entryRoot.bookmarkErrorText = "";
+                                                NetworkManager.connectBookmark(modelData.id);
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            width: 28; height: 28
+                                            radius: 6
+                                            color: editItemMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : Qt.rgba(1, 1, 1, 0.05)
+                                            anchors.verticalCenter: parent.verticalCenter
+
+                                            IconImage {
+                                                source: "qrc:/qt/qml/NeoNect/assets/icons/settings.svg"
+                                                width: 14; height: 14
+                                                color: editItemMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
+                                                anchors.centerIn: parent
+                                            }
+
+                                            MouseArea {
+                                                id: editItemMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    entryRoot.editBmId = modelData.id;
+                                                    entryRoot.editBmName = modelData.name || "";
+                                                    entryRoot.editBmServer = modelData.serverUrl || "";
+                                                    entryRoot.editBmUser = modelData.username || "";
+                                                    entryRoot.editBmPass = modelData.password || "";
+                                                    entryRoot.isEditingBookmark = true;
+                                                    entryRoot.bookmarkErrorText = "";
+                                                    entryRoot.currentScreen = "bookmark_edit";
+                                                }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            width: 28; height: 28
+                                            radius: 6
+                                            color: delItemMouse.containsMouse ? Qt.rgba(0.93, 0.32, 0.32, 0.25) : Qt.rgba(1, 1, 1, 0.05)
+                                            anchors.verticalCenter: parent.verticalCenter
+
+                                            IconImage {
+                                                source: "qrc:/qt/qml/NeoNect/assets/icons/trash.svg"
+                                                width: 14; height: 14
+                                                color: delItemMouse.containsMouse ? "#ef5350" : ThemeData.textSecondary
+                                                anchors.centerIn: parent
+                                            }
+
+                                            MouseArea {
+                                                id: delItemMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    NetworkManager.deleteBookmark(modelData.id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 2 }
+
+                    NeoNectButton {
+                        text: "🌐 Direct Server Connection"
+                        width: parent.width
+                        height: 38
+                        fontSize: ThemeData.fontSizeNormal - 2
+                        highlighted: false
+                        onClicked: {
+                            entryRoot.currentScreen = "server";
+                        }
+                    }
+                }
+
+                // ─── SCREEN 5: BOOKMARK ADD / EDIT ────────────────────────
+                Column {
+                    id: bookmarkEditView
+                    width: parent.width
+                    spacing: 8
+                    visible: entryRoot.currentScreen === "bookmark_edit"
+                    anchors.top: parent.top
+
+                    Column {
+                        width: parent.width
+                        spacing: 2
+                        Label {
+                            text: "BOOKMARK LABEL"
+                            color: ThemeData.textSecondary
+                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            font.bold: true
+                        }
+                        NeoNectTextField {
+                            id: editBmNameInput
+                            width: parent.width
+                            height: 40
+                            placeholderText: "e.g., My Clan Server, Dev Local Relay"
+                            text: entryRoot.editBmName
+                            onTextChanged: entryRoot.editBmName = text
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 2
+                        Label {
+                            text: "SERVER NODE ADDRESS"
+                            color: ThemeData.textSecondary
+                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            font.bold: true
+                        }
+                        NeoNectTextField {
+                            id: editBmServerInput
+                            width: parent.width
+                            height: 40
+                            placeholderText: "e.g., http://localhost:8080"
+                            text: entryRoot.editBmServer
+                            onTextChanged: entryRoot.editBmServer = text
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 2
+                        Label {
+                            text: "USERNAME"
+                            color: ThemeData.textSecondary
+                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            font.bold: true
+                        }
+                        NeoNectTextField {
+                            id: editBmUserInput
+                            width: parent.width
+                            height: 40
+                            placeholderText: "Username on this server"
+                            text: entryRoot.editBmUser
+                            onTextChanged: entryRoot.editBmUser = text
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: 2
+                        Label {
+                            text: "PASSWORD"
+                            color: ThemeData.textSecondary
+                            font.pointSize: ThemeData.fontSizeNormal - 3
+                            font.bold: true
+                        }
+                        Item {
+                            width: parent.width
+                            height: 40
+                            NeoNectTextField {
+                                id: editBmPassInput
+                                anchors.fill: parent
+                                placeholderText: "Account password"
+                                echoMode: entryRoot.showBmPassword ? TextInput.Normal : TextInput.Password
+                                text: entryRoot.editBmPass
+                                onTextChanged: entryRoot.editBmPass = text
+                            }
+                            Text {
+                                text: entryRoot.showBmPassword ? "Hide" : "Show"
+                                color: ThemeData.accentColor
+                                font.pointSize: ThemeData.fontSizeNormal - 3
+                                font.bold: true
+                                anchors.right: parent.right
+                                anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                z: 10
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: entryRoot.showBmPassword = !entryRoot.showBmPassword
+                                }
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 4 }
+
+                    Row {
+                        width: parent.width
+                        spacing: 10
+
+                        NeoNectButton {
+                            text: entryRoot.isEditingBookmark ? "Update Bookmark" : "Save Bookmark"
+                            width: (parent.width - parent.spacing) / 2
+                            height: 40
+                            highlighted: true
+                            enabled: editBmServerInput.text.trim() !== "" && editBmUserInput.text.trim() !== ""
+                            onClicked: {
+                                var label = editBmNameInput.text.trim() !== "" ? editBmNameInput.text.trim() : editBmServerInput.text.trim();
+                                NetworkManager.saveBookmark(label, editBmServerInput.text.trim(), editBmUserInput.text.trim(), editBmPassInput.text, entryRoot.isEditingBookmark ? entryRoot.editBmId : "");
+                                entryRoot.currentScreen = "bookmarks";
+                            }
+                        }
+
+                        NeoNectButton {
+                            text: "Cancel"
+                            width: (parent.width - parent.spacing) / 2
+                            height: 40
+                            highlighted: false
+                            onClicked: entryRoot.currentScreen = "bookmarks"
                         }
                     }
                 }
@@ -562,9 +1126,6 @@ Item {
     }
 
     // ─── SIGNAL CONNECTIONS ────────────────────────────────────────────────
-    property string quickConnectUser: ""
-    property string pendingQuickConnectUser: ""
-
     Connections {
         target: NetworkManager
         ignoreUnknownSignals: true
@@ -588,9 +1149,8 @@ Item {
             if (!entryRoot) return;
             if (success) {
                 entryRoot.regSuccessText = "Account created! Signing in...";
-                var u = regUser.text.trim() !== "" ? regUser.text.trim() : (entryRoot.pendingQuickConnectUser !== "" ? entryRoot.pendingQuickConnectUser : (typeof appProfile !== "undefined" && appProfile !== "" ? appProfile : "alice"));
-                var p = regPass.text !== "" ? regPass.text : "password123";
-                entryRoot.pendingQuickConnectUser = "";
+                var u = regUser.text.trim();
+                var p = regPass.text;
                 NetworkManager.loginUser(u, p);
             } else {
                 entryRoot.regErrorText = message;
@@ -600,19 +1160,19 @@ Item {
         function onLoginResult(success, tokenOrError) {
             if (!entryRoot) return;
             if (success) {
-                entryRoot.quickConnectUser = "";
-                entryRoot.pendingQuickConnectUser = "";
-            } else {
-                if (entryRoot.quickConnectUser !== "") {
-                    var u = entryRoot.quickConnectUser;
-                    entryRoot.pendingQuickConnectUser = u;
-                    entryRoot.quickConnectUser = "";
-                    NetworkManager.registerUser(u, "password123");
-                    return;
+                if (entryRoot.saveAsBookmark) {
+                    var srv = NetworkManager.serverUrl !== "" ? NetworkManager.serverUrl : "http://localhost:8080";
+                    NetworkManager.saveBookmark(srv, srv, loginUser.text.trim(), loginPass.text);
+                    entryRoot.saveAsBookmark = false;
                 }
+                entryRoot.connectingBookmarkId = "";
+            } else {
                 var errStr = tokenOrError ? tokenOrError : "Error occurred";
+                entryRoot.connectingBookmarkId = "";
                 if (entryRoot.currentScreen === "signup") {
                     entryRoot.regErrorText = errStr;
+                } else if (entryRoot.currentScreen === "bookmarks") {
+                    entryRoot.bookmarkErrorText = errStr;
                 } else {
                     entryRoot.loginErrorText = errStr;
                 }

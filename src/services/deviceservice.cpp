@@ -3,6 +3,7 @@
 #include "../common/constants.h"
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 
 namespace NeoNect {
 namespace Services {
@@ -52,6 +53,63 @@ void DeviceService::fetchDevicePublicKey(const QString &deviceId) {
             }
         }
         emit deviceKeyFetched(deviceId, QString());
+    });
+}
+
+void DeviceService::revokeDevice(const QString &deviceId) {
+    if (deviceId.trimmed().isEmpty()) {
+        emit deviceRevocationResult(false, "Device ID cannot be empty.");
+        return;
+    }
+
+    QJsonObject body;
+    body["device_id"] = deviceId.trimmed();
+    QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
+
+    m_transport->deleteResource(Constants::EP_DEVICE, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+        Q_UNUSED(statusCode);
+        Q_UNUSED(errStr);
+        bool success = (error == QNetworkReply::NoError);
+        auto doc = QJsonDocument::fromJson(data);
+        QString msg = success ? "Device revoked" : (doc.isNull() ? "Failed to revoke device" : doc.object().value("error").toString());
+        emit deviceRevocationResult(success, msg);
+    }, postData);
+}
+
+void DeviceService::fetchRecipientKeys(const QString &username) {
+    QString target = username.trimmed().toLower();
+    if (target.isEmpty()) {
+        emit recipientKeysFetched(username, {});
+        return;
+    }
+
+    QMap<QString, QString> params;
+    params["u"] = target;
+
+    m_transport->get(Constants::EP_RELAY_KEYS, params, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+        Q_UNUSED(statusCode);
+        Q_UNUSED(errStr);
+        QVariantList devicesList;
+        if (error == QNetworkReply::NoError) {
+            auto doc = QJsonDocument::fromJson(data);
+            if (!doc.isNull()) {
+                QJsonArray devicesArr;
+                if (doc.isObject() && doc.object().contains("devices")) {
+                    devicesArr = doc.object().value("devices").toArray();
+                } else if (doc.isArray()) {
+                    devicesArr = doc.array();
+                }
+
+                for (const auto &v : devicesArr) {
+                    QJsonObject dObj = v.toObject();
+                    QVariantMap devMap;
+                    devMap["device_id"] = dObj.value("device_id").toString();
+                    devMap["public_key"] = dObj.value("public_key").toString();
+                    devicesList.append(devMap);
+                }
+            }
+        }
+        emit recipientKeysFetched(target, devicesList);
     });
 }
 

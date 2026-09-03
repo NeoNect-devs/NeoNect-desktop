@@ -63,6 +63,10 @@ Rectangle {
         return "file";
     }
 
+    function forceFocus() {
+        inputArea.forceActiveFocus();
+    }
+
     function handleSelectedFileUrl(fileUrlStr) {
         if (!fileUrlStr) return;
         var url = fileUrlStr.toString();

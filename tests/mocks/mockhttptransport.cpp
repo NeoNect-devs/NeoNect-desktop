@@ -218,14 +218,20 @@ void MockHttpTransport::get(const QString &endpoint, const QMap<QString, QString
         }
     }
 
-    if (endpoint == Constants::EP_HEALTH || endpoint == Constants::EP_HEALTH_FALLBACK) {
+    if (endpoint == Constants::EP_HEALTH) {
         handleHealth(callback);
+    } else if (endpoint == Constants::EP_PRESENCE) {
+        handlePresence(queryParams, callback);
+    } else if (endpoint == Constants::EP_SECURITY_VERIFY) {
+        handleSecurityVerify(callback);
     } else if (endpoint == Constants::EP_USERS_AVAILABILITY) {
         handleAvailability(queryParams, callback);
     } else if (endpoint == Constants::EP_USERS_ME) {
         handleUsersMe(callback);
     } else if (endpoint == Constants::EP_DEVICE_KEY) {
         handleDeviceKey(queryParams, callback);
+    } else if (endpoint == Constants::EP_RELAY_KEYS) {
+        handleRelayKeys(queryParams, callback);
     } else if (endpoint == Constants::EP_RELAY_POLL) {
         handleRelayPoll(queryParams, callback);
     } else {
@@ -266,10 +272,12 @@ void MockHttpTransport::post(const QString &endpoint, const QByteArray &jsonData
     }
 }
 
-void MockHttpTransport::deleteResource(const QString &endpoint, Transport::HttpResponseCallback callback) {
+void MockHttpTransport::deleteResource(const QString &endpoint, Transport::HttpResponseCallback callback, const QByteArray &jsonData) {
     emit requestHandled("DELETE", endpoint);
     if (endpoint == Constants::EP_AUTH) {
         handleAuthDelete(callback);
+    } else if (endpoint == Constants::EP_DEVICE) {
+        handleDeviceDelete(jsonData, callback);
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
@@ -279,6 +287,24 @@ void MockHttpTransport::handleHealth(Transport::HttpResponseCallback callback) {
     QJsonObject res;
     res["status"] = "success";
     res["node"] = "mock-danisa-embedded";
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handlePresence(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    QString username = queryParams.value("u").trimmed().toLower();
+    bool online = false;
+    if (m_users.contains(username)) {
+        online = !m_users[username].devices.isEmpty() || !m_users[username].sessionToken.isEmpty();
+    }
+    QJsonObject res;
+    res["online"] = online;
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleSecurityVerify(Transport::HttpResponseCallback callback) {
+    QJsonObject res;
+    res["status"] = "success";
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 
@@ -298,17 +324,36 @@ void MockHttpTransport::handleUsers(const QByteArray &data, Transport::HttpRespo
     QString username = doc.object().value("username").toString().trimmed().toLower();
     QString password = doc.object().value("password").toString();
 
-    if (username.isEmpty() || password.isEmpty()) {
+    if (username.length() < Constants::MIN_USERNAME_LENGTH) {
         QJsonObject err;
-        err["error"] = "Invalid username or password";
+        err["error"] = "username too short";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    if (password.length() < Constants::MIN_PASSWORD_LENGTH) {
+        QJsonObject err;
+        err["error"] = "password must be at least 8 characters long";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    bool hasLetter = false, hasNumber = false;
+    for (const QChar &ch : password) {
+        if (ch.isLetter()) hasLetter = true;
+        if (ch.isDigit()) hasNumber = true;
+    }
+    if (!hasLetter || !hasNumber) {
+        QJsonObject err;
+        err["error"] = "password must contain both letters and numbers";
         callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
         return;
     }
 
     if (m_users.contains(username)) {
         QJsonObject err;
-        err["error"] = "Username already taken";
-        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Conflict");
+        err["error"] = "username is already taken";
+        callback(409, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Conflict");
         return;
     }
 
@@ -433,6 +478,51 @@ void MockHttpTransport::handleDeviceKey(const QMap<QString, QString> &queryParam
     QJsonObject err;
     err["error"] = "device not found";
     callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+}
+
+void MockHttpTransport::handleDeviceDelete(const QByteArray &data, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    auto doc = QJsonDocument::fromJson(data);
+    QString deviceId = doc.object().value("device_id").toString().trimmed();
+    if (deviceId.isEmpty()) {
+        QJsonObject err;
+        err["error"] = "device_id required";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    for (auto &u : m_users) {
+        u.devices.remove(deviceId);
+    }
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
+    QJsonObject res;
+    res["status"] = "success";
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleRelayKeys(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    QString username = queryParams.value("u").trimmed().toLower();
+    if (!m_users.contains(username)) {
+        QJsonObject err;
+        err["error"] = "user not found";
+        callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+        return;
+    }
+    QJsonArray devArr;
+    const auto &devs = m_users[username].devices;
+    for (auto it = devs.begin(); it != devs.end(); ++it) {
+        QJsonObject dObj;
+        dObj["device_id"] = it.key();
+        dObj["public_key"] = it.value();
+        devArr.append(dObj);
+    }
+    QJsonObject res;
+    res["devices"] = devArr;
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 
 void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpResponseCallback callback) {

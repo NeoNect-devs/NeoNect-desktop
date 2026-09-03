@@ -106,10 +106,20 @@ void RelayService::sendRichRelayMessage(const QString &toUsername, const QVarian
     QByteArray postData = QJsonDocument(payload).toJson(QJsonDocument::Compact);
 
     m_transport->post(Constants::EP_RELAY_SEND, postData, [this, targetUser, msgId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-        bool ok = (error == QNetworkReply::NoError);
+        bool ok = (error == QNetworkReply::NoError || statusCode == 200 || statusCode == 201);
         QString errorMsg = ok ? "" : (errStr.isEmpty() ? "Network relay transmission failed" : errStr);
         if (!ok) {
-            qDebug() << "[RelayService] sendRelayMessage failed for" << targetUser << "Error:" << errStr << "Status:" << statusCode << "Response:" << data;
+            auto doc = QJsonDocument::fromJson(data);
+            if (!doc.isNull() && doc.object().contains("error")) {
+                errorMsg = doc.object().value("error").toString();
+            } else if (statusCode == 422) {
+                errorMsg = "Recipient has no active registered devices";
+            } else if (statusCode == 404) {
+                errorMsg = "Recipient user not found";
+            } else if (statusCode == 401 || statusCode == 403) {
+                errorMsg = "Unauthorized or device ownership failure";
+            }
+            qDebug() << "[RelayService] sendRelayMessage failed for" << targetUser << "Error:" << errorMsg << "Status:" << statusCode;
             if (statusCode == 401 || data.contains("unauthorized")) {
                 handle401Error();
             }
@@ -237,6 +247,9 @@ void RelayService::pollPendingMessages() {
             richMap["fileSize"] = fileSize;
             richMap["duration"] = duration;
             richMap["waveform"] = waveform;
+            if (timestamp <= 0) {
+                timestamp = QDateTime::currentSecsSinceEpoch();
+            }
             richMap["messageId"] = messageUuid;
             richMap["timestamp"] = timestamp;
 

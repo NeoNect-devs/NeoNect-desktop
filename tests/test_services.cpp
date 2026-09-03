@@ -10,6 +10,7 @@
 #include "../src/services/relayservice.h"
 #include "../src/services/friendservice.h"
 #include "../src/core/networkmanager.h"
+#include "../src/core/notificationmanager.h"
 
 void TestServices::testAuthServiceFlow() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
@@ -20,7 +21,7 @@ void TestServices::testAuthServiceFlow() {
 
     // 1. Test verifyServer
     QSignalSpy spyVerify(&authService, &NeoNect::Services::AuthService::verificationResult);
-    authService.verifyServer("http://localhost:8090");
+    authService.verifyServer("http://localhost:8080");
     QCOMPARE(spyVerify.count(), 1);
     QCOMPARE(spyVerify.takeFirst().at(0).toBool(), true);
 
@@ -32,7 +33,7 @@ void TestServices::testAuthServiceFlow() {
     QCOMPARE(availArgs.at(0).toString(), "new_user_123");
     QCOMPARE(availArgs.at(1).toBool(), true); // available
 
-    // 3. Test registerUser
+    // 3. Test registerUser with Danisa complexity requirement (letters + digits, >= 8)
     QSignalSpy spyReg(&authService, &NeoNect::Services::AuthService::registrationResult);
     authService.registerUser("new_user_123", "secret_pass_123");
     QCOMPARE(spyReg.count(), 1);
@@ -72,6 +73,19 @@ void TestServices::testDeviceServiceFlow() {
     QCOMPARE(fetchArgs.at(0).toString(), "unit-dev-id-99");
     QCOMPARE(fetchArgs.at(1).toString(), "MOCK_PUB_KEY_99");
 
+    // Test fetchRecipientKeys (Danisa /api/v1/relay/keys)
+    QSignalSpy spyRelayKeys(&deviceService, &NeoNect::Services::DeviceService::recipientKeysFetched);
+    deviceService.fetchRecipientKeys("alex");
+    QCOMPARE(spyRelayKeys.count(), 1);
+    auto relayArgs = spyRelayKeys.takeFirst();
+    QCOMPARE(relayArgs.at(0).toString(), "alex");
+
+    // Test revokeDevice (Danisa DELETE /api/v1/device)
+    QSignalSpy spyRevoke(&deviceService, &NeoNect::Services::DeviceService::deviceRevocationResult);
+    deviceService.revokeDevice("unit-dev-id-99");
+    QCOMPARE(spyRevoke.count(), 1);
+    QCOMPARE(spyRevoke.takeFirst().at(0).toBool(), true);
+
     storage->clearSession();
 }
 
@@ -81,8 +95,8 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     storage->clearSession();
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
 
-    mockTransport->seedUser("alice", "pass");
-    mockTransport->seedUser("bob", "pass");
+    mockTransport->seedUser("alice", "password123");
+    mockTransport->seedUser("bob", "password123");
 
     // Set Alice as active session
     mockTransport->setAuthToken("token-alice");
@@ -131,7 +145,7 @@ void TestServices::testFriendServiceFlow() {
     storage->setFriends({});
     storage->setUsername("alice");
 
-    mockTransport->seedUser("david", "pass");
+    mockTransport->seedUser("david", "password123");
 
     NeoNect::Services::FriendService friendService(mockTransport, storage);
     friendService.loadFriends();
@@ -151,6 +165,12 @@ void TestServices::testFriendServiceFlow() {
     QCOMPARE(statusArgs.at(0).toString(), "david");
     QCOMPARE(statusArgs.at(1).toString(), "online");
 
+    // Test Danisa Presence Endpoint check
+    mockTransport->setAuthToken("mock-valid-token");
+    storage->setAuthToken("mock-valid-token");
+    friendService.checkFriendsStatus();
+    QVERIFY(spyStatus.count() >= 1);
+
     storage->clearSession();
 }
 
@@ -164,9 +184,13 @@ void TestServices::testNetworkManagerFacadeIntegration() {
     NetworkManager nm(mockTransport, storage, crypto);
 
     QSignalSpy spyVerify(&nm, &NetworkManager::verificationResult);
-    nm.verifyServer("http://localhost:8090");
+    nm.verifyServer("http://localhost:8080");
     QCOMPARE(spyVerify.count(), 1);
     QCOMPARE(spyVerify.takeFirst().at(0).toBool(), true);
+
+    QSignalSpy spyRevoke(&nm, &NetworkManager::deviceRevocationResult);
+    nm.revokeDevice("test-dev-123");
+    QCOMPARE(spyRevoke.count(), 1);
 
     storage->clearSession();
 }
@@ -227,4 +251,120 @@ void TestServices::testTwoClientChatExchange() {
 
     storageAlice->clearSession();
     storageBob->clearSession();
+}
+
+void TestServices::testBookmarkConnectFlow() {
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
+    mockTransport->seedUser("alice", "password123");
+
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_bm_connect_profile");
+    // Ensure that even if persistent storage had a token, NetworkManager starts unauthenticated (NO auto-login)
+    storage->setAuthToken("old_stale_token");
+    storage->setBookmarks({});
+
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+
+    NetworkManager nm(mockTransport, storage, crypto);
+
+    // 1. Verify that auto-login is completely removed: token starts empty!
+    QVERIFY(nm.token().isEmpty());
+    QVERIFY(nm.currentUsername().isEmpty());
+
+    // 2. Save a bookmark
+    nm.saveBookmark("Test Node", "http://localhost:8080", "alice", "password123");
+    QVariantList bms = nm.bookmarks();
+    QCOMPARE(bms.size(), 1);
+    QString bmId = bms.at(0).toMap().value("id").toString();
+    QVERIFY(!bmId.isEmpty());
+
+    // 3. Connect via bookmark
+    QSignalSpy spyLogin(&nm, &NetworkManager::loginResult);
+    QSignalSpy spyToken(&nm, &NetworkManager::tokenChanged);
+
+    nm.connectBookmark(bmId);
+
+    QCOMPARE(spyLogin.count(), 1);
+    QCOMPARE(spyLogin.takeFirst().at(0).toBool(), true);
+    QVERIFY(spyToken.count() >= 1);
+    QVERIFY(!nm.token().isEmpty());
+    QCOMPARE(nm.currentUsername(), "alice");
+
+    // 4. Logout via logout() alias
+    nm.logout();
+    QVERIFY(nm.token().isEmpty());
+    QVERIFY(nm.currentUsername().isEmpty());
+
+    storage->clearSession();
+}
+
+void TestServices::testNotificationManagerFlow() {
+    auto notifMgr = NeoNect::Core::NotificationManager::instance();
+    notifMgr->clearAll();
+    notifMgr->setNotificationsEnabled(true);
+    notifMgr->setDndEnabled(false);
+    notifMgr->setSoundEnabled(false); // Silent in automated test
+
+    QCOMPARE(notifMgr->notificationsEnabled(), true);
+    QCOMPARE(notifMgr->soundEnabled(), false);
+    QCOMPARE(notifMgr->dndEnabled(), false);
+    QCOMPARE(notifMgr->unreadCount(), 0);
+
+    // 1. Test showNotification
+    QSignalSpy spyTrigger(notifMgr, &NeoNect::Core::NotificationManager::notificationTriggered);
+    notifMgr->showNotification("Alex", "Hello from Alex!", "message", "alex", "A", 3000);
+
+    QCOMPARE(spyTrigger.count(), 1);
+    auto notif = spyTrigger.takeFirst().at(0).toMap();
+    QCOMPARE(notif.value("title").toString(), "Alex");
+    QCOMPARE(notif.value("body").toString(), "Hello from Alex!");
+    QCOMPARE(notif.value("channel").toString(), "alex");
+    QCOMPARE(notifMgr->unreadCount(), 1);
+    QCOMPARE(notifMgr->activeNotifications().size(), 1);
+
+    QString notifId = notif.value("notifId").toString();
+    QVERIFY(!notifId.isEmpty());
+
+    // 2. Test showMessageNotification
+    notifMgr->showMessageNotification("Beatrice", "Voice message sent", "beatrice", "B", "voice");
+    QCOMPARE(spyTrigger.count(), 1);
+    QCOMPARE(notifMgr->unreadCount(), 2);
+    QCOMPARE(notifMgr->activeNotifications().size(), 2);
+    spyTrigger.clear();
+
+    // 3. Test dismissNotification
+    QSignalSpy spyDismiss(notifMgr, &NeoNect::Core::NotificationManager::notificationDismissed);
+    notifMgr->dismissNotification(notifId);
+    QCOMPARE(spyDismiss.count(), 1);
+    QCOMPARE(spyDismiss.takeFirst().at(0).toString(), notifId);
+    QCOMPARE(notifMgr->activeNotifications().size(), 1);
+
+    // 4. Test DND mode disables notification dispatch
+    notifMgr->setDndEnabled(true);
+    notifMgr->showNotification("Charlie", "Muted message", "message");
+    QCOMPARE(spyTrigger.count(), 0); // Blocked by DND
+
+    // 5. Test clearAll
+    notifMgr->clearAll();
+    QCOMPARE(notifMgr->activeNotifications().size(), 0);
+    QCOMPARE(notifMgr->unreadCount(), 0);
+
+    // 6. Test screenCorner
+    QSignalSpy spyCorner(notifMgr, &NeoNect::Core::NotificationManager::screenCornerChanged);
+    notifMgr->setScreenCorner("top-right");
+    QCOMPARE(notifMgr->screenCorner(), "top-right");
+    QCOMPARE(spyCorner.count(), 1);
+    notifMgr->setScreenCorner("bottom-right");
+    QCOMPARE(notifMgr->screenCorner(), "bottom-right");
+
+    // 7. Test resetUnreadCount
+    notifMgr->setDndEnabled(false);
+    notifMgr->showNotification("Test", "Unread counter test", "message");
+    QCOMPARE(notifMgr->unreadCount(), 1);
+    notifMgr->resetUnreadCount();
+    QCOMPARE(notifMgr->unreadCount(), 0);
+    notifMgr->clearAll();
+
+    // Restore settings
+    notifMgr->setDndEnabled(false);
+    notifMgr->setSoundEnabled(true);
 }

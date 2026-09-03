@@ -219,6 +219,12 @@ Item {
         scrollTimer.restart();
     }
 
+    function focusMessageInput() {
+        if (messageInput) {
+            messageInput.forceFocus();
+        }
+    }
+
     function sendMessagePayload(itemObj) {
         var key = root.selectedServer + ":" + root.activeChannel;
         if (!root.chatHistories[key]) {
@@ -337,6 +343,11 @@ Item {
             if (root.selectedServer === "dms" && root.activeChannel.toLowerCase() === targetChannel.toLowerCase()) {
                 nativeMessageModel.insertMessageItem(replyObj);
                 messageListView.positionViewAtEnd();
+            }
+            if (!root.active || !(root.selectedServer === "dms" && root.activeChannel.toLowerCase() === targetChannel.toLowerCase())) {
+                if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                    NotificationManager.showMessageNotification(replyObj.senderName, replyText, targetChannel.toLowerCase(), replyObj.senderAvatar, "text");
+                }
             }
         }
     }

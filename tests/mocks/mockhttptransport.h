@@ -45,7 +45,7 @@ public:
 
     void get(const QString &endpoint, const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback) override;
     void post(const QString &endpoint, const QByteArray &jsonData, Transport::HttpResponseCallback callback) override;
-    void deleteResource(const QString &endpoint, Transport::HttpResponseCallback callback) override;
+    void deleteResource(const QString &endpoint, Transport::HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) override;
 
     // Test Control Helpers
     void seedUser(const QString &username, const QString &password);
@@ -62,6 +62,8 @@ private:
     void saveSharedState();
 
     void handleHealth(Transport::HttpResponseCallback callback);
+    void handlePresence(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
+    void handleSecurityVerify(Transport::HttpResponseCallback callback);
     void handleUsers(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleAvailability(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
     void handleAuth(const QByteArray &data, Transport::HttpResponseCallback callback);
@@ -69,6 +71,8 @@ private:
     void handleUsersMe(Transport::HttpResponseCallback callback);
     void handleDeviceRegister(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleDeviceKey(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
+    void handleDeviceDelete(const QByteArray &data, Transport::HttpResponseCallback callback);
+    void handleRelayKeys(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
     void handleRelaySend(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleRelayPoll(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
     void handleRelayAck(const QByteArray &data, Transport::HttpResponseCallback callback);

@@ -11,6 +11,7 @@ Window {
     id: root
     color: ThemeData.windowBackground
     width: 850; height: 640
+    minimumWidth: 800; minimumHeight: 560
     visible: true
     flags: Qt.Window | Qt.FramelessWindowHint
 
@@ -64,6 +65,19 @@ Window {
 
             onBrandClicked: {
                 settingsModal.open();
+            }
+
+            onNavigateToChat: (channel) => {
+                if (channel && channel !== "") {
+                    root.currentSelectedServer = "dms";
+                    root.currentActiveChannel = channel.toLowerCase();
+                    if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
+                        channelsPanel.openDirectMessage(channel.toLowerCase());
+                    }
+                    if (typeof mainPanel !== "undefined" && mainPanel && mainPanel.focusMessageInput) {
+                        mainPanel.focusMessageInput();
+                    }
+                }
             }
         }
 
@@ -162,17 +176,6 @@ Window {
             z: 999999
         }
 
-        // Global Custom Notification System Stack (Top-Right Toast Queue)
-        NotificationStackView {
-            id: globalNotifStack
-            onActionTriggered: (notifId, action, channel) => {
-                if (channel && channel !== "") {
-                    root.currentSelectedServer = "dms";
-                    root.currentActiveChannel = channel.toLowerCase();
-                }
-            }
-        }
-
         // NeoNect Settings & Profile Center Modal (Launched by NeoNectBrandButton)
         SettingsProfileModal {
             id: settingsModal
@@ -190,6 +193,28 @@ Window {
                     channel: "alex",
                     duration: 5000
                 });
+            }
+        }
+    }
+
+    // Global Custom Notification System Stack (Corner of Desktop Screen)
+    NotificationStackView {
+        id: globalNotifStack
+        onActionTriggered: (notifId, action, channel) => {
+            root.showNormal();
+            root.raise();
+            root.requestActivate();
+            if (channel && channel !== "") {
+                root.currentSelectedServer = "dms";
+                root.currentActiveChannel = channel.toLowerCase();
+                if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
+                    channelsPanel.openDirectMessage(channel.toLowerCase());
+                }
+                if (action === "reply") {
+                    if (typeof mainPanel !== "undefined" && mainPanel && mainPanel.focusMessageInput) {
+                        mainPanel.focusMessageInput();
+                    }
+                }
             }
         }
     }

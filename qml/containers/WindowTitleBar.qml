@@ -11,6 +11,7 @@ Rectangle {
     property bool showBackButton: false
     signal backClicked
     signal brandClicked
+    signal navigateToChat(string channel)
 
     height: 45
     color: root.appState === "gateway" ? Qt.darker(ThemeData.mainWindowBackground, 1.15) : "transparent"
@@ -119,6 +120,74 @@ Rectangle {
             anchors.bottom: parent.bottom
             anchors.rightMargin: 8
             spacing: 4
+
+            // ─── NOTIFICATION CENTER BUTTON (BEHIND / BEFORE MINIMIZE) ───
+            Rectangle {
+                id: notifCenterBtn
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 32
+                radius: 4
+                color: notifMouse.containsMouse || notifFlyout.visible ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
+
+                Image {
+                    anchors.centerIn: parent
+                    width: 17
+                    height: 17
+                    source: "../../assets/icons/bell.svg"
+                    fillMode: Image.PreserveAspectFit
+                }
+
+                // RED DOT INDICATOR FOR UNREAD NOTIFICATIONS
+                Rectangle {
+                    id: redDotIndicator
+                    visible: (typeof NotificationManager !== "undefined" && NotificationManager) ? (NotificationManager.unreadCount > 0) : false
+                    width: 8
+                    height: 8
+                    radius: 4
+                    color: "#FF3B30"
+                    border.color: "#17212B"
+                    border.width: 1.5
+                    anchors.top: parent.top
+                    anchors.right: parent.right
+                    anchors.topMargin: 5
+                    anchors.rightMargin: 6
+
+                    // Subtle pulsating animation when unread
+                    SequentialAnimation on scale {
+                        running: redDotIndicator.visible
+                        loops: Animation.Infinite
+                        NumberAnimation { from: 1.0; to: 1.25; duration: 800; easing.type: Easing.InOutQuad }
+                        NumberAnimation { from: 1.25; to: 1.0; duration: 800; easing.type: Easing.InOutQuad }
+                    }
+                }
+
+                MouseArea {
+                    id: notifMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (notifFlyout.visible) {
+                            notifFlyout.close();
+                        } else {
+                            notifFlyout.open();
+                            if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                NotificationManager.resetUnreadCount();
+                            }
+                        }
+                    }
+                }
+
+                NotificationCenterFlyout {
+                    id: notifFlyout
+                    x: -(width - notifCenterBtn.width)
+                    y: notifCenterBtn.height + 6
+                    onItemClicked: (channel) => {
+                        root.navigateToChat(channel);
+                    }
+                }
+            }
+
             Rectangle {
                 Layout.preferredWidth: 38
                 Layout.preferredHeight: 32

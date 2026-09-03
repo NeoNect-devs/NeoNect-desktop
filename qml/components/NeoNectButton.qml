@@ -12,6 +12,7 @@ Item {
     property bool highlighted: true // true = primary solid color, false = secondary outline
     // New tooltip property
     property string tooltip: ""
+    property real fontSize: 0
 
     signal clicked()
 
@@ -57,7 +58,7 @@ Item {
     // Button Text
     Text {
         text: control.text
-        font.pointSize: ThemeData.fontSizeNormal
+        font.pointSize: control.fontSize > 0 ? control.fontSize : ThemeData.fontSizeNormal
         font.bold: true
         color: {
             if (!control.enabled) return "#55ffffff";

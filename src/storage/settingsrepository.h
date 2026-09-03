@@ -34,6 +34,12 @@ public:
     QStringList friends() const override;
     void setFriends(const QStringList &friends) override;
 
+    QVariantList bookmarks() const override;
+    void setBookmarks(const QVariantList &bookmarks) override;
+    void addBookmark(const QVariantMap &bookmark) override;
+    void updateBookmark(const QVariantMap &bookmark) override;
+    void removeBookmark(const QString &id) override;
+
     void clearSession() override;
 
 private:

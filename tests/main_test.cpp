@@ -65,7 +65,15 @@ int main(int argc, char *argv[]) {
         int r6 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testTwoClientChatExchange");
         std::cout << "    Result: " << (r6 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | r4 | r5 | r6);
+        std::cout << "--> Testing testBookmarkConnectFlow..." << std::endl;
+        int r7 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testBookmarkConnectFlow");
+        std::cout << "    Result: " << (r7 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        std::cout << "--> Testing testNotificationManagerFlow..." << std::endl;
+        int r8 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testNotificationManagerFlow");
+        std::cout << "    Result: " << (r8 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | r4 | r5 | r6 | r7 | r8);
     }
 
     std::cout << "\n==========================================" << std::endl;

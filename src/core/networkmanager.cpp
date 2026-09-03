@@ -5,6 +5,7 @@
 #include "../storage/settingsrepository.h"
 #include "../crypto/cryptoservice.h"
 #include <QDebug>
+#include <QDateTime>
 
 NetworkManager* NetworkManager::instance() {
     static NetworkManager _instance;
@@ -22,7 +23,7 @@ NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTranspor
 
     // Configure transport with initial storage settings
     m_transport->setBaseUrl(m_storage->serverUrl());
-    m_transport->setAuthToken(m_storage->authToken());
+    m_transport->setAuthToken(QString());
 
     // Instantiate domain services with dependency injection
     m_authService = std::make_shared<NeoNect::Services::AuthService>(m_transport, m_storage, nullptr);
@@ -33,21 +34,14 @@ NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTranspor
     setupServiceSignals();
 
     m_friendService->loadFriends();
-
-    // Auto-login / reconnect if session token already exists in storage
-    if (!m_storage->authToken().isEmpty()) {
-        emit tokenChanged();
-        emit currentUsernameChanged();
-        m_relayService->startPolling();
-        autoRegisterDevice();
-    }
+    // Auto-login removed: client always begins at gateway until user explicitly authenticates.
 }
 
 void NetworkManager::initializeCustom(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport) {
     if (!transport) return;
     m_transport = transport;
     m_transport->setBaseUrl(m_storage->serverUrl());
-    m_transport->setAuthToken(m_storage->authToken());
+    m_transport->setAuthToken(QString());
 
     m_authService = std::make_shared<NeoNect::Services::AuthService>(m_transport, m_storage, nullptr);
     m_deviceService = std::make_shared<NeoNect::Services::DeviceService>(m_transport, m_storage, nullptr);
@@ -56,11 +50,7 @@ void NetworkManager::initializeCustom(std::shared_ptr<NeoNect::Transport::IHttpT
 
     setupServiceSignals();
     m_friendService->loadFriends();
-
-    if (!m_storage->authToken().isEmpty()) {
-        m_relayService->startPolling();
-        autoRegisterDevice();
-    }
+    // Auto-login removed
 }
 
 void NetworkManager::setupServiceSignals() {
@@ -69,6 +59,19 @@ void NetworkManager::setupServiceSignals() {
         setIsLoading(false);
         emit serverUrlChanged();
         emit verificationResult(success, message);
+
+        if (!m_pendingBookmarkUsername.isEmpty()) {
+            QString user = m_pendingBookmarkUsername;
+            QString pass = m_pendingBookmarkPassword;
+            m_pendingBookmarkUsername.clear();
+            m_pendingBookmarkPassword.clear();
+
+            if (success) {
+                loginUser(user, pass);
+            } else {
+                emit loginResult(false, QString("Could not connect to server: %1").arg(message));
+            }
+        }
     });
 
     connect(m_authService.get(), &NeoNect::Services::AuthService::availabilityResult, this, [this](const QString &username, bool available, const QString &error) {
@@ -83,10 +86,15 @@ void NetworkManager::setupServiceSignals() {
     connect(m_authService.get(), &NeoNect::Services::AuthService::loginResult, this, [this](bool success, const QString &tokenOrError) {
         setIsLoading(false);
         if (success) {
+            m_sessionToken = tokenOrError;
+            m_transport->setAuthToken(tokenOrError);
             emit tokenChanged();
             emit currentUsernameChanged();
             m_relayService->startPolling();
             autoRegisterDevice();
+        } else {
+            m_pendingBookmarkUsername.clear();
+            m_pendingBookmarkPassword.clear();
         }
         emit loginResult(success, tokenOrError);
     });
@@ -105,6 +113,8 @@ void NetworkManager::setupServiceSignals() {
     });
 
     connect(m_deviceService.get(), &NeoNect::Services::DeviceService::deviceKeyFetched, this, &NetworkManager::deviceKeyFetched);
+    connect(m_deviceService.get(), &NeoNect::Services::DeviceService::deviceRevocationResult, this, &NetworkManager::deviceRevocationResult);
+    connect(m_deviceService.get(), &NeoNect::Services::DeviceService::recipientKeysFetched, this, &NetworkManager::recipientKeysFetched);
 
     // Relay Service Connections
     connect(m_relayService.get(), &NeoNect::Services::RelayService::incomingRelayMessageReceived, this, [this](const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp) {
@@ -164,32 +174,91 @@ QString NetworkManager::serverUrl() const {
 }
 
 QString NetworkManager::token() const {
-    return m_storage->authToken();
+    return m_sessionToken;
 }
 
 QString NetworkManager::currentUsername() const {
-    return m_storage->username();
+    return m_sessionToken.isEmpty() ? QString() : m_storage->username();
 }
 
 QStringList NetworkManager::friends() const {
     return m_friendService->friends();
 }
 
+QVariantList NetworkManager::bookmarks() const {
+    return m_storage->bookmarks();
+}
+
+void NetworkManager::saveBookmark(const QString &name, const QString &serverUrl, const QString &username, const QString &password, const QString &id) {
+    QVariantMap bm;
+    if (!id.trimmed().isEmpty()) {
+        bm["id"] = id.trimmed();
+    }
+    bm["name"] = name.trimmed().isEmpty() ? serverUrl.trimmed() : name.trimmed();
+    bm["serverUrl"] = serverUrl.trimmed();
+    bm["username"] = username.trimmed();
+    bm["password"] = password;
+    bm["updatedAt"] = QDateTime::currentMSecsSinceEpoch();
+
+    if (!id.trimmed().isEmpty()) {
+        m_storage->updateBookmark(bm);
+    } else {
+        m_storage->addBookmark(bm);
+    }
+    emit bookmarksChanged();
+}
+
+void NetworkManager::deleteBookmark(const QString &id) {
+    m_storage->removeBookmark(id);
+    emit bookmarksChanged();
+}
+
+void NetworkManager::connectBookmark(const QString &id) {
+    if (id.isEmpty()) return;
+    QVariantList list = m_storage->bookmarks();
+    QVariantMap target;
+    for (const auto &item : list) {
+        QVariantMap m = item.toMap();
+        if (m.value("id").toString() == id) {
+            target = m;
+            break;
+        }
+    }
+    if (target.isEmpty()) {
+        emit loginResult(false, "Bookmark not found.");
+        return;
+    }
+
+    QString sUrl = target.value("serverUrl").toString().trimmed();
+    QString uName = target.value("username").toString().trimmed();
+    QString pWord = target.value("password").toString();
+
+    m_storage->setServerUrl(sUrl);
+    m_transport->setBaseUrl(sUrl);
+    emit serverUrlChanged();
+
+    target["lastConnected"] = QDateTime::currentMSecsSinceEpoch();
+    m_storage->updateBookmark(target);
+    emit bookmarksChanged();
+
+    setIsLoading(true);
+    m_pendingBookmarkUsername = uName;
+    m_pendingBookmarkPassword = pWord;
+    m_authService->verifyServer(sUrl);
+}
+
 void NetworkManager::setProfile(const QString &profileName) {
     m_storage->setProfile(profileName);
     m_transport->setBaseUrl(m_storage->serverUrl());
-    m_transport->setAuthToken(m_storage->authToken());
+    m_transport->setAuthToken(m_sessionToken);
 
     emit serverUrlChanged();
     emit tokenChanged();
     emit currentUsernameChanged();
+    emit bookmarksChanged();
 
     m_friendService->loadFriends();
-
-    if (!m_storage->authToken().isEmpty()) {
-        m_relayService->startPolling();
-        autoRegisterDevice();
-    }
+    // Auto-login removed
 }
 
 void NetworkManager::verifyServer(const QString &address) {
@@ -212,6 +281,10 @@ void NetworkManager::loginUser(const QString &username, const QString &password)
 }
 
 void NetworkManager::logoutUser() {
+    m_sessionToken.clear();
+    m_pendingBookmarkUsername.clear();
+    m_pendingBookmarkPassword.clear();
+    m_transport->setAuthToken(QString());
     m_relayService->stopPolling();
     m_authService->logoutUser();
     emit tokenChanged();
@@ -224,6 +297,14 @@ void NetworkManager::registerDevice(const QString &deviceId, const QString &publ
 
 void NetworkManager::fetchDevicePublicKey(const QString &deviceId) {
     m_deviceService->fetchDevicePublicKey(deviceId);
+}
+
+void NetworkManager::revokeDevice(const QString &deviceId) {
+    m_deviceService->revokeDevice(deviceId);
+}
+
+void NetworkManager::fetchRecipientKeys(const QString &username) {
+    m_deviceService->fetchRecipientKeys(username);
 }
 
 void NetworkManager::fetchUserProfile() {

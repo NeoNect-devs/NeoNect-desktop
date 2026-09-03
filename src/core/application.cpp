@@ -4,6 +4,7 @@
 #include "cryptomanager.h"
 #include "chatmessagemodel.h"
 #include "audiomanager.h"
+#include "notificationmanager.h"
 #include "../themedata.h"
 #include "../storage/settingsrepository.h"
 #include "../../tests/mocks/mockhttptransport.h"
@@ -79,11 +80,6 @@ void Application::initializeServices() {
         if (!m_profile.isEmpty()) {
             QString profileUser = m_profile.trimmed().toLower();
             mockTransport->seedUser(profileUser, "password123");
-            auto storage = std::make_shared<Storage::SettingsRepository>(m_profile);
-            if (storage->authToken().isEmpty() || storage->username().isEmpty()) {
-                storage->setUsername(profileUser);
-                storage->setAuthToken("mock-token-" + profileUser);
-            }
         }
         NetworkManager::instance()->initializeCustom(mockTransport);
         std::cout << "➔ [MOCK MODE ACTIVATED] Running with embedded multi-client server." << std::endl;
@@ -98,6 +94,7 @@ void Application::registerQmlTypes() {
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NetworkManager", NetworkManager::instance());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "CryptoManager", CryptoManager::instance());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "AudioManager", AudioManager::instance());
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", Core::NotificationManager::instance());
     qmlRegisterType<ChatMessageModel>("NeoNect.Core", 1, 0, "ChatMessageModel");
 }
 

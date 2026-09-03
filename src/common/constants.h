@@ -6,19 +6,29 @@
 namespace NeoNect {
 namespace Constants {
 
-    // Network Endpoints
-    inline constexpr const char* DEFAULT_SERVER_URL = "http://localhost:8090";
+    // Network Endpoints (Danisa API v1 Contract)
+    inline constexpr const char* DEFAULT_SERVER_URL = "http://localhost:8080";
     inline constexpr const char* EP_HEALTH = "/api/v1/health";
-    inline constexpr const char* EP_HEALTH_FALLBACK = "/health";
+    inline constexpr const char* EP_PRESENCE = "/api/v1/presence";
+    inline constexpr const char* EP_SECURITY_VERIFY = "/api/v1/security/verify";
     inline constexpr const char* EP_AUTH = "/api/v1/auth";
     inline constexpr const char* EP_USERS = "/api/v1/users";
     inline constexpr const char* EP_USERS_AVAILABILITY = "/api/v1/users/availability";
     inline constexpr const char* EP_USERS_ME = "/api/v1/users/me";
     inline constexpr const char* EP_DEVICE_REGISTER = "/api/v1/device/register";
     inline constexpr const char* EP_DEVICE_KEY = "/api/v1/device/key";
+    inline constexpr const char* EP_DEVICE = "/api/v1/device";
+    inline constexpr const char* EP_RELAY_KEYS = "/api/v1/relay/keys";
     inline constexpr const char* EP_RELAY_SEND = "/api/v1/relay/send";
     inline constexpr const char* EP_RELAY_POLL = "/api/v1/relay/poll";
     inline constexpr const char* EP_RELAY_ACK = "/api/v1/relay/ack";
+    inline constexpr const char* EP_RELAY_WS = "/api/v1/relay/ws";
+
+    // Danisa Validation & Policy Constraints
+    inline constexpr int MIN_USERNAME_LENGTH = 3;
+    inline constexpr int MIN_PASSWORD_LENGTH = 8;
+    inline constexpr int SESSION_DURATION_HOURS = 24;
+    inline constexpr const char* SESSION_COOKIE_NAME = "danisa_sid";
 
     // Cryptographic Parameters
     inline constexpr std::size_t AES_256_KEY_SIZE = 32;
@@ -40,6 +50,7 @@ namespace Constants {
     inline constexpr const char* KEY_DEVICE_ID = "device_id";
     inline constexpr const char* KEY_PUBLIC_KEY = "public_key";
     inline constexpr const char* KEY_FRIENDS = "friends";
+    inline constexpr const char* KEY_BOOKMARKS = "bookmarks";
 
 } // namespace Constants
 } // namespace NeoNect

@@ -653,28 +653,112 @@ Rectangle {
                             RowLayout {
                                 Layout.fillWidth: true
                                 Text {
-                                    text: "Show Floating Toast Notifications"
+                                    text: "Show Floating Notification Pills"
                                     color: "#B5BAC1"
                                     font.family: "Segoe UI"
                                     font.pixelSize: 13
                                     Layout.fillWidth: true
                                 }
                                 Switch {
-                                    checked: true
+                                    checked: typeof NotificationManager !== "undefined" && NotificationManager ? NotificationManager.notificationsEnabled : true
+                                    onToggled: {
+                                        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                            NotificationManager.setNotificationsEnabled(checked);
+                                        }
+                                    }
                                 }
                             }
 
                             RowLayout {
                                 Layout.fillWidth: true
                                 Text {
-                                    text: "Sound on Incoming Direct Message"
+                                    text: "Sound on Incoming Messages"
                                     color: "#B5BAC1"
                                     font.family: "Segoe UI"
                                     font.pixelSize: 13
                                     Layout.fillWidth: true
                                 }
                                 Switch {
-                                    checked: true
+                                    checked: typeof NotificationManager !== "undefined" && NotificationManager ? NotificationManager.soundEnabled : true
+                                    onToggled: {
+                                        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                            NotificationManager.setSoundEnabled(checked);
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    text: "Show Message Text Preview"
+                                    color: "#B5BAC1"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 13
+                                    Layout.fillWidth: true
+                                }
+                                Switch {
+                                    checked: typeof NotificationManager !== "undefined" && NotificationManager ? NotificationManager.previewEnabled : true
+                                    onToggled: {
+                                        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                            NotificationManager.setPreviewEnabled(checked);
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    text: "Do Not Disturb (Silence All)"
+                                    color: "#B5BAC1"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 13
+                                    Layout.fillWidth: true
+                                }
+                                Switch {
+                                    checked: typeof NotificationManager !== "undefined" && NotificationManager ? NotificationManager.dndEnabled : false
+                                    onToggled: {
+                                        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                            NotificationManager.setDndEnabled(checked);
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    text: "Screen Corner Position"
+                                    color: "#B5BAC1"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 13
+                                    Layout.fillWidth: true
+                                }
+                                ComboBox {
+                                    id: cornerCombo
+                                    Layout.preferredWidth: 170
+                                    model: [
+                                        { text: "Bottom Right (Default)", value: "bottom-right" },
+                                        { text: "Top Right", value: "top-right" },
+                                        { text: "Bottom Left", value: "bottom-left" },
+                                        { text: "Top Left", value: "top-left" }
+                                    ]
+                                    textRole: "text"
+                                    valueRole: "value"
+                                    currentIndex: {
+                                        var cur = (typeof NotificationManager !== "undefined" && NotificationManager) ? NotificationManager.screenCorner : "bottom-right";
+                                        for (var i = 0; i < model.length; ++i) {
+                                            if (model[i].value === cur) return i;
+                                        }
+                                        return 0;
+                                    }
+                                    onActivated: {
+                                        var selected = model[currentIndex].value;
+                                        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                            NotificationManager.setScreenCorner(selected);
+                                        }
+                                    }
                                 }
                             }
 
@@ -692,18 +776,23 @@ Rectangle {
                             }
 
                             Text {
-                                text: "Test the custom notification stack system by sending a live in-app toast."
+                                text: "Test the Telegram-style notification pill system by sending a live test notification."
                                 color: "#80848E"
                                 font.family: "Segoe UI"
                                 font.pixelSize: 12
                             }
 
                             NeoNectButton {
-                                text: "⚡ Send Live Test Notification"
+                                text: "⚡ Send Telegram Notification Pill"
                                 highlighted: true
-                                Layout.preferredWidth: 240
+                                Layout.preferredWidth: 260
                                 Layout.preferredHeight: 36
-                                onClicked: modalRoot.sendTestNotificationRequested()
+                                onClicked: {
+                                    if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                        NotificationManager.showNotification("Alex", "Hey! Testing the new Telegram-style notification pill ⚡", "message", "alex", "A", 5000);
+                                    }
+                                    modalRoot.sendTestNotificationRequested();
+                                }
                             }
                         }
 

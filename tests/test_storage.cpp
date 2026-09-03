@@ -55,3 +55,40 @@ void TestStorage::testClearSession() {
     QVERIFY(repo.username().isEmpty());
     QCOMPARE(repo.deviceId(), "dev-persistent");
 }
+
+void TestStorage::testBookmarks() {
+    NeoNect::Storage::SettingsRepository repo("unit_test_bm");
+    repo.setBookmarks({}); // clear
+
+    QCOMPARE(repo.bookmarks().size(), 0);
+
+    QVariantMap bm1;
+    bm1["name"] = "My Server";
+    bm1["serverUrl"] = "http://localhost:8080";
+    bm1["username"] = "alice";
+    bm1["password"] = "password123";
+
+    repo.addBookmark(bm1);
+    QVariantList list = repo.bookmarks();
+    QCOMPARE(list.size(), 1);
+
+    QVariantMap saved = list.at(0).toMap();
+    QCOMPARE(saved.value("name").toString(), "My Server");
+    QCOMPARE(saved.value("username").toString(), "alice");
+    QVERIFY(!saved.value("id").toString().isEmpty());
+
+    QString id = saved.value("id").toString();
+
+    // Update bookmark
+    saved["name"] = "Updated Server Name";
+    repo.updateBookmark(saved);
+
+    list = repo.bookmarks();
+    QCOMPARE(list.size(), 1);
+    QCOMPARE(list.at(0).toMap().value("name").toString(), "Updated Server Name");
+
+    // Remove bookmark
+    repo.removeBookmark(id);
+    QCOMPARE(repo.bookmarks().size(), 0);
+}
+

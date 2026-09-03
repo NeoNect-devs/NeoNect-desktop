@@ -19,13 +19,13 @@ void AuthService::verifyServer(const QString &address) {
     m_transport->setBaseUrl(cleanUrl);
     m_storage->setServerUrl(cleanUrl);
 
-    m_transport->get(Constants::EP_HEALTH, {}, [this, cleanUrl](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_HEALTH, {}, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
         if (error == QNetworkReply::NoError || statusCode == 200) {
             auto doc = QJsonDocument::fromJson(data);
             if (!doc.isNull() && (doc.object().value("status").toString() == "success" ||
                                  doc.object().value("status").toString() == "ok" ||
-                                 doc.object().contains("available"))) {
+                                 doc.object().contains("status"))) {
                 emit verificationResult(true, "Connected to Danisa Server");
                 return;
             }
@@ -34,26 +34,14 @@ void AuthService::verifyServer(const QString &address) {
                 return;
             }
         }
-
-        // Fallback endpoint check
-        m_transport->get(Constants::EP_HEALTH_FALLBACK, {}, [this](int fallbackStatus, const QByteArray &fallbackData, QNetworkReply::NetworkError fallbackErr, const QString &fallbackErrStr) {
-            Q_UNUSED(fallbackErrStr);
-            if (fallbackErr == QNetworkReply::NoError || fallbackStatus == 200) {
-                auto doc = QJsonDocument::fromJson(fallbackData);
-                if (!doc.isNull() && (doc.object().value("status").toString() == "success" || doc.object().value("status").toString() == "ok")) {
-                    emit verificationResult(true, "Connected to Danisa Server");
-                    return;
-                }
-            }
-            emit verificationResult(false, "Handshake failed: Unable to connect to host.");
-        });
+        emit verificationResult(false, "Handshake failed: Unable to connect to host.");
     });
 }
 
 void AuthService::checkUsernameAvailability(const QString &username) {
     QString trimmedUser = username.trimmed();
-    if (trimmedUser.isEmpty()) {
-        emit availabilityResult(username, false, "Username cannot be empty");
+    if (trimmedUser.length() < Constants::MIN_USERNAME_LENGTH) {
+        emit availabilityResult(username, false, "Username must be at least 3 characters");
         return;
     }
 
@@ -79,8 +67,31 @@ void AuthService::checkUsernameAvailability(const QString &username) {
 }
 
 void AuthService::registerUser(const QString &username, const QString &password) {
+    QString trimmedUser = username.trimmed();
+    if (trimmedUser.length() < Constants::MIN_USERNAME_LENGTH) {
+        emit registrationResult(false, "Username must be at least 3 characters long.");
+        return;
+    }
+
+    if (password.length() < Constants::MIN_PASSWORD_LENGTH) {
+        emit registrationResult(false, "Password must be at least 8 characters long.");
+        return;
+    }
+
+    bool hasLetter = false;
+    bool hasNumber = false;
+    for (const QChar &ch : password) {
+        if (ch.isLetter()) hasLetter = true;
+        if (ch.isDigit()) hasNumber = true;
+    }
+
+    if (!hasLetter || !hasNumber) {
+        emit registrationResult(false, "Password must contain both letters and numbers.");
+        return;
+    }
+
     QJsonObject body;
-    body["username"] = username.trimmed();
+    body["username"] = trimmedUser;
     body["password"] = password;
 
     QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);

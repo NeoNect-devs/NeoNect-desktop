@@ -124,6 +124,7 @@ qt_add_executable(NeoNectApp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
+    src/core/notificationmanager.h src/core/notificationmanager.cpp
 )
 set_target_properties(NeoNectApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
 
@@ -164,6 +165,7 @@ qt_add_qml_module(NeoNectApp
         qml/components/ToastNotification.qml
         qml/components/FriendsHomePanel.qml
         qml/components/NotificationStackView.qml
+        qml/components/NotificationCenterFlyout.qml
         qml/components/SettingsProfileModal.qml
 
         # --- Entrypage Folder ---
@@ -252,6 +254,7 @@ target_link_libraries(NeoNectApp PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     winmm
+    dwmapi
 )
 
 # =====================================================================
@@ -329,6 +332,7 @@ add_executable(NeoNectTests
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
+    src/core/notificationmanager.h src/core/notificationmanager.cpp
 )
 
 set_target_properties(NeoNectTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
@@ -336,12 +340,14 @@ target_include_directories(NeoNectTests PRIVATE src tests)
 target_link_libraries(NeoNectTests PRIVATE
     Qt6::Core
     Qt6::Gui
+    Qt6::Quick
     Qt6::Network
     Qt6::Concurrent
     Qt6::Test
     OpenSSL::SSL
     OpenSSL::Crypto
     winmm
+    dwmapi
 )
 
 if(WIN32)

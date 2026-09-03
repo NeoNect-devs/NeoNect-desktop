@@ -21,6 +21,7 @@ class NetworkManager : public QObject {
     Q_PROPERTY(QString currentUsername READ currentUsername NOTIFY currentUsernameChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(QStringList friends READ friends NOTIFY friendsChanged)
+    Q_PROPERTY(QVariantList bookmarks READ bookmarks NOTIFY bookmarksChanged)
 
 public:
     static NetworkManager* instance();
@@ -37,6 +38,7 @@ public:
     QString currentUsername() const;
     bool isLoading() const { return m_isLoading; }
     QStringList friends() const;
+    QVariantList bookmarks() const;
 
     Q_INVOKABLE void setProfile(const QString &profileName);
     Q_INVOKABLE void verifyServer(const QString &address);
@@ -45,8 +47,17 @@ public:
     Q_INVOKABLE void registerUser(const QString &username, const QString &password);
     Q_INVOKABLE void loginUser(const QString &username, const QString &password);
     Q_INVOKABLE void logoutUser();
+    Q_INVOKABLE void logout() { logoutUser(); }
+
+    // Bookmark Management (TeamSpeak style)
+    Q_INVOKABLE void saveBookmark(const QString &name, const QString &serverUrl, const QString &username, const QString &password, const QString &id = "");
+    Q_INVOKABLE void deleteBookmark(const QString &id);
+    Q_INVOKABLE void connectBookmark(const QString &id);
+
     Q_INVOKABLE void registerDevice(const QString &deviceId, const QString &publicKey);
     Q_INVOKABLE void fetchDevicePublicKey(const QString &deviceId);
+    Q_INVOKABLE void revokeDevice(const QString &deviceId);
+    Q_INVOKABLE void fetchRecipientKeys(const QString &username);
     Q_INVOKABLE void fetchUserProfile();
     Q_INVOKABLE void sendSecurePayload(const QString &channelId, const QString &cipher, const QString &nonce);
 
@@ -66,6 +77,7 @@ signals:
     void currentUsernameChanged();
     void isLoadingChanged();
     void friendsChanged();
+    void bookmarksChanged();
 
     void verificationResult(bool success, const QString &message);
     void availabilityResult(const QString &username, bool available, const QString &error);
@@ -73,6 +85,8 @@ signals:
     void loginResult(bool success, const QString &tokenOrError);
     void deviceRegistrationResult(bool success, const QString &message);
     void deviceKeyFetched(const QString &deviceId, const QString &publicKey);
+    void deviceRevocationResult(bool success, const QString &message);
+    void recipientKeysFetched(const QString &username, const QVariantList &devices);
     void userProfileFetched(bool success, const QString &username);
     void secureMessageTransmitted(const QString &channelId, bool success);
     void messageTransmissionStatus(const QString &targetUser, const QString &messageId, bool success, const QString &errorMessage);
@@ -97,4 +111,7 @@ private:
     std::shared_ptr<NeoNect::Services::FriendService> m_friendService;
 
     bool m_isLoading{false};
+    QString m_sessionToken;
+    QString m_pendingBookmarkUsername;
+    QString m_pendingBookmarkPassword;
 };

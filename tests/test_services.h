@@ -12,4 +12,6 @@ private slots:
     void testFriendServiceFlow();
     void testNetworkManagerFacadeIntegration();
     void testTwoClientChatExchange();
+    void testBookmarkConnectFlow();
+    void testNotificationManagerFlow();
 };

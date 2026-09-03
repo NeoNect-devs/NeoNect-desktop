@@ -23,7 +23,7 @@ public:
 
     void get(const QString &endpoint, const QMap<QString, QString> &queryParams, HttpResponseCallback callback) override;
     void post(const QString &endpoint, const QByteArray &jsonData, HttpResponseCallback callback) override;
-    void deleteResource(const QString &endpoint, HttpResponseCallback callback) override;
+    void deleteResource(const QString &endpoint, HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) override;
 
     static QString cleanUrl(const QString &input);
 

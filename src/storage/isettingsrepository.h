@@ -2,6 +2,8 @@
 #pragma once
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
+#include <QVariantMap>
 
 namespace NeoNect {
 namespace Storage {
@@ -30,6 +32,12 @@ public:
 
     virtual QStringList friends() const = 0;
     virtual void setFriends(const QStringList &friends) = 0;
+
+    virtual QVariantList bookmarks() const = 0;
+    virtual void setBookmarks(const QVariantList &bookmarks) = 0;
+    virtual void addBookmark(const QVariantMap &bookmark) = 0;
+    virtual void updateBookmark(const QVariantMap &bookmark) = 0;
+    virtual void removeBookmark(const QString &id) = 0;
 
     virtual void clearSession() = 0;
 };

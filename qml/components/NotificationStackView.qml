@@ -5,15 +5,59 @@ import QtQuick.Controls
 import QtQuick.Controls.impl
 import NeoNect.Core 1.0
 
-Item {
-    id: notifRoot
-    anchors.top: parent.top
-    anchors.right: parent.right
-    anchors.topMargin: 56
-    anchors.rightMargin: 16
-    width: 360
-    height: notifColumn.implicitHeight
-    z: 10000
+Window {
+    id: notifWindow
+
+    // Native frameless floating tool window on top of all desktop windows
+    flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+    color: "transparent"
+
+    property string screenCorner: (typeof NotificationManager !== "undefined" && NotificationManager) ? NotificationManager.screenCorner : "bottom-right"
+
+    // Primary screen dimensions queried directly from C++ QGuiApplication::primaryScreen()->availableGeometry()
+    readonly property real screenX: (typeof NotificationManager !== "undefined" && NotificationManager) ? NotificationManager.screenAvailableX : 0
+    readonly property real screenY: (typeof NotificationManager !== "undefined" && NotificationManager) ? NotificationManager.screenAvailableY : 0
+    readonly property real screenW: (typeof NotificationManager !== "undefined" && NotificationManager && NotificationManager.screenAvailableWidth > 0) ? NotificationManager.screenAvailableWidth : 1920
+    readonly property real screenH: (typeof NotificationManager !== "undefined" && NotificationManager && NotificationManager.screenAvailableHeight > 0) ? NotificationManager.screenAvailableHeight : 1080
+
+    width: 380
+    height: Math.max(72, notifColumn.implicitHeight + 20)
+
+    function updatePosition() {
+        if (screenCorner === "top-left" || screenCorner === "bottom-left") {
+            notifWindow.x = screenX + 20;
+        } else {
+            notifWindow.x = (screenX + screenW) - notifWindow.width - 20;
+        }
+
+        if (screenCorner === "top-left" || screenCorner === "top-right") {
+            notifWindow.y = screenY + 20;
+        } else {
+            notifWindow.y = (screenY + screenH) - notifWindow.height - 20;
+        }
+    }
+
+    onScreenCornerChanged: updatePosition()
+    onScreenWChanged: updatePosition()
+    onScreenHChanged: updatePosition()
+    onHeightChanged: updatePosition()
+    Component.onCompleted: {
+        updatePosition();
+        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+            NotificationManager.setupFramelessTransparentWindow(notifWindow);
+        }
+    }
+    onVisibleChanged: {
+        if (visible) {
+            updatePosition();
+            if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                NotificationManager.setupFramelessTransparentWindow(notifWindow);
+            }
+        }
+    }
+
+    // Automatically show window on the screen only when active notifications exist
+    visible: notifModel.count > 0
 
     signal actionTriggered(string notifId, string action, string channel)
     signal dismissed(string notifId)
@@ -22,20 +66,33 @@ Item {
         id: notifModel
     }
 
+    Connections {
+        target: NotificationManager
+        ignoreUnknownSignals: true
+        function onNotificationTriggered(notification) {
+            notifWindow.showNotification(notification);
+        }
+        function onNotificationDismissed(id) {
+            notifWindow.removeNotification(id);
+        }
+        function onNotificationsCleared() {
+            notifWindow.clearAll();
+        }
+    }
+
     function showNotification(options) {
-        // options: { id, title, body, type, avatar, actionText, channel, duration }
-        var id = options.id || ("notif_" + Date.now() + "_" + Math.floor(Math.random() * 1000));
-        var duration = options.duration || 5000;
+        if (!options) return;
+        var id = options.id || options.notifId || ("notif_" + Date.now() + "_" + Math.floor(Math.random() * 1000));
+        var duration = options.duration || 4500;
         var notifObj = {
             notifId: id,
-            title: options.title || "NeoNect Notification",
+            title: options.title || "NeoNect",
             body: options.body || "",
             type: options.type || "message", // "message", "friend_request", "security", "system", "success", "error"
             avatar: options.avatar || "",
-            actionText: options.actionText || "",
+            actionText: options.actionText || (options.type === "message" ? "Reply" : ""),
             channel: options.channel || "",
-            duration: duration,
-            progress: 1.0
+            duration: duration
         };
 
         // If duplicate id exists, update it, otherwise prepend
@@ -46,270 +103,342 @@ Item {
             }
         }
 
-        // Limit stack to 4 toasts
-        if (notifModel.count >= 4) {
+        // Limit stack to maximum 3 pills on screen
+        if (notifModel.count >= 3) {
             notifModel.remove(notifModel.count - 1);
         }
 
         notifModel.insert(0, notifObj);
+
+        updatePosition();
+        notifWindow.visible = true;
+        notifWindow.show();
+        notifWindow.raise();
+
+        console.log("--> [NotificationPill] Screen pill displayed at: (" + notifWindow.x + ", " + notifWindow.y + ") size: " + notifWindow.width + "x" + notifWindow.height + " | Title: " + notifObj.title);
     }
 
     function removeNotification(id) {
         for (var i = 0; i < notifModel.count; ++i) {
             if (notifModel.get(i).notifId === id) {
                 notifModel.remove(i);
-                notifRoot.dismissed(id);
+                notifWindow.dismissed(id);
+                if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                    NotificationManager.dismissNotification(id);
+                }
                 break;
             }
+        }
+        if (notifModel.count === 0) {
+            notifWindow.visible = false;
         }
     }
 
     function clearAll() {
         notifModel.clear();
+        notifWindow.visible = false;
+    }
+
+    // Helper function for deterministic Telegram avatar gradient
+    function getAvatarGradient(name) {
+        var str = (name && name.length > 0) ? name : "N";
+        var code = str.charCodeAt(0);
+        var gradients = [
+            { c1: "#0A84FF", c2: "#00D2FF" }, // Telegram Cyan-Blue
+            { c1: "#8B5CF6", c2: "#C084FC" }, // Violet / Lilac
+            { c1: "#10B981", c2: "#34D399" }, // Emerald
+            { c1: "#F59E0B", c2: "#FBBF24" }, // Amber Warm
+            { c1: "#EC4899", c2: "#F472B6" }  // Rose
+        ];
+        return gradients[code % gradients.length];
     }
 
     Column {
         id: notifColumn
-        width: parent.width
-        spacing: 8
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: (screenCorner === "bottom-left" || screenCorner === "bottom-right") ? parent.bottom : undefined
+        anchors.top: (screenCorner === "top-left" || screenCorner === "top-right") ? parent.top : undefined
+        anchors.margins: 10
+        width: 360
+        spacing: 10
 
         Repeater {
             model: notifModel
 
-            delegate: Rectangle {
-                id: toastCard
-                width: notifRoot.width
-                height: Math.max(68, cardLayout.implicitHeight + 16)
-                radius: 12
-                color: "#121418"
-                border.color: {
-                    if (model.type === "error") return "#FF5252";
-                    if (model.type === "success") return "#23A55A";
-                    if (model.type === "friend_request") return "#00E5FF";
-                    if (model.type === "security") return "#FAA81A";
-                    return Qt.rgba(255, 255, 255, 0.12);
+            delegate: Item {
+                id: pillWrapper
+                width: 360
+                height: 52
+
+                property bool isHovered: false
+                property real remainingTime: model.duration
+                property real totalTime: model.duration
+                property var grad: notifWindow.getAvatarGradient(model.title)
+
+                // Entrance micro-animation
+                opacity: 1.0
+                scale: 1.0
+                x: 0
+
+                NumberAnimation on opacity {
+                    from: 0.0; to: 1.0; duration: 220; easing.type: Easing.OutCubic
                 }
-                border.width: 1
-
-                // Enter / Exit animation
-                opacity: 0.0
-                x: 80
-                Component.onCompleted: {
-                    opacity = 1.0;
-                    x = 0;
+                NumberAnimation on scale {
+                    from: 0.88; to: 1.0; duration: 260; easing.type: Easing.OutBack
+                }
+                NumberAnimation on x {
+                    from: (notifWindow.screenCorner === "top-left" || notifWindow.screenCorner === "bottom-left") ? -80 : 80
+                    to: 0
+                    duration: 260
+                    easing.type: Easing.OutBack
                 }
 
-                Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-                Behavior on x { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
-
-                // Dismiss timer & progress
+                // Timer for auto-dismiss with pause-on-hover support
                 Timer {
-                    id: toastTimer
-                    interval: model.duration
-                    running: true
-                    repeat: false
-                    onTriggered: notifRoot.removeNotification(model.notifId)
+                    id: dismissTimer
+                    interval: 100
+                    running: !pillWrapper.isHovered
+                    repeat: true
+                    onTriggered: {
+                        pillWrapper.remainingTime -= 100;
+                        if (pillWrapper.remainingTime <= 0) {
+                            stop();
+                            notifWindow.removeNotification(model.notifId);
+                        }
+                    }
                 }
 
-                // Glassmorphism background subtle glow
+                // ─── 1. OUTER SOFT AMBIENT DROP SHADOW ───
                 Rectangle {
-                    anchors.fill: parent
-                    radius: parent.radius
-                    color: {
-                        if (model.type === "error") return Qt.rgba(255, 82, 82, 0.08);
-                        if (model.type === "success") return Qt.rgba(35, 165, 90, 0.08);
-                        if (model.type === "friend_request") return Qt.rgba(0, 229, 255, 0.08);
-                        if (model.type === "security") return Qt.rgba(250, 168, 26, 0.08);
-                        return Qt.rgba(10, 132, 255, 0.06);
-                    }
+                    anchors.fill: telegramPill
+                    anchors.margins: -3
+                    radius: telegramPill.radius + 3
+                    color: Qt.rgba(0, 0, 0, 0.55)
+                    z: 0
                 }
 
-                // Progress Bar at Bottom
+                // ─── 2. TELEGRAM-STYLE NOTIFICATION PILL CONTAINER ───
                 Rectangle {
-                    id: progressBar
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    anchors.leftMargin: 4
-                    anchors.bottomMargin: 2
-                    height: 2.5
-                    radius: 1.25
-                    width: parent.width - 8
-                    color: {
-                        if (model.type === "error") return "#FF5252";
-                        if (model.type === "success") return "#23A55A";
-                        if (model.type === "friend_request") return "#00E5FF";
-                        if (model.type === "security") return "#FAA81A";
-                        return "#0A84FF";
-                    }
-
-                    NumberAnimation on width {
-                        from: toastCard.width - 8
-                        to: 0
-                        duration: model.duration
-                        running: true
-                    }
-                }
-
-                RowLayout {
-                    id: cardLayout
+                    id: telegramPill
                     anchors.fill: parent
-                    anchors.margins: 10
-                    anchors.bottomMargin: 8
-                    spacing: 10
+                    radius: 26 // Full Telegram pill curve
+                    color: "#17212B" // Solid Telegram dark slate obsidian
+                    border.color: {
+                        if (model.type === "error") return Qt.rgba(255, 82, 82, 0.45);
+                        if (model.type === "success") return Qt.rgba(35, 165, 90, 0.45);
+                        if (model.type === "security") return Qt.rgba(250, 168, 26, 0.45);
+                        return pillWrapper.isHovered ? Qt.rgba(0, 210, 255, 0.4) : Qt.rgba(255, 255, 255, 0.14);
+                    }
+                    border.width: 1
+                    clip: true
+                    z: 1
 
-                    // 1. Avatar / Category Icon
+                    // Subtle inner gradient glass highlight
                     Rectangle {
-                        width: 38; height: 38
-                        radius: 10
-                        color: {
-                            if (model.type === "error") return Qt.rgba(255, 82, 82, 0.2);
-                            if (model.type === "success") return Qt.rgba(35, 165, 90, 0.2);
-                            if (model.type === "friend_request") return Qt.rgba(0, 229, 255, 0.2);
-                            if (model.type === "security") return Qt.rgba(250, 168, 26, 0.2);
-                            return Qt.rgba(10, 132, 255, 0.2);
-                        }
-                        border.color: Qt.rgba(255, 255, 255, 0.1)
-                        border.width: 1
-                        Layout.alignment: Qt.AlignVCenter
-
-                        Text {
-                            visible: model.avatar !== "" || model.type === "message"
-                            anchors.centerIn: parent
-                            text: model.avatar !== "" ? model.avatar.charAt(0).toUpperCase() : (model.title ? model.title.charAt(0).toUpperCase() : "@")
-                            color: "#FFFFFF"
-                            font.family: "Segoe UI"
-                            font.bold: true
-                            font.pixelSize: 16
-                        }
-
-                        IconImage {
-                            visible: model.avatar === "" && model.type !== "message"
-                            anchors.centerIn: parent
-                            source: {
-                                if (model.type === "friend_request") return "qrc:/qt/qml/NeoNect/assets/icons/friends.svg";
-                                if (model.type === "security") return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
-                                if (model.type === "success") return "qrc:/qt/qml/NeoNect/assets/icons/check.svg";
-                                return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
-                            }
-                            width: 18; height: 18
-                            color: {
-                                if (model.type === "error") return "#FF5252";
-                                if (model.type === "success") return "#23A55A";
-                                if (model.type === "friend_request") return "#00E5FF";
-                                if (model.type === "security") return "#FAA81A";
-                                return "#0A84FF";
-                            }
+                        anchors.fill: parent
+                        radius: parent.radius
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: Qt.rgba(255, 255, 255, 0.06) }
+                            GradientStop { position: 1.0; color: "transparent" }
                         }
                     }
 
-                    // 2. Title & Body Content
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
-                        Layout.alignment: Qt.AlignVCenter
+                    // ─── 3. HAIRLINE PROGRESS INDICATOR ALONG BOTTOM ───
+                    Rectangle {
+                        id: progressIndicator
+                        anchors.bottom: parent.bottom
+                        anchors.left: parent.left
+                        anchors.leftMargin: 20
+                        anchors.bottomMargin: 1
+                        height: 2
+                        radius: 1
+                        width: Math.max(0, (telegramPill.width - 40) * (pillWrapper.remainingTime / pillWrapper.totalTime))
+                        color: {
+                            if (model.type === "error") return "#FF5252";
+                            if (model.type === "success") return "#23A55A";
+                            if (model.type === "security") return "#FAA81A";
+                            return "#0A84FF";
+                        }
+                        opacity: pillWrapper.isHovered ? 0.3 : 0.85
+                        Behavior on width { NumberAnimation { duration: 100 } }
+                    }
 
-                        RowLayout {
+                    // ─── 4. PILL CONTENT ROW ───
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 12
+                        spacing: 10
+
+                        // A. CIRCULAR SENDER AVATAR WITH GRADIENT
+                        Item {
+                            width: 36; height: 36
+                            Layout.alignment: Qt.AlignVCenter
+
+                            Rectangle {
+                                id: avatarCircle
+                                anchors.fill: parent
+                                radius: 18
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0.0; color: pillWrapper.grad.c1 }
+                                    GradientStop { position: 1.0; color: pillWrapper.grad.c2 }
+                                }
+                                border.color: Qt.rgba(255, 255, 255, 0.2)
+                                border.width: 1
+
+                                Text {
+                                    visible: model.type === "message" || model.avatar !== ""
+                                    anchors.centerIn: parent
+                                    text: {
+                                        if (model.avatar && model.avatar.length > 0) return model.avatar.charAt(0).toUpperCase();
+                                        if (model.title && model.title.length > 0) return model.title.charAt(0).toUpperCase();
+                                        return "@";
+                                    }
+                                    color: "#FFFFFF"
+                                    font.family: "Segoe UI"
+                                    font.bold: true
+                                    font.pixelSize: 15
+                                }
+
+                                IconImage {
+                                    visible: model.type !== "message" && model.avatar === ""
+                                    anchors.centerIn: parent
+                                    source: {
+                                        if (model.type === "security") return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
+                                        if (model.type === "success") return "qrc:/qt/qml/NeoNect/assets/icons/check.svg";
+                                        if (model.type === "friend_request") return "qrc:/qt/qml/NeoNect/assets/icons/friends.svg";
+                                        return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
+                                    }
+                                    width: 16; height: 16
+                                    color: "#FFFFFF"
+                                }
+                            }
+
+                            // Small vibrant online indicator dot on avatar rim
+                            Rectangle {
+                                width: 9; height: 9
+                                radius: 4.5
+                                color: "#23A55A"
+                                border.color: "#17212B"
+                                border.width: 1.5
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                visible: model.type === "message"
+                            }
+                        }
+
+                        // B. SENDER NAME + PREVIEW TYPOGRAPHY
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 6
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 1
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+
+                                Text {
+                                    text: model.title
+                                    color: "#FFFFFF"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 13
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+
+                                Text {
+                                    text: "now"
+                                    color: "#7E8794"
+                                    font.family: "Segoe UI"
+                                    font.pixelSize: 10
+                                }
+                            }
 
                             Text {
-                                text: model.title
-                                color: "#FFFFFF"
+                                text: model.body !== "" ? model.body : "New message"
+                                color: "#9FA8B4"
                                 font.family: "Segoe UI"
-                                font.pixelSize: 13
-                                font.bold: true
+                                font.pixelSize: 12
                                 elide: Text.ElideRight
+                                maximumLineCount: 1
                                 Layout.fillWidth: true
                             }
+                        }
+
+                        // C. QUICK ACTION PILL BUTTON (e.g., "Reply")
+                        Rectangle {
+                            visible: model.actionText !== ""
+                            height: 24
+                            implicitWidth: actionTextElem.implicitWidth + 14
+                            radius: 12
+                            color: replyMouse.containsMouse ? "#0A84FF" : Qt.rgba(10, 132, 255, 0.18)
+                            border.color: Qt.rgba(10, 132, 255, 0.45)
+                            border.width: 1
+                            Layout.alignment: Qt.AlignVCenter
 
                             Text {
-                                text: "now"
-                                color: "#80848E"
+                                id: actionTextElem
+                                anchors.centerIn: parent
+                                text: model.actionText
+                                color: "#FFFFFF"
                                 font.family: "Segoe UI"
-                                font.pixelSize: 10
+                                font.pixelSize: 11
+                                font.bold: true
+                            }
+
+                            MouseArea {
+                                id: replyMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    notifWindow.actionTriggered(model.notifId, "reply", model.channel);
+                                    notifWindow.removeNotification(model.notifId);
+                                }
                             }
                         }
 
-                        Text {
-                            text: model.body
-                            color: "#B5BAC1"
-                            font.family: "Segoe UI"
-                            font.pixelSize: 12
-                            wrapMode: Text.Wrap
-                            maximumLineCount: 2
-                            elide: Text.ElideRight
-                            Layout.fillWidth: true
-                        }
-                    }
+                        // D. CIRCULAR DISMISS BUTTON "✕"
+                        Rectangle {
+                            id: closeBtn
+                            width: 22; height: 22
+                            radius: 11
+                            color: closeMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.15) : "transparent"
+                            Layout.alignment: Qt.AlignVCenter
 
-                    // 3. Action Button (Optional e.g. "Reply" or "Open")
-                    Rectangle {
-                        visible: model.actionText !== ""
-                        height: 26
-                        implicitWidth: actionBtnText.implicitWidth + 16
-                        radius: 6
-                        color: actionBtnMouse.containsMouse ? "#0A84FF" : Qt.rgba(10, 132, 255, 0.25)
-                        border.color: Qt.rgba(10, 132, 255, 0.5)
-                        border.width: 1
-                        Layout.alignment: Qt.AlignVCenter
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                color: closeMouse.containsMouse ? "#FFFFFF" : "#7E8794"
+                                font.pixelSize: 11
+                            }
 
-                        Text {
-                            id: actionBtnText
-                            anchors.centerIn: parent
-                            text: model.actionText
-                            color: "#FFFFFF"
-                            font.family: "Segoe UI"
-                            font.pixelSize: 11
-                            font.bold: true
-                        }
-
-                        MouseArea {
-                            id: actionBtnMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                notifRoot.actionTriggered(model.notifId, model.actionText, model.channel);
-                                notifRoot.removeNotification(model.notifId);
+                            MouseArea {
+                                id: closeMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: notifWindow.removeNotification(model.notifId)
                             }
                         }
                     }
 
-                    // 4. Close Button
-                    Rectangle {
-                        width: 22; height: 22
-                        radius: 11
-                        color: closeBtnMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.15) : "transparent"
-                        Layout.alignment: Qt.AlignVCenter
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: "✕"
-                            color: closeBtnMouse.containsMouse ? "#FFFFFF" : "#80848E"
-                            font.pixelSize: 10
+                    // ─── 5. FULL-PILL HOVER & CLICK AREA ───
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        z: -1
+                        onEntered: pillWrapper.isHovered = true
+                        onExited: pillWrapper.isHovered = false
+                        onClicked: {
+                            if (model.channel && model.channel !== "") {
+                                notifWindow.actionTriggered(model.notifId, "open", model.channel);
+                            }
+                            notifWindow.removeNotification(model.notifId);
                         }
-
-                        MouseArea {
-                            id: closeBtnMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: notifRoot.removeNotification(model.notifId)
-                        }
-                    }
-                }
-
-                // Click toast body to trigger default action
-                MouseArea {
-                    anchors.fill: parent
-                    z: -1
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (model.channel !== "") {
-                            notifRoot.actionTriggered(model.notifId, "open", model.channel);
-                        }
-                        notifRoot.removeNotification(model.notifId);
                     }
                 }
             }

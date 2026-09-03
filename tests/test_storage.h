@@ -9,4 +9,5 @@ private slots:
     void testProfileIsolation();
     void testGettersAndSetters();
     void testClearSession();
+    void testBookmarks();
 };

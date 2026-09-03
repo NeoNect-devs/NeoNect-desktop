@@ -23,7 +23,7 @@ public:
 
     virtual void get(const QString &endpoint, const QMap<QString, QString> &queryParams, HttpResponseCallback callback) = 0;
     virtual void post(const QString &endpoint, const QByteArray &jsonData, HttpResponseCallback callback) = 0;
-    virtual void deleteResource(const QString &endpoint, HttpResponseCallback callback) = 0;
+    virtual void deleteResource(const QString &endpoint, HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) = 0;
 };
 
 } // namespace Transport

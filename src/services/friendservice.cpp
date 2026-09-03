@@ -50,15 +50,45 @@ void FriendService::checkFriendsStatus() {
     QString currentUser = m_storage->username().toLower();
     QStringList friendList = m_storage->friends();
     QDateTime now = QDateTime::currentDateTime();
+    QString token = m_storage->authToken();
 
-    std::lock_guard<std::mutex> lock(m_presenceMutex);
     for (const QString &friendName : friendList) {
         QString target = friendName.trimmed().toLower();
         if (target.isEmpty() || target == currentUser) continue;
 
-        if (m_lastSeen.contains(target) && m_lastSeen[target].secsTo(now) <= Constants::PRESENCE_TIMEOUT_SECS) {
+        // Fast path: if recently active locally
+        bool locallyOnline = false;
+        {
+            std::lock_guard<std::mutex> lock(m_presenceMutex);
+            if (m_lastSeen.contains(target) && m_lastSeen[target].secsTo(now) <= Constants::PRESENCE_TIMEOUT_SECS) {
+                locallyOnline = true;
+            }
+        }
+
+        if (locallyOnline) {
             emit friendStatusUpdated(target, "online");
-        } else {
+        }
+
+        // Query Danisa server presence endpoint: GET /api/v1/presence?u=<username>
+        if (!token.isEmpty()) {
+            QMap<QString, QString> params;
+            params["u"] = target;
+            m_transport->get(Constants::EP_PRESENCE, params, [this, target, locallyOnline](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+                Q_UNUSED(statusCode);
+                Q_UNUSED(errStr);
+                if (error == QNetworkReply::NoError) {
+                    auto doc = QJsonDocument::fromJson(data);
+                    if (!doc.isNull() && doc.object().contains("online")) {
+                        bool isOnline = doc.object().value("online").toBool();
+                        emit friendStatusUpdated(target, isOnline ? "online" : "offline");
+                        return;
+                    }
+                }
+                if (!locallyOnline) {
+                    emit friendStatusUpdated(target, "offline");
+                }
+            });
+        } else if (!locallyOnline) {
             emit friendStatusUpdated(target, "offline");
         }
     }
