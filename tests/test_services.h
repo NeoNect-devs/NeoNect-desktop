@@ -14,4 +14,8 @@ private slots:
     void testTwoClientChatExchange();
     void testBookmarkConnectFlow();
     void testNotificationManagerFlow();
+    void testCiphertextDoesNotContainPlaintext();
+    void testRelayServiceTamperedMessageRejection();
+    void testCallbackCannotReachDestroyedService();
+    void testRequestCancellationOnServiceDestruction();
 };

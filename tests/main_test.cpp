@@ -7,6 +7,7 @@
 #include "test_storage.h"
 #include "test_models.h"
 #include "test_services.h"
+#include "test_messages.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -73,9 +74,31 @@ int main(int argc, char *argv[]) {
         int r8 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testNotificationManagerFlow");
         std::cout << "    Result: " << (r8 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | r4 | r5 | r6 | r7 | r8);
+        std::cout << "--> Testing testCiphertextDoesNotContainPlaintext..." << std::endl;
+        int r9 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testCiphertextDoesNotContainPlaintext");
+        std::cout << "    Result: " << (r9 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        std::cout << "--> Testing testRelayServiceTamperedMessageRejection..." << std::endl;
+        int r10 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRelayServiceTamperedMessageRejection");
+        std::cout << "    Result: " << (r10 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        std::cout << "--> Testing testCallbackCannotReachDestroyedService..." << std::endl;
+        int r11 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testCallbackCannotReachDestroyedService");
+        std::cout << "    Result: " << (r11 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        std::cout << "--> Testing testRequestCancellationOnServiceDestruction..." << std::endl;
+        int r12 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRequestCancellationOnServiceDestruction");
+        std::cout << "    Result: " << (r12 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | r4 | r5 | r6 | r7 | r8 | r9 | r10 | r11 | r12);
     }
 
+    {
+        TestMessages tm;
+        int res = QTest::qExec(&tm);
+        std::cout << "[TestMessages Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
     std::cout << "\n==========================================" << std::endl;
     std::cout << (status == 0 ? "  ALL NEONECT TESTS PASSED SUCCESSFULLY! [100%]" : "  SOME TESTS FAILED!") << std::endl;
     std::cout << "==========================================\n" << std::endl;

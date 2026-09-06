@@ -1,6 +1,6 @@
 // src/core/notificationmanager.cpp
 #include "notificationmanager.h"
-#include "networkmanager.h"
+#include "../services/messageservice.h"
 #include "../common/constants.h"
 #include <QUuid>
 #include <QDateTime>
@@ -20,15 +20,9 @@
 namespace NeoNect {
 namespace Core {
 
-NotificationManager* NotificationManager::instance() {
-    static NotificationManager _instance;
-    return &_instance;
-}
-
 NotificationManager::NotificationManager(QObject *parent)
     : QObject(parent) {
     loadSettings();
-    setupNetworkManagerHook();
 
     if (auto screen = QGuiApplication::primaryScreen()) {
         connect(screen, &QScreen::availableGeometryChanged, this, &NotificationManager::screenGeometryChanged);
@@ -91,55 +85,30 @@ void NotificationManager::saveSettings() {
     settings.endGroup();
 }
 
-void NotificationManager::setupNetworkManagerHook() {
-    auto nm = NetworkManager::instance();
-    if (!nm) return;
-
-    connect(nm, &NetworkManager::incomingRelayMessageReceived, this,
-            [this](const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp) {
-        Q_UNUSED(target);
-        Q_UNUSED(timestamp);
-        QString me = NetworkManager::instance()->currentUsername();
-        if (!me.isEmpty() && fromUsername.compare(me, Qt::CaseInsensitive) == 0) {
-            return; // Ignore self messages
-        }
-        if (fromUsername.isEmpty() || fromUsername == "Anonymous") {
-            return;
-        }
-
-        showMessageNotification(fromUsername, text, fromUsername.toLower(), fromUsername.left(1).toUpper(), "text");
-    }, Qt::QueuedConnection);
-
-    connect(nm, &NetworkManager::incomingRichMessageReceived, this,
-            [this](const QVariantMap &data) {
-        QString sender = data.value("sender").toString();
-        QString me = NetworkManager::instance()->currentUsername();
-        if (!me.isEmpty() && sender.compare(me, Qt::CaseInsensitive) == 0) {
-            return;
-        }
-        if (sender.isEmpty() || sender == "Anonymous") {
-            return;
-        }
-
-        QString type = data.value("type").toString();
+void NotificationManager::setupMessageServiceHook(Services::MessageService* ms) {
+    if (!ms) return;
+    connect(ms, &Services::MessageService::messageAdded, this,
+            [this](const QString &conversationId, const QVariantMap &data) {
+        if (data.value("fromMe").toBool()) return;
+        
+        QString sender = data.value("senderId").toString();
+        if (sender.isEmpty() || sender == "Anonymous") return;
+        
         QString text = data.value("text").toString();
-        QString fileName = data.value("fileName").toString();
-
-        QString displayBody = text;
-        if (type == "voice") {
-            int duration = data.value("duration").toInt();
-            displayBody = QString("🎙️ Voice message (%1s)").arg(duration > 0 ? duration : 5);
-        } else if (type == "image") {
-            displayBody = "📷 Photo";
-        } else if (type == "sticker") {
-            displayBody = "🎭 Sticker";
-        } else if (type == "file") {
-            displayBody = fileName.isEmpty() ? "📎 Shared file" : "📎 " + fileName;
+        QString type = data.value("type", "text").toString();
+        QString avatar = sender.left(1).toUpper();
+        
+        QString targetChannel = conversationId;
+        if (targetChannel.startsWith("dms:")) {
+            targetChannel = targetChannel.mid(4);
+        } else if (targetChannel.startsWith("server1:")) {
+            targetChannel = targetChannel.mid(8);
         }
-
-        showMessageNotification(sender, displayBody, sender.toLower(), sender.left(1).toUpper(), type);
+        
+        showMessageNotification(sender, text, targetChannel, avatar, type);
     }, Qt::QueuedConnection);
 }
+
 
 QVariantList NotificationManager::activeNotifications() const {
     std::lock_guard<std::mutex> lock(m_mutex);

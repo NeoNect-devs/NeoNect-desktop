@@ -68,9 +68,18 @@ public:
 
     void addMessage(MessageItem &&item);
 
+public slots:
+    void onConversationLoaded(const QString &conversationId, const QVariantList &messages);
+    void onMessageAdded(const QString &conversationId, const QVariantMap &message);
+    void onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText);
+    void setActiveConversation(const QString &conversationId);
+
 signals:
     void retryRequested(const QString &messageId, const QVariantMap &messageData);
 
 private:
     std::vector<MessageItem> m_items;
+    QString m_activeConversationId;
+    void recalculateBlocks();
+    MessageItem parseVariantMap(const QVariantMap &map) const;
 };

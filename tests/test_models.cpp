@@ -134,7 +134,7 @@ void TestModels::testMessageStatusAndRetry() {
 }
 
 void TestModels::testAudioManagerRecordingAndPlayback() {
-    auto *audio = AudioManager::instance();
+    auto *audio = new AudioManager(this);
     QVERIFY(audio != nullptr);
 
     // Test recording start/cancel

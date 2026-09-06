@@ -16,6 +16,7 @@ struct MockQueuedMessage {
     QString deviceId;
     QString toUsername;
     QString ciphertextBase64;
+    QString nonceBase64;
     qint64 timestamp{0};
 };
 
@@ -43,19 +44,22 @@ public:
     void setAuthToken(const QString &token) override;
     QString authToken() const override;
 
-    void get(const QString &endpoint, const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback) override;
-    void post(const QString &endpoint, const QByteArray &jsonData, Transport::HttpResponseCallback callback) override;
-    void deleteResource(const QString &endpoint, Transport::HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) override;
+    QNetworkReply* get(const QString &endpoint, const QMap<QString, QString> &queryParams, const QObject* context, Transport::HttpResponseCallback callback) override;
+    QNetworkReply* post(const QString &endpoint, const QByteArray &jsonData, const QObject* context, Transport::HttpResponseCallback callback) override;
+    QNetworkReply* deleteResource(const QString &endpoint, const QObject* context, Transport::HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) override;
 
     // Test Control Helpers
     void seedUser(const QString &username, const QString &password);
     void setSimulateNetworkError(bool simulate);
     void setSimulateHttpError(int statusCode);
     int queuedMessageCount(const QString &deviceId) const;
+    void tamperLastMessageCiphertext(const QString &deviceId);
+    void tamperLastMessageNonce(const QString &deviceId);
     void clearAllQueues();
 
 signals:
     void requestHandled(const QString &method, const QString &endpoint);
+    void rawRequestData(const QByteArray &data);
 
 private:
     void loadSharedState();

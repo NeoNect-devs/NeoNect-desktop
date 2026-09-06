@@ -1,13 +1,12 @@
-// src/services/relayservice.h
 #pragma once
 #include <QObject>
 #include <QTimer>
-#include <QVariantMap>
 #include <memory>
 #include <unordered_set>
 #include "../transport/ihttptransport.h"
 #include "../storage/isettingsrepository.h"
 #include "../crypto/icryptoservice.h"
+#include "../domain/message.h"
 
 namespace NeoNect {
 namespace Services {
@@ -25,14 +24,15 @@ public:
     void stopPolling();
     bool isPolling() const;
 
-    void sendRelayMessage(const QString &toUsername, const QString &plainText, const QString &messageId = "");
-    void sendRichRelayMessage(const QString &toUsername, const QVariantMap &messageData);
     void pollPendingMessages();
     void acknowledgeMessage(qint64 messageId);
 
+public slots:
+    void sendDomainMessage(const Domain::Message &msg);
+
 signals:
-    void incomingRelayMessageReceived(const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp);
-    void incomingRichMessageReceived(const QVariantMap &messageData);
+    void incomingDomainMessageReceived(const NeoNect::Domain::Message &msg);
+    void incomingDomainMessagesReceived(const std::vector<NeoNect::Domain::Message> &msgs);
     void secureMessageTransmitted(const QString &targetUser, bool success);
     void messageTransmissionStatus(const QString &targetUser, const QString &messageId, bool success, const QString &errorMessage);
     void sessionUnauthorized(const QString &message);

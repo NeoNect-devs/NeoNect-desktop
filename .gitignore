@@ -4,3 +4,31 @@ Backend/
 backend/
 *.log
 .qmlls.ini
+
+# IDE / Editor
+.idea/
+.vscode/
+CMakeLists.txt.user
+
+# OS Specific
+.DS_Store
+
+# Local Databases
+*.sqlite
+*.db
+
+# Temporary / Patch files
+*.tmp
+*.bak
+*.swp
+*.orig
+*.rej
+*.patch
+*.pyc
+__pycache__/
+
+# Secrets
+.env
+
+# Documentation
+docs/

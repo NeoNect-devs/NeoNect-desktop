@@ -24,10 +24,13 @@ class NetworkManager : public QObject {
     Q_PROPERTY(QVariantList bookmarks READ bookmarks NOTIFY bookmarksChanged)
 
 public:
-    static NetworkManager* instance();
-    explicit NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport = nullptr,
-                            std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage = nullptr,
-                            std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService = nullptr,
+    explicit NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
+                            std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
+                            std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService,
+                            std::shared_ptr<NeoNect::Services::AuthService> authService,
+                            std::shared_ptr<NeoNect::Services::DeviceService> deviceService,
+                            std::shared_ptr<NeoNect::Services::RelayService> relayService,
+                            std::shared_ptr<NeoNect::Services::FriendService> friendService,
                             QObject *parent = nullptr);
     ~NetworkManager() override = default;
 
@@ -59,11 +62,8 @@ public:
     Q_INVOKABLE void revokeDevice(const QString &deviceId);
     Q_INVOKABLE void fetchRecipientKeys(const QString &username);
     Q_INVOKABLE void fetchUserProfile();
-    Q_INVOKABLE void sendSecurePayload(const QString &channelId, const QString &cipher, const QString &nonce);
 
     // E2EE Relay & Direct Chat
-    Q_INVOKABLE void sendRelayMessage(const QString &toUsername, const QString &plainText, const QString &messageId = "");
-    Q_INVOKABLE void sendRichRelayMessage(const QString &toUsername, const QVariantMap &messageData);
     Q_INVOKABLE void pollPendingMessages();
     Q_INVOKABLE void acknowledgeMessage(qint64 messageId);
 
@@ -88,11 +88,7 @@ signals:
     void deviceRevocationResult(bool success, const QString &message);
     void recipientKeysFetched(const QString &username, const QVariantList &devices);
     void userProfileFetched(bool success, const QString &username);
-    void secureMessageTransmitted(const QString &channelId, bool success);
-    void messageTransmissionStatus(const QString &targetUser, const QString &messageId, bool success, const QString &errorMessage);
 
-    void incomingRelayMessageReceived(const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp);
-    void incomingRichMessageReceived(const QVariantMap &messageData);
     void addFriendResult(bool success, const QString &message, const QString &username);
     void friendStatusUpdated(const QString &username, const QString &status);
 

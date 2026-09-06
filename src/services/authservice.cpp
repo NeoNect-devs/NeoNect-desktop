@@ -16,10 +16,14 @@ AuthService::AuthService(std::shared_ptr<Transport::IHttpTransport> transport,
 
 void AuthService::verifyServer(const QString &address) {
     QString cleanUrl = Transport::HttpTransport::cleanUrl(address);
+    if (!cleanUrl.startsWith("https://") && !cleanUrl.contains("localhost") && !cleanUrl.contains("127.0.0.1")) {
+        emit verificationResult(false, "Insecure connection. HTTPS is strictly required.");
+        return;
+    }
     m_transport->setBaseUrl(cleanUrl);
     m_storage->setServerUrl(cleanUrl);
 
-    m_transport->get(Constants::EP_HEALTH, {}, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_HEALTH, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
         if (error == QNetworkReply::NoError || statusCode == 200) {
             auto doc = QJsonDocument::fromJson(data);
@@ -48,7 +52,7 @@ void AuthService::checkUsernameAvailability(const QString &username) {
     QMap<QString, QString> params;
     params["u"] = trimmedUser;
 
-    m_transport->get(Constants::EP_USERS_AVAILABILITY, params, [this, trimmedUser](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_USERS_AVAILABILITY, params, this, [this, trimmedUser](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
         if (error != QNetworkReply::NoError) {
@@ -96,7 +100,7 @@ void AuthService::registerUser(const QString &username, const QString &password)
 
     QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
-    m_transport->post(Constants::EP_USERS, postData, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->post(Constants::EP_USERS, postData, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
         auto doc = QJsonDocument::fromJson(data);
         if (error != QNetworkReply::NoError && statusCode != 201 && statusCode != 200) {
@@ -124,7 +128,7 @@ void AuthService::loginUser(const QString &username, const QString &password) {
     QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
     QString cleanUser = username.trimmed().toLower();
 
-    m_transport->post(Constants::EP_AUTH, postData, [this, cleanUser](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->post(Constants::EP_AUTH, postData, this, [this, cleanUser](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
         auto doc = QJsonDocument::fromJson(data);
@@ -152,7 +156,7 @@ void AuthService::loginUser(const QString &username, const QString &password) {
 }
 
 void AuthService::logoutUser() {
-    m_transport->deleteResource(Constants::EP_AUTH, [](int, const QByteArray&, QNetworkReply::NetworkError, const QString&) {});
+    m_transport->deleteResource(Constants::EP_AUTH, this, [](int, const QByteArray&, QNetworkReply::NetworkError, const QString&) {});
     m_storage->clearSession();
     m_transport->setAuthToken(QString());
 }
@@ -163,7 +167,7 @@ void AuthService::fetchUserProfile() {
         return;
     }
 
-    m_transport->get(Constants::EP_USERS_ME, {}, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_USERS_ME, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
         if (error == QNetworkReply::NoError) {

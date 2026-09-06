@@ -5,11 +5,6 @@
 #include <QtConcurrent>
 #include <QUuid>
 
-CryptoManager* CryptoManager::instance() {
-    static CryptoManager _instance;
-    return &_instance;
-}
-
 CryptoManager::CryptoManager(std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService,
                              std::shared_ptr<NeoNect::Storage::ISettingsRepository> settingsRepo,
                              QObject *parent)
@@ -35,11 +30,8 @@ void CryptoManager::ensureDeviceCredentials() {
 
     QString pubKey = m_settingsRepo->publicKey();
     if (pubKey.isEmpty()) {
-        QByteArray randomKey = m_cryptoService->generateRandomBytes(32);
-        if (!randomKey.isEmpty()) {
-            pubKey = QString::fromLatin1(randomKey.toBase64());
-            m_settingsRepo->setPublicKey(pubKey);
-        }
+        // [REFACTOR] Removed fake public key generation.
+        // A real asymmetric keypair must only be introduced when the required protocol is known.
     }
 }
 

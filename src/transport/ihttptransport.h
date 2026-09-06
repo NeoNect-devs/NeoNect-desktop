@@ -21,9 +21,9 @@ public:
     virtual void setAuthToken(const QString &token) = 0;
     virtual QString authToken() const = 0;
 
-    virtual void get(const QString &endpoint, const QMap<QString, QString> &queryParams, HttpResponseCallback callback) = 0;
-    virtual void post(const QString &endpoint, const QByteArray &jsonData, HttpResponseCallback callback) = 0;
-    virtual void deleteResource(const QString &endpoint, HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) = 0;
+    virtual QNetworkReply* get(const QString &endpoint, const QMap<QString, QString> &queryParams, const QObject* context, HttpResponseCallback callback) = 0;
+    virtual QNetworkReply* post(const QString &endpoint, const QByteArray &jsonData, const QObject* context, HttpResponseCallback callback) = 0;
+    virtual QNetworkReply* deleteResource(const QString &endpoint, const QObject* context, HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) = 0;
 };
 
 } // namespace Transport

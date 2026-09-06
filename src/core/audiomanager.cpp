@@ -17,10 +17,6 @@
 #include <mmsystem.h>
 #endif
 
-AudioManager* AudioManager::instance() {
-    static AudioManager _instance;
-    return &_instance;
-}
 
 AudioManager::AudioManager(QObject *parent)
     : QObject(parent),

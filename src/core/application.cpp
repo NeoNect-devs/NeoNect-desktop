@@ -1,3 +1,5 @@
+#include <QStandardPaths>
+#include <QDir>
 // src/core/application.cpp
 #include "application.h"
 #include "networkmanager.h"
@@ -8,6 +10,9 @@
 #include "../themedata.h"
 #include "../storage/settingsrepository.h"
 #include "../../tests/mocks/mockhttptransport.h"
+#include "storage/sqlmessagerepository.h"
+#include "../transport/httptransport.h"
+#include "../crypto/cryptoservice.h"
 
 #include <QQmlContext>
 #include <QCommandLineParser>
@@ -74,28 +79,53 @@ void Application::parseCommandLine() {
 }
 
 void Application::initializeServices() {
-    CryptoManager::instance()->setProfile(m_profile);
+    qRegisterMetaType<std::vector<NeoNect::Domain::Message>>("std::vector<NeoNect::Domain::Message>");
+    m_storage = std::make_shared<Storage::SettingsRepository>(m_profile);
+    m_cryptoService = std::make_shared<Crypto::CryptoService>();
+
     if (m_isMockMode) {
         auto mockTransport = std::make_shared<Testing::MockHttpTransport>(true, false);
         if (!m_profile.isEmpty()) {
             QString profileUser = m_profile.trimmed().toLower();
             mockTransport->seedUser(profileUser, "password123");
         }
-        NetworkManager::instance()->initializeCustom(mockTransport);
+        m_transport = mockTransport;
         std::cout << "➔ [MOCK MODE ACTIVATED] Running with embedded multi-client server." << std::endl;
+    } else {
+        m_transport = std::make_shared<Transport::HttpTransport>();
     }
-    NetworkManager::instance()->setProfile(m_profile);
-}
 
-void Application::registerQmlTypes() {
-    m_engine->rootContext()->setContextProperty("ThemeData", ThemeData::instance());
-    m_engine->rootContext()->setContextProperty("appProfile", m_profile);
+    auto authService = std::make_shared<Services::AuthService>(m_transport, m_storage);
+    auto deviceService = std::make_shared<Services::DeviceService>(m_transport, m_storage);
+    m_relayService = std::make_shared<Services::RelayService>(m_transport, m_storage, m_cryptoService);
+    auto friendService = std::make_shared<Services::FriendService>(m_transport, m_storage);
 
-    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NetworkManager", NetworkManager::instance());
-    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "CryptoManager", CryptoManager::instance());
-    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "AudioManager", AudioManager::instance());
-    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", Core::NotificationManager::instance());
-    qmlRegisterType<ChatMessageModel>("NeoNect.Core", 1, 0, "ChatMessageModel");
+    m_networkManager = std::make_unique<NetworkManager>(m_transport, m_storage, m_cryptoService, authService, deviceService, m_relayService, friendService);
+    m_cryptoManager = std::make_unique<CryptoManager>(m_cryptoService, m_storage);
+
+    // Phase 3 & 4 Message Storage and Services
+    QString dbPath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath("messages.db");
+    m_messageRepo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    m_messageService = std::make_unique<Services::MessageService>(m_messageRepo);
+
+    // Wire MessageService dependencies
+    QObject::connect(m_networkManager.get(), &NetworkManager::currentUsernameChanged, m_messageService.get(), [this]() {
+        m_messageService->setCurrentUserId(m_storage->username());
+    });
+    m_messageService->setCurrentUserId(m_storage->username()); // Initial set
+    
+    // RelayService -> MessageService (Incoming)
+    QObject::connect(m_relayService.get(), &Services::RelayService::incomingDomainMessagesReceived, m_messageService.get(), &Services::MessageService::handleIncomingMessages);
+    QObject::connect(m_relayService.get(), &Services::RelayService::messageTransmissionStatus, m_messageService.get(), [this](const QString &, const QString &messageId, bool success, const QString &errorMessage) {
+        m_messageService->handleMessageDeliveryStatus(messageId, success, errorMessage);
+    });
+    
+    // MessageService -> RelayService (Outgoing)
+    QObject::connect(m_messageService.get(), &Services::MessageService::transmitMessage, m_relayService.get(), &Services::RelayService::sendDomainMessage);
+
+    m_audioManager = std::make_unique<AudioManager>();
+    m_notificationManager = std::make_unique<Core::NotificationManager>();
+    m_notificationManager->setupMessageServiceHook(m_messageService.get());
 }
 
 bool Application::loadMainUi() {
@@ -126,4 +156,17 @@ int Application::run() {
     return m_app->exec();
 }
 
+void Application::registerQmlTypes() {
+    m_engine->rootContext()->setContextProperty("ThemeData", ThemeData::instance());
+    m_engine->rootContext()->setContextProperty("appProfile", m_profile);
+
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NetworkManager", m_networkManager.get());
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "CryptoManager", m_cryptoManager.get());
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "AudioManager", m_audioManager.get());
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", m_notificationManager.get());
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "MessageService", m_messageService.get());
+    qmlRegisterType<ChatMessageModel>("NeoNect.Core", 1, 0, "ChatMessageModel");
+}
+
 } // namespace NeoNect
+

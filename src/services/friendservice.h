@@ -1,6 +1,7 @@
 // src/services/friendservice.h
 #pragma once
 #include <QObject>
+#include <QTimer>
 #include <QStringList>
 #include <QDateTime>
 #include <QMap>
@@ -15,6 +16,8 @@ namespace Services {
 class FriendService : public QObject {
     Q_OBJECT
 public:
+    void startHeartbeat();
+    void stopHeartbeat();
     explicit FriendService(std::shared_ptr<Transport::IHttpTransport> transport,
                            std::shared_ptr<Storage::ISettingsRepository> storage,
                            QObject *parent = nullptr);
@@ -32,6 +35,7 @@ signals:
     void friendStatusUpdated(const QString &username, const QString &status);
 
 private:
+    QTimer *m_heartbeatTimer = nullptr;
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
 

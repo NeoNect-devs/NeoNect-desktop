@@ -54,15 +54,8 @@ public:
         cleanse();
     }
 
-    SecureBuffer(const SecureBuffer &other) : m_data(other.m_data) {}
-
-    SecureBuffer &operator=(const SecureBuffer &other) {
-        if (this != &other) {
-            cleanse();
-            m_data = other.m_data;
-        }
-        return *this;
-    }
+    SecureBuffer(const SecureBuffer &other) = delete;
+    SecureBuffer &operator=(const SecureBuffer &other) = delete;
 
     SecureBuffer(SecureBuffer &&other) noexcept : m_data(std::move(other.m_data)) {}
 

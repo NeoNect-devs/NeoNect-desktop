@@ -75,6 +75,7 @@ void MockHttpTransport::loadSharedState() {
         item.deviceId = qObj.value("device_id").toString();
         item.toUsername = qObj.value("to_username").toString();
         item.ciphertextBase64 = qObj.value("ciphertext").toString();
+        item.nonceBase64 = qObj.value("nonce").toString();
         item.timestamp = qObj.value("timestamp").toInteger();
         m_deliveryQueue.push_back(item);
     }
@@ -84,13 +85,13 @@ void MockHttpTransport::saveSharedState() {
     if (!m_enableSharedStorage) return;
 
     QJsonObject root;
-    root["next_user_id"] = m_nextUserId;
+    root["next_user_id"] = static_cast<qint64>(m_nextUserId);
     root["next_message_id"] = m_nextMessageId;
 
     QJsonObject usersObj;
     for (auto it = m_users.begin(); it != m_users.end(); ++it) {
         QJsonObject uObj;
-        uObj["id"] = it.value().id;
+        uObj["id"] = static_cast<qint64>(it.value().id);
         uObj["password"] = it.value().password;
         uObj["session_token"] = it.value().sessionToken;
 
@@ -110,6 +111,7 @@ void MockHttpTransport::saveSharedState() {
         qObj["device_id"] = item.deviceId;
         qObj["to_username"] = item.toUsername;
         qObj["ciphertext"] = item.ciphertextBase64;
+        qObj["nonce"] = item.nonceBase64;
         qObj["timestamp"] = item.timestamp;
         queueArr.append(qObj);
     }
@@ -198,9 +200,10 @@ void MockHttpTransport::clearAllQueues() {
     if (m_enableSharedStorage) {
         saveSharedState();
     }
+    return;
 }
 
-void MockHttpTransport::get(const QString &endpoint, const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback) {
+QNetworkReply* MockHttpTransport::get(const QString &endpoint, const QMap<QString, QString> &queryParams, const QObject* context, Transport::HttpResponseCallback callback) {
     emit requestHandled("GET", endpoint);
 
     {
@@ -210,11 +213,11 @@ void MockHttpTransport::get(const QString &endpoint, const QMap<QString, QString
         }
         if (m_simulateNetworkError) {
             callback(0, QByteArray(), QNetworkReply::ConnectionRefusedError, "Simulated network failure");
-            return;
+            return nullptr;
         }
         if (m_simulateHttpError > 0) {
             callback(m_simulateHttpError, QByteArray("{\"error\":\"Simulated HTTP Error\"}"), QNetworkReply::InternalServerError, "Simulated HTTP error");
-            return;
+            return nullptr;
         }
     }
 
@@ -237,10 +240,12 @@ void MockHttpTransport::get(const QString &endpoint, const QMap<QString, QString
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
+    return nullptr;
 }
 
-void MockHttpTransport::post(const QString &endpoint, const QByteArray &jsonData, Transport::HttpResponseCallback callback) {
+QNetworkReply* MockHttpTransport::post(const QString &endpoint, const QByteArray &jsonData, const QObject* context, Transport::HttpResponseCallback callback) {
     emit requestHandled("POST", endpoint);
+    emit rawRequestData(jsonData);
 
     {
         std::lock_guard<std::recursive_mutex> lock(m_mutex);
@@ -249,11 +254,11 @@ void MockHttpTransport::post(const QString &endpoint, const QByteArray &jsonData
         }
         if (m_simulateNetworkError) {
             callback(0, QByteArray(), QNetworkReply::ConnectionRefusedError, "Simulated network failure");
-            return;
+            return nullptr;
         }
         if (m_simulateHttpError > 0) {
             callback(m_simulateHttpError, QByteArray("{\"error\":\"Simulated HTTP Error\"}"), QNetworkReply::InternalServerError, "Simulated HTTP error");
-            return;
+            return nullptr;
         }
     }
 
@@ -270,9 +275,10 @@ void MockHttpTransport::post(const QString &endpoint, const QByteArray &jsonData
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
+    return nullptr;
 }
 
-void MockHttpTransport::deleteResource(const QString &endpoint, Transport::HttpResponseCallback callback, const QByteArray &jsonData) {
+QNetworkReply* MockHttpTransport::deleteResource(const QString &endpoint, const QObject* context, Transport::HttpResponseCallback callback, const QByteArray &jsonData) {
     emit requestHandled("DELETE", endpoint);
     if (endpoint == Constants::EP_AUTH) {
         handleAuthDelete(callback);
@@ -281,6 +287,7 @@ void MockHttpTransport::deleteResource(const QString &endpoint, Transport::HttpR
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
+    return nullptr;
 }
 
 void MockHttpTransport::handleHealth(Transport::HttpResponseCallback callback) {
@@ -371,7 +378,7 @@ void MockHttpTransport::handleUsers(const QByteArray &data, Transport::HttpRespo
 
     QJsonObject res;
     res["status"] = "success";
-    res["user_id"] = user.id;
+    res["user_id"] = static_cast<qint64>(user.id);
     callback(201, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 
@@ -538,6 +545,7 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
     QString fromDeviceId = doc.object().value("from_device_id").toString();
     QString toUsername = doc.object().value("to_username").toString().trimmed().toLower();
     QString ciphertext = doc.object().value("ciphertext").toString();
+    QString nonceBase64 = doc.object().value("nonce").toString();
     qint64 timestamp = doc.object().value("timestamp").toInteger();
     QString senderUser = m_tokenToUser[m_activeToken];
 
@@ -551,6 +559,7 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
                     item.deviceId = it.key();
                     item.toUsername = user.username;
                     item.ciphertextBase64 = ciphertext;
+                    item.nonceBase64 = nonceBase64;
                     item.timestamp = timestamp;
                     m_deliveryQueue.push_back(std::move(item));
                 }
@@ -590,6 +599,7 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
             item.deviceId = it.key();
             item.toUsername = toUsername;
             item.ciphertextBase64 = ciphertext;
+                    item.nonceBase64 = nonceBase64;
             item.timestamp = timestamp;
             m_deliveryQueue.push_back(std::move(item));
         }
@@ -644,6 +654,7 @@ void MockHttpTransport::handleRelayPoll(const QMap<QString, QString> &queryParam
             QJsonObject m;
             m["id"] = item.id;
             m["ciphertext"] = item.ciphertextBase64;
+            m["nonce"] = item.nonceBase64;
             m["timestamp"] = item.timestamp;
             msgs.append(m);
         }
@@ -675,6 +686,40 @@ void MockHttpTransport::handleRelayAck(const QByteArray &data, Transport::HttpRe
     QJsonObject res;
     res["status"] = "success";
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+} // namespace Testing
+} // namespace NeoNect
+
+namespace NeoNect {
+namespace Testing {
+
+void MockHttpTransport::tamperLastMessageCiphertext(const QString &deviceId) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    for (auto it = m_deliveryQueue.rbegin(); it != m_deliveryQueue.rend(); ++it) {
+        if (it->deviceId == deviceId) {
+            QByteArray decoded = QByteArray::fromBase64(it->ciphertextBase64.toLatin1());
+            if (decoded.size() > 0) {
+                decoded[0] = decoded[0] ^ 0xFF; // flip bits
+                it->ciphertextBase64 = QString::fromLatin1(decoded.toBase64());
+            }
+            break;
+        }
+    }
+}
+
+void MockHttpTransport::tamperLastMessageNonce(const QString &deviceId) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    for (auto it = m_deliveryQueue.rbegin(); it != m_deliveryQueue.rend(); ++it) {
+        if (it->deviceId == deviceId) {
+            QByteArray decoded = QByteArray::fromBase64(it->nonceBase64.toLatin1());
+            if (decoded.size() > 0) {
+                decoded[0] = decoded[0] ^ 0xFF; // flip bits
+                it->nonceBase64 = QString::fromLatin1(decoded.toBase64());
+            }
+            break;
+        }
+    }
 }
 
 } // namespace Testing

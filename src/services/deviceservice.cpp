@@ -26,7 +26,7 @@ void DeviceService::registerDevice(const QString &deviceId, const QString &publi
 
     QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
-    m_transport->post(Constants::EP_DEVICE_REGISTER, postData, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->post(Constants::EP_DEVICE_REGISTER, postData, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
         bool success = (error == QNetworkReply::NoError);
@@ -42,7 +42,7 @@ void DeviceService::fetchDevicePublicKey(const QString &deviceId) {
     QMap<QString, QString> params;
     params["device_id"] = deviceId.trimmed();
 
-    m_transport->get(Constants::EP_DEVICE_KEY, params, [this, deviceId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_DEVICE_KEY, params, this, [this, deviceId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
         if (error == QNetworkReply::NoError) {
@@ -66,7 +66,7 @@ void DeviceService::revokeDevice(const QString &deviceId) {
     body["device_id"] = deviceId.trimmed();
     QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
-    m_transport->deleteResource(Constants::EP_DEVICE, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->deleteResource(Constants::EP_DEVICE, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
         bool success = (error == QNetworkReply::NoError);
@@ -86,7 +86,7 @@ void DeviceService::fetchRecipientKeys(const QString &username) {
     QMap<QString, QString> params;
     params["u"] = target;
 
-    m_transport->get(Constants::EP_RELAY_KEYS, params, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_RELAY_KEYS, params, this, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
         QVariantList devicesList;

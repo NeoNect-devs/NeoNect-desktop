@@ -21,16 +21,16 @@ public:
     void setAuthToken(const QString &token) override;
     QString authToken() const override;
 
-    void get(const QString &endpoint, const QMap<QString, QString> &queryParams, HttpResponseCallback callback) override;
-    void post(const QString &endpoint, const QByteArray &jsonData, HttpResponseCallback callback) override;
-    void deleteResource(const QString &endpoint, HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) override;
+    QNetworkReply* get(const QString &endpoint, const QMap<QString, QString> &queryParams, const QObject* context, HttpResponseCallback callback) override;
+    QNetworkReply* post(const QString &endpoint, const QByteArray &jsonData, const QObject* context, HttpResponseCallback callback) override;
+    QNetworkReply* deleteResource(const QString &endpoint, const QObject* context, HttpResponseCallback callback, const QByteArray &jsonData = QByteArray()) override;
 
     static QString cleanUrl(const QString &input);
 
 private:
     QUrl buildUrl(const QString &endpoint, const QMap<QString, QString> &queryParams) const;
     QNetworkRequest createRequest(const QUrl &url, bool includeJsonHeader = false) const;
-    void handleReply(QNetworkReply *reply, HttpResponseCallback callback);
+    void handleReply(QNetworkReply *reply, const QObject* context, HttpResponseCallback callback);
 
     QNetworkAccessManager *m_nam;
     bool m_ownsNam{false};

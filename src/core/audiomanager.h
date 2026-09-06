@@ -26,7 +26,6 @@ class AudioManager : public QObject {
     Q_PROPERTY(bool isMuted READ isMuted NOTIFY isMutedChanged)
 
 public:
-    static AudioManager* instance();
     explicit AudioManager(QObject *parent = nullptr);
     ~AudioManager() override;
 

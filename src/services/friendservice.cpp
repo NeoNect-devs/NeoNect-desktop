@@ -11,6 +11,9 @@ FriendService::FriendService(std::shared_ptr<Transport::IHttpTransport> transpor
                              std::shared_ptr<Storage::ISettingsRepository> storage,
                              QObject *parent)
     : QObject(parent), m_transport(std::move(transport)), m_storage(std::move(storage)) {
+    m_heartbeatTimer = new QTimer(this);
+    m_heartbeatTimer->setInterval(12000);
+    connect(m_heartbeatTimer, &QTimer::timeout, this, &FriendService::checkFriendsStatus);
 }
 
 QStringList FriendService::friends() const {
@@ -73,7 +76,7 @@ void FriendService::checkFriendsStatus() {
         if (!token.isEmpty()) {
             QMap<QString, QString> params;
             params["u"] = target;
-            m_transport->get(Constants::EP_PRESENCE, params, [this, target, locallyOnline](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+            m_transport->get(Constants::EP_PRESENCE, params, this, [this, target, locallyOnline](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
                 Q_UNUSED(statusCode);
                 Q_UNUSED(errStr);
                 if (error == QNetworkReply::NoError) {
@@ -118,7 +121,7 @@ void FriendService::addFriend(const QString &username) {
     QMap<QString, QString> params;
     params["u"] = target;
 
-    m_transport->get(Constants::EP_USERS_AVAILABILITY, params, [this, target, currentFriends](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_USERS_AVAILABILITY, params, this, [this, target, currentFriends](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
         auto doc = QJsonDocument::fromJson(data);
@@ -144,6 +147,19 @@ void FriendService::addFriend(const QString &username) {
             emit addFriendResult(false, "User '@" + target + "' does not exist on the network.", target);
         }
     });
+}
+
+
+void FriendService::startHeartbeat() {
+    if (!m_heartbeatTimer->isActive()) {
+        m_heartbeatTimer->start();
+    }
+}
+
+void FriendService::stopHeartbeat() {
+    if (m_heartbeatTimer->isActive()) {
+        m_heartbeatTimer->stop();
+    }
 }
 
 } // namespace Services

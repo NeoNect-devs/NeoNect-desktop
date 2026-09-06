@@ -9,6 +9,7 @@
 #include <mutex>
 
 namespace NeoNect {
+namespace Services { class MessageService; }
 namespace Core {
 
 class NotificationManager : public QObject {
@@ -26,7 +27,6 @@ class NotificationManager : public QObject {
     Q_PROPERTY(QVariantList activeNotifications READ activeNotifications NOTIFY activeNotificationsChanged)
 
 public:
-    static NotificationManager* instance();
     explicit NotificationManager(QObject *parent = nullptr);
     ~NotificationManager() override = default;
 
@@ -83,8 +83,11 @@ signals:
 
 private:
     void loadSettings();
+    void setEnabled(bool enabled);
+public:
+    void setupMessageServiceHook(Services::MessageService* ms);
+private:
     void saveSettings();
-    void setupNetworkManagerHook();
 
     mutable std::mutex m_mutex;
     bool m_notificationsEnabled{true};

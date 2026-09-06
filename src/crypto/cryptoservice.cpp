@@ -72,11 +72,29 @@ EncryptedPayload CryptoService::encryptAesGcm(const QByteArray &plainData, const
     // Determine encryption key
     SecureBuffer activeKey(Constants::AES_256_KEY_SIZE);
     if (!keyOverride.isEmpty()) {
-        std::size_t copyLen = std::min(static_cast<std::size_t>(keyOverride.size()), Constants::AES_256_KEY_SIZE);
-        std::memcpy(activeKey.data(), keyOverride.constData(), copyLen);
+        if (static_cast<std::size_t>(keyOverride.size()) != Constants::AES_256_KEY_SIZE) {
+            result.errorMessage = "Invalid key length: AES-256 requires exactly 32 bytes";
+            return result;
+        }
+        std::memcpy(activeKey.data(), keyOverride.constData(), Constants::AES_256_KEY_SIZE);
     } else {
         std::shared_lock<std::shared_mutex> lock(m_keyMutex);
-        activeKey = m_masterKey;
+        activeKey.resize(m_masterKey.size());
+        if (!m_masterKey.empty()) {
+            std::memcpy(activeKey.data(), m_masterKey.data(), m_masterKey.size());
+        }
+    }
+
+    bool keyIsZero = true;
+    for (std::size_t i = 0; i < activeKey.size(); ++i) {
+        if (activeKey.data()[i] != 0) {
+            keyIsZero = false;
+            break;
+        }
+    }
+    if (keyIsZero) {
+        result.errorMessage = "Encryption key is not initialized (Missing Key Exchange)";
+        return result;
     }
 
     // Generate random 12-byte IV/nonce
@@ -151,11 +169,27 @@ QByteArray CryptoService::decryptAesGcm(const QByteArray &cipherWithTag, const Q
 
     SecureBuffer activeKey(Constants::AES_256_KEY_SIZE);
     if (!keyOverride.isEmpty()) {
-        std::size_t copyLen = std::min(static_cast<std::size_t>(keyOverride.size()), Constants::AES_256_KEY_SIZE);
-        std::memcpy(activeKey.data(), keyOverride.constData(), copyLen);
+        if (static_cast<std::size_t>(keyOverride.size()) != Constants::AES_256_KEY_SIZE) {
+            return QByteArray(); // Invalid key length
+        }
+        std::memcpy(activeKey.data(), keyOverride.constData(), Constants::AES_256_KEY_SIZE);
     } else {
         std::shared_lock<std::shared_mutex> lock(m_keyMutex);
-        activeKey = m_masterKey;
+        activeKey.resize(m_masterKey.size());
+        if (!m_masterKey.empty()) {
+            std::memcpy(activeKey.data(), m_masterKey.data(), m_masterKey.size());
+        }
+    }
+
+    bool keyIsZero = true;
+    for (std::size_t i = 0; i < activeKey.size(); ++i) {
+        if (activeKey.data()[i] != 0) {
+            keyIsZero = false;
+            break;
+        }
+    }
+    if (keyIsZero) {
+        return QByteArray();
     }
 
     int actualCipherLen = cipherWithTag.size() - static_cast<int>(Constants::AES_GCM_TAG_SIZE);

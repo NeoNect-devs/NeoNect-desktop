@@ -18,7 +18,7 @@ QString HttpTransport::cleanUrl(const QString &input) {
     if (trimmed.endsWith('/')) {
         trimmed.chop(1);
     }
-    return trimmed.contains("://") ? trimmed : "http://" + trimmed;
+    return trimmed.contains("://") ? trimmed : "https://" + trimmed;
 }
 
 void HttpTransport::setBaseUrl(const QString &url) {
@@ -77,39 +77,42 @@ QNetworkRequest HttpTransport::createRequest(const QUrl &url, bool includeJsonHe
     return req;
 }
 
-void HttpTransport::handleReply(QNetworkReply *reply, HttpResponseCallback callback) {
-    connect(reply, &QNetworkReply::finished, this, [reply, callback]() {
-        reply->deleteLater();
-        int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray data = reply->readAll();
-        QNetworkReply::NetworkError error = reply->error();
-        QString errStr = reply->errorString();
-        if (callback) {
+void HttpTransport::handleReply(QNetworkReply *reply, const QObject* context, HttpResponseCallback callback) {
+    connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+    if (context && callback) {
+        connect(reply, &QNetworkReply::finished, context, [reply, callback]() {
+            int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            QByteArray data = reply->readAll();
+            QNetworkReply::NetworkError error = reply->error();
+            QString errStr = reply->errorString();
             callback(statusCode, data, error, errStr);
-        }
-    });
+        });
+    }
 }
 
-void HttpTransport::get(const QString &endpoint, const QMap<QString, QString> &queryParams, HttpResponseCallback callback) {
+QNetworkReply* HttpTransport::get(const QString &endpoint, const QMap<QString, QString> &queryParams, const QObject* context, HttpResponseCallback callback) {
     QUrl url = buildUrl(endpoint, queryParams);
     QNetworkRequest req = createRequest(url, false);
     QNetworkReply *reply = m_nam->get(req);
-    handleReply(reply, std::move(callback));
+    handleReply(reply, context, std::move(callback));
+    return reply;
 }
 
-void HttpTransport::post(const QString &endpoint, const QByteArray &jsonData, HttpResponseCallback callback) {
+QNetworkReply* HttpTransport::post(const QString &endpoint, const QByteArray &jsonData, const QObject* context, HttpResponseCallback callback) {
     QUrl url = buildUrl(endpoint, {});
     QNetworkRequest req = createRequest(url, true);
     QNetworkReply *reply = m_nam->post(req, jsonData);
-    handleReply(reply, std::move(callback));
+    handleReply(reply, context, std::move(callback));
+    return reply;
 }
 
-void HttpTransport::deleteResource(const QString &endpoint, HttpResponseCallback callback, const QByteArray &jsonData) {
+QNetworkReply* HttpTransport::deleteResource(const QString &endpoint, const QObject* context, HttpResponseCallback callback, const QByteArray &jsonData) {
     QUrl url = buildUrl(endpoint, {});
     bool hasBody = !jsonData.isEmpty();
     QNetworkRequest req = createRequest(url, hasBody);
     QNetworkReply *reply = hasBody ? m_nam->sendCustomRequest(req, "DELETE", jsonData) : m_nam->sendCustomRequest(req, "DELETE");
-    handleReply(reply, std::move(callback));
+    handleReply(reply, context, std::move(callback));
+    return reply;
 }
 
 } // namespace Transport

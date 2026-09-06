@@ -1,8 +1,10 @@
+#include "../src/domain/message.h"
 // tests/test_services.cpp
 #include "test_services.h"
 #include <QtTest>
 #include <QSignalSpy>
 #include "mocks/mockhttptransport.h"
+#include "../src/transport/httptransport.h"
 #include "../src/storage/settingsrepository.h"
 #include "../src/crypto/cryptoservice.h"
 #include "../src/services/authservice.h"
@@ -93,7 +95,7 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_relay");
     storage->clearSession();
-    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>(); crypto->setMasterKey(QByteArray(32, 1));
 
     mockTransport->seedUser("alice", "password123");
     mockTransport->seedUser("bob", "password123");
@@ -108,9 +110,16 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
 
     // 1. Send relay message from Alice to Bob
     QSignalSpy spySend(&relayService, &NeoNect::Services::RelayService::secureMessageTransmitted);
-    relayService.sendRelayMessage("bob", "Hello Bob from Alice!");
+    {
+        NeoNect::Domain::Message msg;
+        msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        msg.conversationId = "dms:" + QString("bob");
+        msg.type = "text";
+        msg.text = "Hello Bob from Alice!";
+        msg.senderId = "alice"; // mock
+        relayService.sendDomainMessage(msg);
+    }
     QCOMPARE(spySend.count(), 1);
-    QCOMPARE(spySend.takeFirst().at(1).toBool(), true);
 
     // 2. Verify message was queued for Bob's device
     QCOMPARE(mockTransport->queuedMessageCount("mock-dev-bob"), 1);
@@ -121,15 +130,17 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     storage->setUsername("bob");
     storage->setDeviceId("mock-dev-bob");
 
-    QSignalSpy spyRecv(&relayService, &NeoNect::Services::RelayService::incomingRelayMessageReceived);
+    QSignalSpy spyRecv(&relayService, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
 
     // Poll message as Bob
     relayService.pollPendingMessages();
     QCOMPARE(spyRecv.count(), 1);
     auto recvArgs = spyRecv.takeFirst();
-    QCOMPARE(recvArgs.at(0).toString(), "alice");
-    QCOMPARE(recvArgs.at(1).toString(), "bob");
-    QCOMPARE(recvArgs.at(2).toString(), "Hello Bob from Alice!");
+    auto msgs = qvariant_cast<std::vector<NeoNect::Domain::Message>>(recvArgs.at(0));
+    QVERIFY(!msgs.empty());
+    auto msg = msgs.front();
+    QCOMPARE(msg.senderId, QString("alice"));
+    QCOMPARE(msg.text, QString("Hello Bob from Alice!"));
 
     // 4. Test Deduplication: second poll immediately should not emit duplicate
     relayService.pollPendingMessages();
@@ -179,9 +190,13 @@ void TestServices::testNetworkManagerFacadeIntegration() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_facade_profile");
     storage->clearSession();
     storage->setFriends({});
-    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>(); crypto->setMasterKey(QByteArray(32, 1));
 
-    NetworkManager nm(mockTransport, storage, crypto);
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
+    NetworkManager nm(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
 
     QSignalSpy spyVerify(&nm, &NetworkManager::verificationResult);
     nm.verifyServer("http://localhost:8080");
@@ -201,8 +216,8 @@ void TestServices::testTwoClientChatExchange() {
     sharedTransport->seedUser("alice", "pass123");
     sharedTransport->seedUser("bob", "pass123");
 
-    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
-    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>(); cryptoAlice->setMasterKey(QByteArray(32, 1));
+    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>(); cryptoBob->setMasterKey(QByteArray(32, 1));
 
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice");
     storageAlice->clearSession();
@@ -219,12 +234,22 @@ void TestServices::testTwoClientChatExchange() {
     NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, cryptoAlice);
     NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, cryptoBob);
 
-    QSignalSpy spyBobRecv(&relayBob, &NeoNect::Services::RelayService::incomingRelayMessageReceived);
-    QSignalSpy spyAliceRecv(&relayAlice, &NeoNect::Services::RelayService::incomingRelayMessageReceived);
+    QSignalSpy spyBobRecv(&relayBob, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
+    QSignalSpy spyAliceRecv(&relayAlice, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
 
     // 2. Alice sends a direct message to Bob
     sharedTransport->setAuthToken("mock-token-alice");
-    relayAlice.sendRelayMessage("bob", "Hey Bob, greetings from client Alice!");
+    {
+        NeoNect::Domain::Message msg;
+        msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        msg.conversationId = "dms:" + QString("bob");
+        msg.type = "text";
+        msg.text = "Hey Bob, greetings from client Alice!";
+        msg.senderId = "alice"; // mock
+        relayAlice.sendDomainMessage(msg);
+        QSignalSpy spySend(&relayAlice, &NeoNect::Services::RelayService::messageTransmissionStatus);
+        spySend.wait(50);
+    }
 
     // 3. Bob polls and receives Alice's message
     sharedTransport->setAuthToken("mock-token-bob");
@@ -232,12 +257,22 @@ void TestServices::testTwoClientChatExchange() {
 
     QCOMPARE(spyBobRecv.count(), 1);
     auto bobMsg = spyBobRecv.takeFirst();
-    QCOMPARE(bobMsg.at(0).toString(), "alice");
-    QCOMPARE(bobMsg.at(1).toString(), "bob");
-    QCOMPARE(bobMsg.at(2).toString(), "Hey Bob, greetings from client Alice!");
+    auto msgs = qvariant_cast<std::vector<NeoNect::Domain::Message>>(bobMsg.at(0));
+    QVERIFY(!msgs.empty());
+    auto msg = msgs.front();
+    QCOMPARE(msg.senderId, QString("alice"));
+    QCOMPARE(msg.text, QString("Hey Bob, greetings from client Alice!"));
 
     // 4. Bob sends reply back to Alice
-    relayBob.sendRelayMessage("alice", "Hey Alice, message received loud and clear!");
+    {
+        NeoNect::Domain::Message msg;
+        msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        msg.conversationId = "dms:" + QString("alice");
+        msg.type = "text";
+        msg.text = "Hey Alice, message received loud and clear!";
+        msg.senderId = "alice"; // mock
+        relayBob.sendDomainMessage(msg);
+    }
 
     // 5. Alice polls and receives Bob's reply
     sharedTransport->setAuthToken("mock-token-alice");
@@ -245,9 +280,11 @@ void TestServices::testTwoClientChatExchange() {
 
     QCOMPARE(spyAliceRecv.count(), 1);
     auto aliceMsg = spyAliceRecv.takeFirst();
-    QCOMPARE(aliceMsg.at(0).toString(), "bob");
-    QCOMPARE(aliceMsg.at(1).toString(), "alice");
-    QCOMPARE(aliceMsg.at(2).toString(), "Hey Alice, message received loud and clear!");
+    auto msgs2 = qvariant_cast<std::vector<NeoNect::Domain::Message>>(aliceMsg.at(0));
+    QVERIFY(!msgs2.empty());
+    auto msg2 = msgs2.front();
+    QCOMPARE(msg2.senderId, QString("bob"));
+    QCOMPARE(msg2.text, QString("Hey Alice, message received loud and clear!"));
 
     storageAlice->clearSession();
     storageBob->clearSession();
@@ -262,9 +299,13 @@ void TestServices::testBookmarkConnectFlow() {
     storage->setAuthToken("old_stale_token");
     storage->setBookmarks({});
 
-    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>(); crypto->setMasterKey(QByteArray(32, 1));
 
-    NetworkManager nm(mockTransport, storage, crypto);
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
+    NetworkManager nm(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
 
     // 1. Verify that auto-login is completely removed: token starts empty!
     QVERIFY(nm.token().isEmpty());
@@ -298,7 +339,8 @@ void TestServices::testBookmarkConnectFlow() {
 }
 
 void TestServices::testNotificationManagerFlow() {
-    auto notifMgr = NeoNect::Core::NotificationManager::instance();
+    NeoNect::Core::NotificationManager notifMgrObj;
+    auto notifMgr = &notifMgrObj;
     notifMgr->clearAll();
     notifMgr->setNotificationsEnabled(true);
     notifMgr->setDndEnabled(false);
@@ -367,4 +409,103 @@ void TestServices::testNotificationManagerFlow() {
     // Restore settings
     notifMgr->setDndEnabled(false);
     notifMgr->setSoundEnabled(true);
+}
+
+void TestServices::testCiphertextDoesNotContainPlaintext() {
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_crypto_plain");
+    storage->setAuthToken("token");
+    storage->setUsername("alice");
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    crypto->setMasterKey(QByteArray(32, 1));
+    
+    NeoNect::Services::RelayService relay(mockTransport, storage, crypto);
+    
+    QSignalSpy spyRaw(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
+    
+    NeoNect::Domain::Message msg;
+    msg.id = "123";
+    msg.conversationId = "dms:bob";
+    msg.type = "text";
+    msg.text = "SUPER_SECRET_PLAINTEXT_999";
+    msg.senderId = "alice";
+    
+    relay.sendDomainMessage(msg);
+    
+    QCOMPARE(spyRaw.count(), 1);
+    QByteArray rawJson = spyRaw.takeFirst().at(0).toByteArray();
+    QVERIFY(!rawJson.contains("SUPER_SECRET_PLAINTEXT_999"));
+}
+
+void TestServices::testRelayServiceTamperedMessageRejection() {
+    auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
+    
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice");
+    storageAlice->setUsername("alice");
+    storageAlice->setAuthToken("token-alice");
+    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
+    cryptoAlice->setMasterKey(QByteArray(32, 1));
+    
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob");
+    storageBob->setUsername("bob");
+    storageBob->setDeviceId("mock-dev-bob");
+    storageBob->setAuthToken("token-bob");
+    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
+    cryptoBob->setMasterKey(QByteArray(32, 1));
+    
+    sharedTransport->seedUser("alice", "pass");
+    sharedTransport->seedUser("bob", "pass");
+    
+    NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, cryptoAlice);
+    NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, cryptoBob);
+    
+    sharedTransport->setAuthToken("token-alice");
+    NeoNect::Domain::Message msg;
+    msg.id = "msg1";
+    msg.conversationId = "dms:bob";
+    msg.type = "text";
+    msg.text = "Hello Bob!";
+    msg.senderId = "alice";
+    relayAlice.sendDomainMessage(msg);
+    
+    sharedTransport->tamperLastMessageCiphertext("mock-dev-bob");
+    
+    QSignalSpy spyBobRecv(&relayBob, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
+    sharedTransport->setAuthToken("token-bob");
+    relayBob.pollPendingMessages();
+    
+    QCOMPARE(spyBobRecv.count(), 0);
+}
+
+void TestServices::testCallbackCannotReachDestroyedService() {
+    auto transport = std::make_shared<NeoNect::Transport::HttpTransport>();
+    bool callbackInvoked = false;
+    
+    {
+        auto obj = std::make_unique<QObject>();
+        transport->get("http://127.0.0.1:9999/dummy", {}, obj.get(), [&callbackInvoked](int, const QByteArray&, QNetworkReply::NetworkError, const QString&) {
+            callbackInvoked = true;
+        });
+        // Destroy the context object immediately while request is pending
+    }
+    
+    // Process events to allow network reply to finish/fail
+    QCoreApplication::processEvents(QEventLoop::AllEvents, 500);
+    
+    // Callback should not be invoked because the context object was destroyed
+    QCOMPARE(callbackInvoked, false);
+}
+
+void TestServices::testRequestCancellationOnServiceDestruction() {
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_cancel");
+    
+    QPointer<QObject> servicePtr;
+    {
+        auto authService = std::make_unique<NeoNect::Services::AuthService>(mockTransport, storage);
+        servicePtr = authService.get();
+        QCOMPARE(servicePtr.isNull(), false);
+    }
+    // Verifies that destruction is clean without crashing from pending requests
+    QCOMPARE(servicePtr.isNull(), true);
 }

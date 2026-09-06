@@ -185,3 +185,99 @@ void ChatMessageModel::clearActiveViewportStore() {
     m_items.clear();
     endResetModel();
 }
+
+void ChatMessageModel::setActiveConversation(const QString &conversationId) {
+    m_activeConversationId = conversationId;
+    clearActiveViewportStore();
+}
+
+MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {
+    MessageItem item;
+    item.id = map.value("id").toString();
+    item.text = map.value("text").toString();
+    item.fromMe = map.value("fromMe").toBool();
+    item.senderName = map.value("senderId").toString();
+    item.senderAvatar = item.senderName.isEmpty() ? "" : item.senderName.left(1).toUpper();
+    item.messageType = map.value("type", "text").toString();
+    item.mediaUrl = map.value("mediaUrl").toString();
+    item.fileName = map.value("fileName").toString();
+    item.fileSize = map.value("fileSize").toLongLong();
+    item.duration = map.value("duration").toInt();
+    item.waveform = map.value("waveform").toList();
+    item.status = map.value("status", "sent").toString();
+    item.errorText = map.value("errorText").toString();
+    item.timestamp = map.value("timestamp").toLongLong();
+    return item;
+}
+
+void ChatMessageModel::onConversationLoaded(const QString &conversationId, const QVariantList &messages) {
+    if (conversationId != m_activeConversationId) return;
+    
+    beginResetModel();
+    m_items.clear();
+    for (const QVariant &msg : messages) {
+        m_items.push_back(parseVariantMap(msg.toMap()));
+    }
+    recalculateBlocks();
+    endResetModel();
+}
+
+void ChatMessageModel::onMessageAdded(const QString &conversationId, const QVariantMap &message) {
+    if (conversationId != m_activeConversationId) return;
+    
+    QString msgId = message.value("id").toString();
+    for (size_t i = 0; i < m_items.size(); ++i) {
+        if (m_items[i].id == msgId) {
+            m_items[i] = parseVariantMap(message);
+            recalculateBlocks();
+            emit dataChanged(index(i, 0), index(i, 0));
+            return;
+        }
+    }
+    
+    beginInsertRows(QModelIndex(), m_items.size(), m_items.size());
+    m_items.push_back(parseVariantMap(message));
+    recalculateBlocks();
+    endInsertRows();
+    
+    if (m_items.size() > 1) {
+        emit dataChanged(index(0, 0), index(m_items.size() - 1, 0), {FirstInBlockRole, LastInBlockRole});
+    }
+}
+
+void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText) {
+    if (!conversationId.isEmpty() && conversationId != m_activeConversationId) return;
+    
+    for (size_t i = 0; i < m_items.size(); ++i) {
+        if (m_items[i].id == messageId) {
+            m_items[i].status = status;
+            m_items[i].errorText = errorText;
+            emit dataChanged(index(i, 0), index(i, 0), {StatusRole, ErrorTextRole});
+            break;
+        }
+    }
+}
+
+void ChatMessageModel::recalculateBlocks() {
+    for (size_t i = 0; i < m_items.size(); ++i) {
+        bool isFirst = true;
+        bool isLast = true;
+        
+        if (i > 0) {
+            const auto &prev = m_items[i - 1];
+            if (prev.senderName == m_items[i].senderName && (m_items[i].timestamp - prev.timestamp < 300000)) {
+                isFirst = false;
+            }
+        }
+        
+        if (i < m_items.size() - 1) {
+            const auto &next = m_items[i + 1];
+            if (next.senderName == m_items[i].senderName && (next.timestamp - m_items[i].timestamp < 300000)) {
+                isLast = false;
+            }
+        }
+        
+        m_items[i].isFirstInBlock = isFirst;
+        m_items[i].isLastInBlock = isLast;
+    }
+}

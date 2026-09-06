@@ -7,34 +7,22 @@
 #include <QDebug>
 #include <QDateTime>
 
-NetworkManager* NetworkManager::instance() {
-    static NetworkManager _instance;
-    return &_instance;
-}
-
 NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
                                std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
                                std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService,
+                               std::shared_ptr<NeoNect::Services::AuthService> authService,
+                               std::shared_ptr<NeoNect::Services::DeviceService> deviceService,
+                               std::shared_ptr<NeoNect::Services::RelayService> relayService,
+                               std::shared_ptr<NeoNect::Services::FriendService> friendService,
                                QObject *parent)
-    : QObject(parent),
-      m_storage(storage ? storage : std::make_shared<NeoNect::Storage::SettingsRepository>()),
-      m_cryptoService(cryptoService ? cryptoService : CryptoManager::instance()->service()),
-      m_transport(transport ? transport : std::make_shared<NeoNect::Transport::HttpTransport>()) {
-
-    // Configure transport with initial storage settings
-    m_transport->setBaseUrl(m_storage->serverUrl());
-    m_transport->setAuthToken(QString());
-
-    // Instantiate domain services with dependency injection
-    m_authService = std::make_shared<NeoNect::Services::AuthService>(m_transport, m_storage, nullptr);
-    m_deviceService = std::make_shared<NeoNect::Services::DeviceService>(m_transport, m_storage, nullptr);
-    m_relayService = std::make_shared<NeoNect::Services::RelayService>(m_transport, m_storage, m_cryptoService, nullptr);
-    m_friendService = std::make_shared<NeoNect::Services::FriendService>(m_transport, m_storage, nullptr);
-
-    setupServiceSignals();
-
-    m_friendService->loadFriends();
-    // Auto-login removed: client always begins at gateway until user explicitly authenticates.
+    : QObject(parent), m_transport(std::move(transport)),
+      m_storage(std::move(storage)), m_cryptoService(std::move(cryptoService)),
+      m_authService(std::move(authService)), m_deviceService(std::move(deviceService)),
+      m_relayService(std::move(relayService)), m_friendService(std::move(friendService))
+{
+    if (m_authService) {
+        setupServiceSignals();
+    }
 }
 
 void NetworkManager::initializeCustom(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport) {
@@ -91,6 +79,7 @@ void NetworkManager::setupServiceSignals() {
             emit tokenChanged();
             emit currentUsernameChanged();
             m_relayService->startPolling();
+            m_friendService->startHeartbeat();
             autoRegisterDevice();
         } else {
             m_pendingBookmarkUsername.clear();
@@ -109,6 +98,7 @@ void NetworkManager::setupServiceSignals() {
     // Device Service Connections
     connect(m_deviceService.get(), &NeoNect::Services::DeviceService::deviceRegistrationResult, this, [this](bool success, const QString &message) {
         m_relayService->startPolling();
+            m_friendService->startHeartbeat();
         emit deviceRegistrationResult(success, message);
     });
 
@@ -117,29 +107,9 @@ void NetworkManager::setupServiceSignals() {
     connect(m_deviceService.get(), &NeoNect::Services::DeviceService::recipientKeysFetched, this, &NetworkManager::recipientKeysFetched);
 
     // Relay Service Connections
-    connect(m_relayService.get(), &NeoNect::Services::RelayService::incomingRelayMessageReceived, this, [this](const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp) {
-        if (fromUsername.toLower() != currentUsername().toLower() && fromUsername != "Anonymous") {
-            m_friendService->updateLastSeen(fromUsername);
-        }
-        emit incomingRelayMessageReceived(fromUsername, target, text, timestamp);
-    });
 
-    connect(m_relayService.get(), &NeoNect::Services::RelayService::incomingRichMessageReceived, this, [this](const QVariantMap &messageData) {
-        QString fromUsername = messageData.value("sender").toString();
-        if (fromUsername.toLower() != currentUsername().toLower() && fromUsername != "Anonymous") {
-            m_friendService->updateLastSeen(fromUsername);
-        }
-        emit incomingRichMessageReceived(messageData);
-    });
 
-    connect(m_relayService.get(), &NeoNect::Services::RelayService::secureMessageTransmitted, this, [this](const QString &targetUser, bool success) {
-        if (success) {
-            m_friendService->updateLastSeen(targetUser);
-        }
-        emit secureMessageTransmitted(targetUser, success);
-    });
 
-    connect(m_relayService.get(), &NeoNect::Services::RelayService::messageTransmissionStatus, this, &NetworkManager::messageTransmissionStatus);
 
     connect(m_relayService.get(), &NeoNect::Services::RelayService::sessionUnauthorized, this, [this](const QString &message) {
         emit tokenChanged();
@@ -159,7 +129,7 @@ void NetworkManager::setupServiceSignals() {
 }
 
 void NetworkManager::autoRegisterDevice() {
-    registerDevice(CryptoManager::instance()->getDeviceId(), CryptoManager::instance()->getDevicePublicKey());
+    registerDevice(m_storage->deviceId(), m_storage->publicKey());
 }
 
 void NetworkManager::setIsLoading(bool loading) {
@@ -286,6 +256,7 @@ void NetworkManager::logoutUser() {
     m_pendingBookmarkPassword.clear();
     m_transport->setAuthToken(QString());
     m_relayService->stopPolling();
+    m_friendService->stopHeartbeat();
     m_authService->logoutUser();
     emit tokenChanged();
     emit currentUsernameChanged();
@@ -311,18 +282,8 @@ void NetworkManager::fetchUserProfile() {
     m_authService->fetchUserProfile();
 }
 
-void NetworkManager::sendSecurePayload(const QString &channelId, const QString &cipher, const QString &nonce) {
-    Q_UNUSED(nonce);
-    sendRelayMessage(channelId, cipher);
-}
 
-void NetworkManager::sendRelayMessage(const QString &toUsername, const QString &plainText, const QString &messageId) {
-    m_relayService->sendRelayMessage(toUsername, plainText, messageId);
-}
 
-void NetworkManager::sendRichRelayMessage(const QString &toUsername, const QVariantMap &messageData) {
-    m_relayService->sendRichRelayMessage(toUsername, messageData);
-}
 
 void NetworkManager::pollPendingMessages() {
     m_relayService->pollPendingMessages();

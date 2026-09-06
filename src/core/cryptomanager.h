@@ -10,7 +10,6 @@
 class CryptoManager : public QObject {
     Q_OBJECT
 public:
-    static CryptoManager* instance();
     explicit CryptoManager(std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService = nullptr,
                            std::shared_ptr<NeoNect::Storage::ISettingsRepository> settingsRepo = nullptr,
                            QObject *parent = nullptr);

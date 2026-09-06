@@ -6,9 +6,58 @@
 #include <QJsonObject>
 #include <QUuid>
 #include <QDateTime>
+#include <QSysInfo>
+#include <QCryptographicHash>
+#include "../crypto/cryptoservice.h"
 
 namespace NeoNect {
 namespace Storage {
+
+namespace {
+
+QByteArray getMachineKey() {
+    QByteArray machineId = QSysInfo::machineUniqueId();
+    if (machineId.isEmpty()) machineId = "fallback-machine-id-12345";
+    return QCryptographicHash::hash(machineId, QCryptographicHash::Sha256);
+}
+
+Crypto::CryptoService& getLocalCrypto() {
+    static Crypto::CryptoService svc;
+    static bool initialized = false;
+    if (!initialized) {
+        svc.setMasterKey(getMachineKey());
+        initialized = true;
+    }
+    return svc;
+}
+
+QString encryptString(const QString& str) {
+    if (str.isEmpty()) return str;
+    auto enc = getLocalCrypto().encryptAesGcm(str.toUtf8());
+    if (enc.success) {
+        QJsonObject obj;
+        obj["ct"] = QString::fromLatin1(enc.cipherWithTag.toBase64());
+        obj["iv"] = QString::fromLatin1(enc.nonce.toBase64());
+        return QString::fromLatin1(QJsonDocument(obj).toJson(QJsonDocument::Compact).toBase64());
+    }
+    return str;
+}
+
+QString decryptString(const QString& str) {
+    if (str.isEmpty()) return str;
+    QByteArray jsonBytes = QByteArray::fromBase64(str.toLatin1());
+    auto doc = QJsonDocument::fromJson(jsonBytes);
+    if (!doc.isObject()) return str; // Fallback to plain if not encrypted (migration)
+    QByteArray ct = QByteArray::fromBase64(doc.object().value("ct").toString().toLatin1());
+    QByteArray iv = QByteArray::fromBase64(doc.object().value("iv").toString().toLatin1());
+    if (ct.isEmpty() || iv.isEmpty()) return str;
+    QByteArray dec = getLocalCrypto().decryptAesGcm(ct, iv);
+    if (!dec.isEmpty()) return QString::fromUtf8(dec);
+    return str;
+}
+
+} // namespace
+
 
 SettingsRepository::SettingsRepository(const QString &profileName)
     : m_profile(profileName.trimmed()) {
@@ -46,13 +95,13 @@ void SettingsRepository::setServerUrl(const QString &url) {
 QString SettingsRepository::authToken() const {
     std::lock_guard<std::mutex> lock(m_mutex);
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    return settings.value(Constants::KEY_AUTH_TOKEN).toString();
+    return decryptString(settings.value(Constants::KEY_AUTH_TOKEN).toString());
 }
 
 void SettingsRepository::setAuthToken(const QString &token) {
     std::lock_guard<std::mutex> lock(m_mutex);
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    settings.setValue(Constants::KEY_AUTH_TOKEN, token);
+    settings.setValue(Constants::KEY_AUTH_TOKEN, encryptString(token));
 }
 
 QString SettingsRepository::username() const {
