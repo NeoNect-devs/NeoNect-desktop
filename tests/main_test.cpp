@@ -90,7 +90,11 @@ int main(int argc, char *argv[]) {
         int r12 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRequestCancellationOnServiceDestruction");
         std::cout << "    Result: " << (r12 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | r4 | r5 | r6 | r7 | r8 | r9 | r10 | r11 | r12);
+        std::cout << "--> Testing testPhase10ABackendProtocolCompliance..." << std::endl;
+        int r13 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testPhase10ABackendProtocolCompliance");
+        std::cout << "    Result: " << (r13 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | r4 | r5 | r6 | r7 | r8 | r9 | r10 | r11 | r12 | r13);
     }
 
     {

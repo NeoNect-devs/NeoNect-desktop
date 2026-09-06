@@ -418,20 +418,20 @@ void TestServices::testCiphertextDoesNotContainPlaintext() {
     storage->setUsername("alice");
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
     crypto->setMasterKey(QByteArray(32, 1));
-    
+
     NeoNect::Services::RelayService relay(mockTransport, storage, crypto);
-    
+
     QSignalSpy spyRaw(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
-    
+
     NeoNect::Domain::Message msg;
     msg.id = "123";
     msg.conversationId = "dms:bob";
     msg.type = "text";
     msg.text = "SUPER_SECRET_PLAINTEXT_999";
     msg.senderId = "alice";
-    
+
     relay.sendDomainMessage(msg);
-    
+
     QCOMPARE(spyRaw.count(), 1);
     QByteArray rawJson = spyRaw.takeFirst().at(0).toByteArray();
     QVERIFY(!rawJson.contains("SUPER_SECRET_PLAINTEXT_999"));
@@ -439,26 +439,26 @@ void TestServices::testCiphertextDoesNotContainPlaintext() {
 
 void TestServices::testRelayServiceTamperedMessageRejection() {
     auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
-    
+
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice");
     storageAlice->setUsername("alice");
     storageAlice->setAuthToken("token-alice");
     auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
     cryptoAlice->setMasterKey(QByteArray(32, 1));
-    
+
     auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob");
     storageBob->setUsername("bob");
     storageBob->setDeviceId("mock-dev-bob");
     storageBob->setAuthToken("token-bob");
     auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
     cryptoBob->setMasterKey(QByteArray(32, 1));
-    
+
     sharedTransport->seedUser("alice", "pass");
     sharedTransport->seedUser("bob", "pass");
-    
+
     NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, cryptoAlice);
     NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, cryptoBob);
-    
+
     sharedTransport->setAuthToken("token-alice");
     NeoNect::Domain::Message msg;
     msg.id = "msg1";
@@ -467,20 +467,20 @@ void TestServices::testRelayServiceTamperedMessageRejection() {
     msg.text = "Hello Bob!";
     msg.senderId = "alice";
     relayAlice.sendDomainMessage(msg);
-    
+
     sharedTransport->tamperLastMessageCiphertext("mock-dev-bob");
-    
+
     QSignalSpy spyBobRecv(&relayBob, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
     sharedTransport->setAuthToken("token-bob");
     relayBob.pollPendingMessages();
-    
+
     QCOMPARE(spyBobRecv.count(), 0);
 }
 
 void TestServices::testCallbackCannotReachDestroyedService() {
     auto transport = std::make_shared<NeoNect::Transport::HttpTransport>();
     bool callbackInvoked = false;
-    
+
     {
         auto obj = std::make_unique<QObject>();
         transport->get("http://127.0.0.1:9999/dummy", {}, obj.get(), [&callbackInvoked](int, const QByteArray&, QNetworkReply::NetworkError, const QString&) {
@@ -488,10 +488,10 @@ void TestServices::testCallbackCannotReachDestroyedService() {
         });
         // Destroy the context object immediately while request is pending
     }
-    
+
     // Process events to allow network reply to finish/fail
     QCoreApplication::processEvents(QEventLoop::AllEvents, 500);
-    
+
     // Callback should not be invoked because the context object was destroyed
     QCOMPARE(callbackInvoked, false);
 }
@@ -499,7 +499,7 @@ void TestServices::testCallbackCannotReachDestroyedService() {
 void TestServices::testRequestCancellationOnServiceDestruction() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_cancel");
-    
+
     QPointer<QObject> servicePtr;
     {
         auto authService = std::make_unique<NeoNect::Services::AuthService>(mockTransport, storage);
@@ -508,4 +508,87 @@ void TestServices::testRequestCancellationOnServiceDestruction() {
     }
     // Verifies that destruction is clean without crashing from pending requests
     QCOMPARE(servicePtr.isNull(), true);
+}
+
+void TestServices::testPhase10ABackendProtocolCompliance() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>();
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    crypto->deriveKeyFromPassphrase("testpass", "salt");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>();
+
+    NeoNect::Services::AuthService authService(mockTransport, storage);
+    NeoNect::Services::DeviceService deviceService(mockTransport, storage);
+    NeoNect::Services::RelayService relayService(mockTransport, storage, crypto);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    storage->setAuthToken("test_token");
+    storage->setDeviceId("dev_123");
+
+    QSignalSpy spyRequests(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
+
+    // 1. Correct send request envelope
+    NeoNect::Domain::Message msg;
+    msg.id = "msg_abc";
+    msg.text = "Hello backend";
+    relayService.sendDomainMessage(msg);
+    QTest::qWait(50);
+
+    QCOMPARE(spyRequests.count(), 1);
+    QByteArray sendPayload = spyRequests.takeFirst().at(0).toByteArray();
+    QJsonDocument sendDoc = QJsonDocument::fromJson(sendPayload);
+    QVERIFY(!sendDoc.isNull());
+    QVERIFY(sendDoc.object().contains("from_device_id"));
+    QVERIFY(sendDoc.object().contains("to_username"));
+    QVERIFY(sendDoc.object().contains("ciphertext"));
+    QVERIFY(sendDoc.object().contains("timestamp"));
+    QVERIFY(!sendDoc.object().contains("messages")); // Must NOT be an array wrapper
+
+    // 2 & 3. Correct parsing of server id & Acknowledgement Request
+    relayService.acknowledgeMessage(999);
+    QTest::qWait(50);
+
+    QCOMPARE(spyRequests.count(), 1);
+    QByteArray ackPayload = spyRequests.takeFirst().at(0).toByteArray();
+    QJsonDocument ackDoc = QJsonDocument::fromJson(ackPayload);
+    QVERIFY(!ackDoc.isNull());
+    QVERIFY(ackDoc.object().contains("device_id"));
+    QVERIFY(ackDoc.object().contains("message_id"));
+    QCOMPARE(ackDoc.object().value("message_id").toInt(), 999);
+
+    // 4. Authentication request compatibility
+    authService.loginUser("alice", "pass");
+    QTest::qWait(50);
+    QCOMPARE(spyRequests.count(), 1);
+    QByteArray authPayload = spyRequests.takeFirst().at(0).toByteArray();
+    QJsonDocument authDoc = QJsonDocument::fromJson(authPayload);
+    QVERIFY(authDoc.object().contains("username"));
+    QVERIFY(authDoc.object().contains("password"));
+
+    // 5. Backend error body parsing (Testing AuthService's handling of 401 {"error": "..."})
+    mockTransport->setSimulateHttpError(401);
+    QSignalSpy spyLogin(&authService, &NeoNect::Services::AuthService::loginResult);
+    authService.loginUser("alice", "wrong");
+    QTest::qWait(50);
+    spyRequests.clear();
+    mockTransport->setSimulateHttpError(0);
+
+    QCOMPARE(spyLogin.count(), 1);
+    QCOMPARE(spyLogin.first().at(0).toBool(), false);
+    QVERIFY(spyLogin.first().at(1).toString().contains("Simulated HTTP error", Qt::CaseInsensitive));
+
+    // 6. Presence response parsing
+    friendService.addFriend("bob");
+    QSignalSpy spyPresence(&friendService, &NeoNect::Services::FriendService::friendStatusUpdated);
+    friendService.checkFriendsStatus();
+    QTest::qWait(50);
+    spyRequests.clear();
+    QVERIFY(spyPresence.count() > 0);
+    bool foundBob = false;
+    for (int i = 0; i < spyPresence.count(); ++i) {
+        if (spyPresence.at(i).at(0).toString() == "bob") {
+            foundBob = true;
+            break;
+        }
+    }
+    QVERIFY(foundBob);
 }

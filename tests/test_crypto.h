@@ -12,4 +12,10 @@ private slots:
     void testTamperedTagRejection();
     void testSecureBufferCleansing();
     void testRandomBytesGeneration();
+    void testEnvelopeRoundTrip();
+    void testEnvelopeTampering();
+    void testEnvelopeNonceTampering();
+    void testEnvelopeTruncation();
+    void testEnvelopeInvalidVersion();
+    void testEnvelopeEmptyPayload();
 };

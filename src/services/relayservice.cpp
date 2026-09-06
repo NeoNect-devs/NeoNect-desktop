@@ -106,8 +106,7 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     QJsonObject payload;
     payload["from_device_id"] = deviceId;
     payload["to_username"] = targetUser;
-    payload["ciphertext"] = QString::fromLatin1(encrypted.cipherWithTag.toBase64());
-    payload["nonce"] = QString::fromLatin1(encrypted.nonce.toBase64());
+    payload["ciphertext"] = QString::fromLatin1(encrypted.envelope.toBase64());
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
 
     QByteArray postData = QJsonDocument(payload).toJson(QJsonDocument::Compact);
@@ -184,17 +183,15 @@ void RelayService::pollPendingMessages() {
             m_processedMessageIds.insert(msgId);
 
             QString base64Cipher = msgObj.value("ciphertext").toString();
-            QString base64Nonce = msgObj.value("nonce").toString();
 
-            if (base64Cipher.isEmpty() || base64Nonce.isEmpty()) {
+            if (base64Cipher.isEmpty()) {
                 acknowledgeMessage(msgId);
                 continue;
             }
 
-            QByteArray cipherBytes = QByteArray::fromBase64(base64Cipher.toLatin1());
-            QByteArray nonceBytes = QByteArray::fromBase64(base64Nonce.toLatin1());
+            QByteArray envelopeBytes = QByteArray::fromBase64(base64Cipher.toLatin1());
             
-            QByteArray decodedBytes = m_cryptoService->decryptAesGcm(cipherBytes, nonceBytes);
+            QByteArray decodedBytes = m_cryptoService->decryptAesGcmEnvelope(envelopeBytes);
             if (decodedBytes.isEmpty()) {
                 qDebug() << "[RelayService] Failed to decrypt message (authentication failed or missing key)";
                 acknowledgeMessage(msgId);

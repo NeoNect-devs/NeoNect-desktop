@@ -158,8 +158,44 @@ EncryptedPayload CryptoService::encryptAesGcm(const QByteArray &plainData, const
 
     result.cipherWithTag = ciphertext;
     result.nonce = nonce;
+
+    // Construct binary envelope: [version=1(1byte)][nonce_len(1byte)][nonce(12bytes)][ciphertext+tag(N bytes)]
+    QByteArray envelope;
+    envelope.append(static_cast<char>(1));
+    envelope.append(static_cast<char>(nonce.size()));
+    envelope.append(nonce);
+    envelope.append(ciphertext);
+    result.envelope = envelope;
+
     result.success = true;
     return result;
+}
+
+QByteArray CryptoService::decryptAesGcmEnvelope(const QByteArray &envelope, const QByteArray &keyOverride) {
+    // Minimum size: version(1) + nonce_len(1) + nonce(12) + tag(16) = 30 bytes
+    if (envelope.size() < 2) {
+        return QByteArray();
+    }
+
+    uint8_t version = static_cast<uint8_t>(envelope.at(0));
+    if (version != 1) {
+        return QByteArray();
+    }
+
+    uint8_t nonceLen = static_cast<uint8_t>(envelope.at(1));
+    // We enforce exact GCM IV size internally
+    if (nonceLen != static_cast<uint8_t>(Constants::AES_GCM_IV_SIZE)) {
+        return QByteArray();
+    }
+
+    if (envelope.size() < 2 + nonceLen + static_cast<int>(Constants::AES_GCM_TAG_SIZE)) {
+        return QByteArray(); // Truncated or tampered length
+    }
+
+    QByteArray nonce = envelope.mid(2, nonceLen);
+    QByteArray cipherWithTag = envelope.mid(2 + nonceLen);
+
+    return decryptAesGcm(cipherWithTag, nonce, keyOverride);
 }
 
 QByteArray CryptoService::decryptAesGcm(const QByteArray &cipherWithTag, const QByteArray &nonce, const QByteArray &keyOverride) {

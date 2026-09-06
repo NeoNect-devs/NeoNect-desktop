@@ -75,7 +75,7 @@ void MockHttpTransport::loadSharedState() {
         item.deviceId = qObj.value("device_id").toString();
         item.toUsername = qObj.value("to_username").toString();
         item.ciphertextBase64 = qObj.value("ciphertext").toString();
-        item.nonceBase64 = qObj.value("nonce").toString();
+        // nonce is inside envelope now
         item.timestamp = qObj.value("timestamp").toInteger();
         m_deliveryQueue.push_back(item);
     }
@@ -111,7 +111,7 @@ void MockHttpTransport::saveSharedState() {
         qObj["device_id"] = item.deviceId;
         qObj["to_username"] = item.toUsername;
         qObj["ciphertext"] = item.ciphertextBase64;
-        qObj["nonce"] = item.nonceBase64;
+        // nonce is inside envelope now
         qObj["timestamp"] = item.timestamp;
         queueArr.append(qObj);
     }
@@ -545,9 +545,7 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
     QString fromDeviceId = doc.object().value("from_device_id").toString();
     QString toUsername = doc.object().value("to_username").toString().trimmed().toLower();
     QString ciphertext = doc.object().value("ciphertext").toString();
-    QString nonceBase64 = doc.object().value("nonce").toString();
     qint64 timestamp = doc.object().value("timestamp").toInteger();
-    QString senderUser = m_tokenToUser[m_activeToken];
 
     // Handle channel broadcast (e.g. general)
     if (toUsername == "general") {
@@ -559,73 +557,38 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
                     item.deviceId = it.key();
                     item.toUsername = user.username;
                     item.ciphertextBase64 = ciphertext;
-                    item.nonceBase64 = nonceBase64;
                     item.timestamp = timestamp;
                     m_deliveryQueue.push_back(std::move(item));
                 }
             }
         }
-
-        if (m_enableSharedStorage) {
-            saveSharedState();
+    } else {
+        if (!m_users.contains(toUsername)) {
+            QJsonObject err;
+            err["error"] = "recipient not found";
+            callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+            return;
         }
 
-        QJsonObject res;
-        res["status"] = "success";
-        callback(201, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
-        return;
-    }
-
-    if (!m_users.contains(toUsername)) {
-        QJsonObject err;
-        err["error"] = "recipient not found";
-        callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
-        return;
-    }
-
-    const auto &recipient = m_users[toUsername];
-    if (recipient.devices.isEmpty()) {
-        QJsonObject err;
-        err["error"] = "recipient has no registered devices";
-        callback(422, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Unprocessable Entity");
-        return;
-    }
-
-    // Enqueue message for all recipient devices (excluding sender device)
-    for (auto it = recipient.devices.cbegin(); it != recipient.devices.cend(); ++it) {
-        if (it.key() != fromDeviceId) {
-            MockQueuedMessage item;
-            item.id = m_nextMessageId++;
-            item.deviceId = it.key();
-            item.toUsername = toUsername;
-            item.ciphertextBase64 = ciphertext;
-                    item.nonceBase64 = nonceBase64;
-            item.timestamp = timestamp;
-            m_deliveryQueue.push_back(std::move(item));
+        const auto &recipient = m_users[toUsername];
+        if (recipient.devices.isEmpty()) {
+            QJsonObject err;
+            err["error"] = "recipient has no registered devices";
+            callback(422, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Unprocessable Entity");
+            return;
         }
-    }
 
-    // Interactive echo bot response simulation (only if receiver is not an active profile)
-    if (m_enableEchoBot && fromDeviceId.length() > 0 && recipient.devices.size() <= 1 && recipient.devices.contains("mock-dev-" + toUsername)) {
-        QByteArray plainJsonBytes = QByteArray::fromBase64(ciphertext.toLatin1());
-        auto parsedDoc = QJsonDocument::fromJson(plainJsonBytes);
-        QString incomingContent = parsedDoc.isObject() ? parsedDoc.object().value("content").toString() : "hello";
-
-        QJsonObject replyPacket;
-        replyPacket["sender"] = toUsername;
-        replyPacket["target"] = senderUser;
-        replyPacket["content"] = QString("Echo from @%1: %2").arg(toUsername, incomingContent);
-        replyPacket["timestamp"] = QDateTime::currentSecsSinceEpoch();
-
-        QByteArray replyBytes = QJsonDocument(replyPacket).toJson(QJsonDocument::Compact);
-
-        MockQueuedMessage echoReply;
-        echoReply.id = m_nextMessageId++;
-        echoReply.deviceId = fromDeviceId;
-        echoReply.toUsername = senderUser;
-        echoReply.ciphertextBase64 = QString::fromLatin1(replyBytes.toBase64());
-        echoReply.timestamp = QDateTime::currentSecsSinceEpoch();
-        m_deliveryQueue.push_back(std::move(echoReply));
+        for (auto it = recipient.devices.cbegin(); it != recipient.devices.cend(); ++it) {
+            if (it.key() != fromDeviceId) {
+                MockQueuedMessage item;
+                item.id = m_nextMessageId++;
+                item.deviceId = it.key();
+                item.toUsername = toUsername;
+                item.ciphertextBase64 = ciphertext;
+                item.timestamp = timestamp;
+                m_deliveryQueue.push_back(std::move(item));
+            }
+        }
     }
 
     if (m_enableSharedStorage) {
@@ -654,7 +617,7 @@ void MockHttpTransport::handleRelayPoll(const QMap<QString, QString> &queryParam
             QJsonObject m;
             m["id"] = item.id;
             m["ciphertext"] = item.ciphertextBase64;
-            m["nonce"] = item.nonceBase64;
+            // The real backend does NOT return a nonce, it was removed for Phase 10B.
             m["timestamp"] = item.timestamp;
             msgs.append(m);
         }
@@ -712,10 +675,10 @@ void MockHttpTransport::tamperLastMessageNonce(const QString &deviceId) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     for (auto it = m_deliveryQueue.rbegin(); it != m_deliveryQueue.rend(); ++it) {
         if (it->deviceId == deviceId) {
-            QByteArray decoded = QByteArray::fromBase64(it->nonceBase64.toLatin1());
-            if (decoded.size() > 0) {
-                decoded[0] = decoded[0] ^ 0xFF; // flip bits
-                it->nonceBase64 = QString::fromLatin1(decoded.toBase64());
+            QByteArray decoded = QByteArray::fromBase64(it->ciphertextBase64.toLatin1());
+            if (decoded.size() > 5) {
+                decoded[2] = static_cast<char>(decoded[2] ^ 0xFF); // flip a bit in the envelope
+                it->ciphertextBase64 = QString::fromLatin1(decoded.toBase64());
             }
             break;
         }

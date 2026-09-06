@@ -48,6 +48,7 @@ struct FriendEntry {
 struct EncryptedPayload {
     QByteArray cipherWithTag; // Ciphertext + 16 byte authentication tag
     QByteArray nonce;         // 12 byte GCM IV
+    QByteArray envelope;      // Packed binary envelope: [version(1)][nonce_len(1)][nonce][cipherWithTag]
     bool success{false};
     QString errorMessage;
 };

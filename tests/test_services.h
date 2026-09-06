@@ -18,4 +18,5 @@ private slots:
     void testRelayServiceTamperedMessageRejection();
     void testCallbackCannotReachDestroyedService();
     void testRequestCancellationOnServiceDestruction();
+    void testPhase10ABackendProtocolCompliance();
 };

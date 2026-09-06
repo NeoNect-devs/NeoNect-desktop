@@ -17,6 +17,7 @@ public:
 
     virtual EncryptedPayload encryptAesGcm(const QByteArray &plainData, const QByteArray &keyOverride = QByteArray()) = 0;
     virtual QByteArray decryptAesGcm(const QByteArray &cipherWithTag, const QByteArray &nonce, const QByteArray &keyOverride = QByteArray()) = 0;
+    virtual QByteArray decryptAesGcmEnvelope(const QByteArray &envelope, const QByteArray &keyOverride = QByteArray()) = 0;
 
     virtual QByteArray generateRandomBytes(std::size_t count) = 0;
 };

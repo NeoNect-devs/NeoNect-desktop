@@ -16,7 +16,6 @@ struct MockQueuedMessage {
     QString deviceId;
     QString toUsername;
     QString ciphertextBase64;
-    QString nonceBase64;
     qint64 timestamp{0};
 };
 
