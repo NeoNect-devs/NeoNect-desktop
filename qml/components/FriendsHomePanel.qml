@@ -15,6 +15,7 @@ Rectangle {
 
     property string activeTab: "online" // "online", "all", "pending", "blocked", "add_friend"
     property string searchQuery: ""
+    property var pendingRequests: NetworkManager.pendingRequests
 
     function getStatusColor(st) {
         switch(st) {
@@ -39,21 +40,13 @@ Rectangle {
     }
 
     // Master Friends Model (Mocked for testing with rich activity & real-time statuses)
-    property var allFriends: [
-        { name: "Alex", tag: "#1337", status: "online", customStatus: "Developing NeoNect E2EE relay node", avatarColor: "#0A84FF" },
-        { name: "Beatrice", tag: "#2048", status: "online", customStatus: "Listening to Spotify • Synthwave", avatarColor: "#06B6D4" },
-        { name: "Charlie", tag: "#4096", status: "afk", customStatus: "AFK • Grabbing coffee ☕", avatarColor: "#10B981" },
-        { name: "David", tag: "#8192", status: "offline", customStatus: "Last seen 2 hours ago", avatarColor: "#F59E0B" },
-        { name: "Eva", tag: "#9901", status: "dnd", customStatus: "Do Not Disturb • Deep Focus Mode", avatarColor: "#EC4899" },
-        { name: "Frank", tag: "#3321", status: "offline", customStatus: "Offline", avatarColor: "#3B82F6" },
-        { name: "Grace", tag: "#7744", status: "online", customStatus: "Reviewing security pull requests", avatarColor: "#22C55E" },
-        { name: "Henry", tag: "#5512", status: "afk", customStatus: "Away from desk", avatarColor: "#F97316" }
-    ]
+    property var allFriends: typeof NetworkManager !== "undefined" ? NetworkManager.friends : []
 
     function countOnline() {
         var c = 0;
         for (var i = 0; i < allFriends.length; i++) {
-            if (allFriends[i].status === "online" || allFriends[i].status === "afk" || allFriends[i].status === "dnd") {
+            var st = activeStatus[allFriends[i]] || "offline";
+            if (st === "online" || st === "afk" || st === "dnd") {
                 c++;
             }
         }
@@ -400,7 +393,7 @@ Rectangle {
                     text: {
                         if (root.activeTab === "online") return "ONLINE — " + root.countOnline();
                         if (root.activeTab === "all") return "ALL FRIENDS — " + root.allFriends.length;
-                        if (root.activeTab === "pending") return "PENDING — 0";
+                        if (root.activeTab === "pending") return "PENDING — " + root.pendingRequests.length;
                         return "BLOCKED — 0";
                     }
                     color: ThemeData.textSecondary
@@ -421,20 +414,24 @@ Rectangle {
 
                     model: {
                         var filtered = [];
-                        for (var i = 0; i < root.allFriends.length; i++) {
-                            var item = root.allFriends[i];
-                            var matchesSearch = root.searchQuery === "" || item.name.toLowerCase().indexOf(root.searchQuery) !== -1 || item.tag.indexOf(root.searchQuery) !== -1;
-                            if (!matchesSearch) continue;
+                        var sourceList = root.activeTab === "pending" ? root.pendingRequests : root.allFriends;
+                        for (var i = 0; i < sourceList.length; i++) {
+                            var uName = sourceList[i];
+                            var statusVal = root.activeStatus[uName] || "offline";
+                            var item = { name: uName, tag: "", status: statusVal, customStatus: "", avatarColor: "#0A84FF" };
 
+                            if (root.searchQuery !== "" && item.name.toLowerCase().indexOf(root.searchQuery.toLowerCase()) === -1) {
+                                continue;
+                            }
                             if (root.activeTab === "online") {
-                                if (item.status === "online" || item.status === "afk" || item.status === "dnd") {
+                                if (statusVal !== "offline") {
                                     filtered.push(item);
                                 }
-                            } else if (root.activeTab === "all") {
+                            } else if (root.activeTab === "all" || root.activeTab === "pending") {
                                 filtered.push(item);
                             }
                         }
-                        return (root.activeTab === "pending" || root.activeTab === "blocked") ? [] : filtered;
+                        return root.activeTab === "blocked" ? [] : filtered;
                     }
 
                     delegate: Rectangle {

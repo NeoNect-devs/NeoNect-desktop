@@ -124,8 +124,7 @@ private slots:
             auto enc = crypto->encryptAesGcm(QJsonDocument(payload).toJson());
             QJsonObject msg;
             msg["id"] = i;
-            msg["ciphertext"] = QString::fromLatin1(enc.cipherWithTag.toBase64());
-            msg["nonce"] = QString::fromLatin1(enc.nonce.toBase64());
+            msg["ciphertext"] = QString::fromLatin1(enc.envelope.toBase64());
             msgs.append(msg);
         }
         QJsonObject root; root["messages"] = msgs;

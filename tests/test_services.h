@@ -9,7 +9,15 @@ private slots:
     void testAuthServiceFlow();
     void testDeviceServiceFlow();
     void testRelayServiceFlowAndDeduplication();
-    void testFriendServiceFlow();
+    void testAllFriendsUsesBackendAuthority();
+    void testEmptyBackendFriendsProducesEmptyModel();
+    void testStaleLocalFriendsDoNotOverrideBackend();
+    void testAddFriendSendsRealRequest();
+    void testPendingFriendIsNotAccepted();
+    void testAcceptedFriendAppears();
+    void testRejectedFriendDoesNotAppear();
+    void testRemovedFriendDisappears();
+    void testNoHardcodedFriendFallback();
     void testNetworkManagerFacadeIntegration();
     void testTwoClientChatExchange();
     void testBookmarkConnectFlow();

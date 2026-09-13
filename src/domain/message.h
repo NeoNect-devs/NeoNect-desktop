@@ -16,7 +16,7 @@ enum class MessageStatus {
 struct Message {
     QString id;                 // Local UUID (used by UI to identify message uniquely)
     qint64 serverId{0};         // Relay server ID (unique on the server side)
-    QString conversationId;     // E.g. "dms:username" or "server1:channel"
+    QString conversationId;     // E.g. "dms:username"
     QString senderId;           // The sender's username
     QString type{"text"};       // "text", "image", "voice", etc.
     QString text;               // Payload text

@@ -39,27 +39,7 @@ Rectangle {
         }
     }
 
-    property var serverMembersMap: ({
-        "server1": [
-            { name: "Alex (Admin)", role: "ADMIN", status: "online", avatarColor: "#0A84FF" },
-            { name: "Beatrice", role: "DEVELOPER", status: "online", avatarColor: "#06B6D4" },
-            { name: "Charlie", role: "MEMBER", status: "afk", avatarColor: "#10B981" },
-            { name: "David", role: "MEMBER", status: "offline", avatarColor: "#F59E0B" },
-            { name: "Eva", role: "MODERATOR", status: "dnd", avatarColor: "#EC4899" },
-            { name: "Frank", role: "MEMBER", status: "offline", avatarColor: "#3B82F6" },
-            { name: "Grace", role: "MEMBER", status: "online", avatarColor: "#22C55E" },
-            { name: "Henry", role: "MEMBER", status: "afk", avatarColor: "#F97316" },
-            { name: "Ivy", role: "DESIGNER", status: "online", avatarColor: "#14B8A6" },
-            { name: "NeoNect Bot", role: "BOT", status: "online", avatarColor: "#0284C7" }
-        ],
-        "server2": [
-            { name: "Hannah", role: "OWNER", status: "online", avatarColor: "#FF5722" },
-            { name: "Ian", role: "LEAD", status: "online", avatarColor: "#64748B" },
-            { name: "Jack", role: "MEMBER", status: "offline", avatarColor: "#0284C7" },
-            { name: "Karen", role: "MEMBER", status: "afk", avatarColor: "#84CC16" },
-            { name: "Leo", role: "MEMBER", status: "offline", avatarColor: "#06B6D4" }
-        ]
-    })
+    property var serverMembersMap: ({})
 
     ListModel { id: membersModel }
 
@@ -77,7 +57,7 @@ Rectangle {
             })
         }
 
-        var list = serverMembersMap[selectedServer] || serverMembersMap["server1"] || []
+        var list = serverMembersMap[selectedServer] || []
         for (var i = 0; i < list.length; i++) {
             membersModel.append(list[i])
         }

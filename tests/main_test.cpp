@@ -54,9 +54,24 @@ int main(int argc, char *argv[]) {
         int r3 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRelayServiceFlowAndDeduplication");
         std::cout << "    Result: " << (r3 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        std::cout << "--> Testing testFriendServiceFlow..." << std::endl;
-        int r4 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testFriendServiceFlow");
-        std::cout << "    Result: " << (r4 == 0 ? "PASSED" : "FAILED") << std::endl;
+        std::cout << "--> Testing testAllFriendsUsesBackendAuthority..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testAllFriendsUsesBackendAuthority");
+        std::cout << "--> Testing testEmptyBackendFriendsProducesEmptyModel..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testEmptyBackendFriendsProducesEmptyModel");
+        std::cout << "--> Testing testStaleLocalFriendsDoNotOverrideBackend..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testStaleLocalFriendsDoNotOverrideBackend");
+        std::cout << "--> Testing testAddFriendSendsRealRequest..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testAddFriendSendsRealRequest");
+        std::cout << "--> Testing testPendingFriendIsNotAccepted..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testPendingFriendIsNotAccepted");
+        std::cout << "--> Testing testAcceptedFriendAppears..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testAcceptedFriendAppears");
+        std::cout << "--> Testing testRejectedFriendDoesNotAppear..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRejectedFriendDoesNotAppear");
+        std::cout << "--> Testing testRemovedFriendDisappears..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRemovedFriendDisappears");
+        std::cout << "--> Testing testNoHardcodedFriendFallback..." << std::endl;
+        status |= QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testNoHardcodedFriendFallback");
 
         std::cout << "--> Testing testNetworkManagerFacadeIntegration..." << std::endl;
         int r5 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testNetworkManagerFacadeIntegration");
@@ -94,7 +109,7 @@ int main(int argc, char *argv[]) {
         int r13 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testPhase10ABackendProtocolCompliance");
         std::cout << "    Result: " << (r13 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | r4 | r5 | r6 | r7 | r8 | r9 | r10 | r11 | r12 | r13);
+        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r7 | r8 | r9 | r10 | r11 | r12 | r13);
     }
 
     {

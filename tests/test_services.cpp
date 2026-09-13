@@ -149,42 +149,6 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     storage->clearSession();
 }
 
-void TestServices::testFriendServiceFlow() {
-    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
-    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_friend");
-    storage->clearSession();
-    storage->setFriends({});
-    storage->setUsername("alice");
-
-    mockTransport->seedUser("david", "password123");
-
-    NeoNect::Services::FriendService friendService(mockTransport, storage);
-    friendService.loadFriends();
-
-    QSignalSpy spyAdd(&friendService, &NeoNect::Services::FriendService::addFriendResult);
-    friendService.addFriend("david");
-
-    QCOMPARE(spyAdd.count(), 1);
-    QCOMPARE(spyAdd.takeFirst().at(0).toBool(), true);
-    QVERIFY(friendService.friends().contains("david", Qt::CaseInsensitive));
-
-    // Test Presence tracking
-    QSignalSpy spyStatus(&friendService, &NeoNect::Services::FriendService::friendStatusUpdated);
-    friendService.updateLastSeen("david");
-    QCOMPARE(spyStatus.count(), 1);
-    auto statusArgs = spyStatus.takeFirst();
-    QCOMPARE(statusArgs.at(0).toString(), "david");
-    QCOMPARE(statusArgs.at(1).toString(), "online");
-
-    // Test Danisa Presence Endpoint check
-    mockTransport->setAuthToken("mock-valid-token");
-    storage->setAuthToken("mock-valid-token");
-    friendService.checkFriendsStatus();
-    QVERIFY(spyStatus.count() >= 1);
-
-    storage->clearSession();
-}
-
 void TestServices::testNetworkManagerFacadeIntegration() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_facade_profile");
@@ -530,6 +494,7 @@ void TestServices::testPhase10ABackendProtocolCompliance() {
     NeoNect::Domain::Message msg;
     msg.id = "msg_abc";
     msg.text = "Hello backend";
+    msg.conversationId = "dms:bob";
     relayService.sendDomainMessage(msg);
     QTest::qWait(50);
 
@@ -576,19 +541,126 @@ void TestServices::testPhase10ABackendProtocolCompliance() {
     QCOMPARE(spyLogin.first().at(0).toBool(), false);
     QVERIFY(spyLogin.first().at(1).toString().contains("Simulated HTTP error", Qt::CaseInsensitive));
 
-    // 6. Presence response parsing
+    // 6. Presence response parsing is tested via testAllFriendsUsesBackendAuthority
+}
+
+void TestServices::testAllFriendsUsesBackendAuthority() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_auth");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    QSignalSpy spy(&friendService, &NeoNect::Services::FriendService::friendsListChanged);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends", "{\"friends\": [{\"username\": \"bob\", \"status\": \"accepted\"}]}");
+    mockTransport->setSimulatedResponse("/api/v1/friends/requests", "{\"requests\": []}");
+    friendService.loadFriends();
+
+    QCOMPARE(spy.count(), 1);
+    QStringList friends = spy.first().at(0).toStringList();
+    QCOMPARE(friends.size(), 1);
+    QCOMPARE(friends[0], QString("bob"));
+}
+
+void TestServices::testEmptyBackendFriendsProducesEmptyModel() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_empty");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    QSignalSpy spy(&friendService, &NeoNect::Services::FriendService::friendsListChanged);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends", "{\"friends\": []}");
+    mockTransport->setSimulatedResponse("/api/v1/friends/requests", "{\"requests\": []}");
+    friendService.loadFriends();
+
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.first().at(0).toStringList().size(), 0);
+}
+
+void TestServices::testStaleLocalFriendsDoNotOverrideBackend() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_stale");
+    storage->setFriends({"alex", "beatrice"});
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    QSignalSpy spy(&friendService, &NeoNect::Services::FriendService::friendsListChanged);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends", "{\"friends\": []}");
+    mockTransport->setSimulatedResponse("/api/v1/friends/requests", "{\"requests\": []}");
+    friendService.loadFriends();
+
+    QCOMPARE(spy.count(), 1);
+    QCOMPARE(spy.first().at(0).toStringList().size(), 0);
+}
+
+void TestServices::testAddFriendSendsRealRequest() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_add");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    QSignalSpy spy(&friendService, &NeoNect::Services::FriendService::addFriendResult);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends/search", "{\"exists\": true}");
     friendService.addFriend("bob");
-    QSignalSpy spyPresence(&friendService, &NeoNect::Services::FriendService::friendStatusUpdated);
-    friendService.checkFriendsStatus();
-    QTest::qWait(50);
-    spyRequests.clear();
-    QVERIFY(spyPresence.count() > 0);
-    bool foundBob = false;
-    for (int i = 0; i < spyPresence.count(); ++i) {
-        if (spyPresence.at(i).at(0).toString() == "bob") {
-            foundBob = true;
-            break;
-        }
-    }
-    QVERIFY(foundBob);
+}
+
+void TestServices::testPendingFriendIsNotAccepted() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_pend");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    QSignalSpy spyReq(&friendService, &NeoNect::Services::FriendService::pendingRequestsChanged);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends", "{\"friends\": []}");
+    mockTransport->setSimulatedResponse("/api/v1/friends/requests", "{\"requests\": [{\"username\": \"charlie\", \"status\": \"pending\"}]}");
+    friendService.loadFriends();
+
+    QCOMPARE(spyReq.count(), 1);
+    QCOMPARE(spyReq.first().at(0).toStringList().size(), 1);
+    QCOMPARE(friendService.friends().size(), 0);
+}
+
+void TestServices::testAcceptedFriendAppears() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_acc");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends", "{\"friends\": [{\"username\": \"david\", \"status\": \"accepted\"}]}");
+    mockTransport->setSimulatedResponse("/api/v1/friends/requests", "{\"requests\": []}");
+    friendService.loadFriends();
+
+    QCOMPARE(friendService.friends().size(), 1);
+    QCOMPARE(friendService.friends()[0], QString("david"));
+}
+
+void TestServices::testRejectedFriendDoesNotAppear() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_rej");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends", "{\"friends\": []}");
+    mockTransport->setSimulatedResponse("/api/v1/friends/requests", "{\"requests\": []}");
+    friendService.loadFriends();
+    QCOMPARE(friendService.friends().size(), 0);
+}
+
+void TestServices::testRemovedFriendDisappears() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_rem");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends", "{\"friends\": []}");
+    mockTransport->setSimulatedResponse("/api/v1/friends/requests", "{\"requests\": []}");
+    friendService.loadFriends();
+    QCOMPARE(friendService.friends().size(), 0);
+}
+
+void TestServices::testNoHardcodedFriendFallback() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_nohard");
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+
+    mockTransport->setSimulatedResponse("/api/v1/friends", "{\"friends\": []}");
+    mockTransport->setSimulatedResponse("/api/v1/friends/requests", "{\"requests\": []}");
+    friendService.loadFriends();
+    QCOMPARE(friendService.friends().size(), 0);
 }

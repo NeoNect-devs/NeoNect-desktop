@@ -8,7 +8,7 @@ import NeoNect.Core 1.0
 Rectangle {
     id: inputRoot
 
-    property string channelName: "general"
+    property string channelName: "friends"
     property bool isDM: false
 
     // Signals

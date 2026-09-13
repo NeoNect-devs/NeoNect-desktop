@@ -10,8 +10,8 @@ import "containers"
 Item {
     id: root
 
-    property string activeChannel: "general"
-    property string selectedServer: "server1"
+    property string activeChannel: "friends"
+    property string selectedServer: "dms"
 
     ChatMessageModel {
         id: nativeMessageModel

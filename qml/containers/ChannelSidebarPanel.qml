@@ -49,40 +49,16 @@ Rectangle {
 
     ListModel {
         id: serverChannelsModel
-        ListElement {
-            name: "general"
-            isDM: false
-            userStatus: "online"
-        }
-        ListElement {
-            name: "welcome-rules"
-            isDM: false
-            userStatus: "online"
-        }
-        ListElement {
-            name: "announcements"
-            isDM: false
-            userStatus: "online"
-        }
     }
 
     ListModel {
         id: openDmListModel
     }
 
-    property var friendStatusMap: ({
-        "alex": "online",
-        "beatrice": "online",
-        "charlie": "afk",
-        "david": "offline",
-        "eva": "dnd",
-        "frank": "offline",
-        "grace": "online",
-        "henry": "afk"
-    })
+    property var friendStatusMap: ({})
 
     // Active Open DMs tracked in session
-    property var openDms: ["alex", "beatrice"]
+    property var openDms: []
 
     function openDirectMessage(username) {
         if (!username) return;

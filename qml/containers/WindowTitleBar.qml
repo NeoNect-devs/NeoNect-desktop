@@ -29,23 +29,32 @@ Rectangle {
 
     // Window Drag Handler
     MouseArea {
+        id: dragArea
         anchors.fill: parent
-        property point clickPos: Qt.point(0, 0)
+
+        property point startPos: Qt.point(0, 0)
+
         onPressed: mouse => {
-            clickPos = Qt.point(mouse.x, mouse.y);
-        }
-        onPositionChanged: mouse => {
-            if (root.windowTarget.visibility === Window.Maximized) {
-                let ratioX = mouse.x / root.windowTarget.width;
-                root.windowTarget.visibility = Window.Windowed;
-                clickPos.x = root.windowTarget.width * ratioX;
-                clickPos.y = mouse.y;
-                return;
+            if (root.windowTarget.visibility !== Window.Maximized) {
+                // Attempt native system move first
+                var success = root.windowTarget.startSystemMove();
+                if (!success) {
+                    // Fallback to manual global drag
+                    startPos = Qt.point(mouse.x, mouse.y);
+                }
             }
-            let delta = Qt.point(mouse.x - clickPos.x, mouse.y - clickPos.y);
-            root.windowTarget.x += delta.x;
-            root.windowTarget.y += delta.y;
         }
+
+        onPositionChanged: mouse => {
+            // Only use fallback drag if native system move is not actively handling it
+            if (root.windowTarget.visibility !== Window.Maximized && pressed) {
+                var dx = mouse.x - startPos.x;
+                var dy = mouse.y - startPos.y;
+                root.windowTarget.x += dx;
+                root.windowTarget.y += dy;
+            }
+        }
+
         onDoubleClicked: {
             if (root.appState === "authenticated")
                 root.windowTarget.visibility = (root.windowTarget.visibility === Window.Maximized) ? Window.Windowed : Window.Maximized;

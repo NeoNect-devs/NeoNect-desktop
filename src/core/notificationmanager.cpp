@@ -101,8 +101,6 @@ void NotificationManager::setupMessageServiceHook(Services::MessageService* ms) 
         QString targetChannel = conversationId;
         if (targetChannel.startsWith("dms:")) {
             targetChannel = targetChannel.mid(4);
-        } else if (targetChannel.startsWith("server1:")) {
-            targetChannel = targetChannel.mid(8);
         }
         
         showMessageNotification(sender, text, targetChannel, avatar, type);

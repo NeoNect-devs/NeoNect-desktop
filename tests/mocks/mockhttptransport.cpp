@@ -219,6 +219,11 @@ QNetworkReply* MockHttpTransport::get(const QString &endpoint, const QMap<QStrin
             callback(m_simulateHttpError, QByteArray("{\"error\":\"Simulated HTTP Error\"}"), QNetworkReply::InternalServerError, "Simulated HTTP error");
             return nullptr;
         }
+        if (m_simulatedResponses.contains(endpoint)) {
+            auto pair = m_simulatedResponses.value(endpoint);
+            callback(pair.second, pair.first, pair.second >= 400 ? QNetworkReply::UnknownServerError : QNetworkReply::NoError, "");
+            return nullptr;
+        }
     }
 
     if (endpoint == Constants::EP_HEALTH) {
@@ -258,6 +263,11 @@ QNetworkReply* MockHttpTransport::post(const QString &endpoint, const QByteArray
         }
         if (m_simulateHttpError > 0) {
             callback(m_simulateHttpError, QByteArray("{\"error\":\"Simulated HTTP Error\"}"), QNetworkReply::InternalServerError, "Simulated HTTP error");
+            return nullptr;
+        }
+        if (m_simulatedResponses.contains(endpoint)) {
+            auto pair = m_simulatedResponses.value(endpoint);
+            callback(pair.second, pair.first, pair.second >= 400 ? QNetworkReply::UnknownServerError : QNetworkReply::NoError, "");
             return nullptr;
         }
     }
@@ -683,6 +693,11 @@ void MockHttpTransport::tamperLastMessageNonce(const QString &deviceId) {
             break;
         }
     }
+}
+
+void MockHttpTransport::setSimulatedResponse(const QString &endpoint, const QByteArray &data, int statusCode) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    m_simulatedResponses[endpoint] = qMakePair(data, statusCode);
 }
 
 } // namespace Testing

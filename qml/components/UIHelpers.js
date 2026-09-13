@@ -49,10 +49,12 @@ function detectMediaType(url, fileName) {
 }
 
 function getAvatarColor(sender) {
-    if (sender === "Alex") return "#0A84FF"
-    if (sender === "Beatrice") return "#06B6D4"
-    if (sender === "Charlie") return "#10B981"
-    if (sender === "David") return "#F59E0B"
-    if (sender === "System") return "#14B8A6"
-    return "#4F545C"
+    if (!sender || sender === "") return "#4F545C";
+    if (sender === "System") return "#14B8A6";
+    var hash = 0;
+    for (var i = 0; i < sender.length; i++) {
+        hash = sender.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    var c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return "#" + "00000".substring(0, 6 - c.length) + c;
 }

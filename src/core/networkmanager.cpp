@@ -125,6 +125,9 @@ void NetworkManager::setupServiceSignals() {
     });
 
     connect(m_friendService.get(), &NeoNect::Services::FriendService::addFriendResult, this, &NetworkManager::addFriendResult);
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::acceptFriendResult, this, &NetworkManager::acceptFriendResult);
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::rejectFriendResult, this, &NetworkManager::rejectFriendResult);
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::removeFriendResult, this, &NetworkManager::removeFriendResult);
     connect(m_friendService.get(), &NeoNect::Services::FriendService::friendStatusUpdated, this, &NetworkManager::friendStatusUpdated);
 }
 
@@ -153,6 +156,10 @@ QString NetworkManager::currentUsername() const {
 
 QStringList NetworkManager::friends() const {
     return m_friendService->friends();
+}
+
+QStringList NetworkManager::pendingRequests() const {
+    return m_friendService->pendingRequests();
 }
 
 QVariantList NetworkManager::bookmarks() const {
@@ -295,6 +302,18 @@ void NetworkManager::acknowledgeMessage(qint64 messageId) {
 
 void NetworkManager::addFriend(const QString &username) {
     m_friendService->addFriend(username);
+}
+
+void NetworkManager::acceptFriend(const QString &username) {
+    m_friendService->acceptFriend(username);
+}
+
+void NetworkManager::rejectFriend(const QString &username) {
+    m_friendService->rejectFriend(username);
+}
+
+void NetworkManager::removeFriend(const QString &username) {
+    m_friendService->removeFriend(username);
 }
 
 void NetworkManager::checkFriendsStatus() {

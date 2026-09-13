@@ -65,10 +65,9 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     QString targetUser;
     if (msg.conversationId.startsWith("dms:")) {
         targetUser = msg.conversationId.mid(4);
-    } else if (msg.conversationId.startsWith("server1:")) {
-        targetUser = "channel:" + msg.conversationId.mid(8);
     } else {
-        targetUser = "general";
+        // Fallback for unexpected format (backend enforces target users)
+        targetUser = msg.conversationId;
     }
 
     if (token.isEmpty() || targetUser.isEmpty()) {
@@ -200,7 +199,7 @@ void RelayService::pollPendingMessages() {
 
             QString textContent = QString::fromUtf8(decodedBytes);
             QString sender = "Anonymous";
-            QString target = "general";
+            QString target = "dms:" + m_storage->username();
             QString type = "text";
             QString mediaUrl = "";
             QString fileName = "";
@@ -249,12 +248,7 @@ void RelayService::pollPendingMessages() {
             domainMsg.status = Domain::MessageStatus::Seen;
             domainMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
             
-            if (target.startsWith("channel:") || target == "general") {
-                QString channelName = target.startsWith("channel:") ? target.mid(8) : "general";
-                domainMsg.conversationId = "server1:" + channelName;
-            } else {
-                domainMsg.conversationId = "dms:" + domainMsg.senderId.toLower();
-            }
+            domainMsg.conversationId = "dms:" + domainMsg.senderId.toLower();
 
             batchMsgs.push_back(domainMsg);
             acknowledgeMessage(msgId);

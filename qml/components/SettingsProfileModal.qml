@@ -789,7 +789,7 @@ Rectangle {
                                 Layout.preferredHeight: 36
                                 onClicked: {
                                     if (typeof NotificationManager !== "undefined" && NotificationManager) {
-                                        NotificationManager.showNotification("Alex", "Hey! Testing the new Telegram-style notification pill ⚡", "message", "alex", "A", 5000);
+                                        NotificationManager.showNotification("NeoNect System", "Hey! Testing the new Telegram-style notification pill ⚡", "message", "system", "N", 5000);
                                     }
                                     modalRoot.sendTestNotificationRequested();
                                 }

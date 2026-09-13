@@ -35,6 +35,7 @@ class MockHttpTransport : public QObject, public Transport::IHttpTransport {
     Q_OBJECT
 public:
     explicit MockHttpTransport(bool enableSharedStorage = false, bool enableEchoBot = false, QObject *parent = nullptr);
+    void setSimulatedResponse(const QString &endpoint, const QByteArray &data, int statusCode = 200);
     ~MockHttpTransport() override = default;
 
     void setBaseUrl(const QString &url) override;
@@ -93,6 +94,7 @@ private:
     QMap<QString, MockUser> m_users; // username -> MockUser
     QMap<QString, QString> m_tokenToUser; // token -> username
     std::vector<MockQueuedMessage> m_deliveryQueue;
+    QMap<QString, QPair<QByteArray, int>> m_simulatedResponses;
 };
 
 } // namespace Testing

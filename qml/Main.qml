@@ -17,8 +17,8 @@ Window {
 
     property string appState: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "authenticated" : "gateway"
     property string activeTitleText: "Server Connection"
-    property string currentActiveChannel: "general"
-    property string currentSelectedServer: "server1"
+    property string currentActiveChannel: "friends"
+    property string currentSelectedServer: "dms"
 
     Connections {
         target: NetworkManager
@@ -185,12 +185,12 @@ Window {
             }
             onSendTestNotificationRequested: {
                 globalNotifStack.showNotification({
-                    title: "Alex",
+                    title: "NeoNect System",
                     body: "Hey! This is a test notification from NeoNect Notification System ⚡",
                     type: "message",
                     avatar: "A",
                     actionText: "Reply",
-                    channel: "alex",
+                    channel: "system",
                     duration: 5000
                 });
             }

@@ -21,6 +21,7 @@ class NetworkManager : public QObject {
     Q_PROPERTY(QString currentUsername READ currentUsername NOTIFY currentUsernameChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(QStringList friends READ friends NOTIFY friendsChanged)
+    Q_PROPERTY(QStringList pendingRequests READ pendingRequests NOTIFY pendingRequestsChanged)
     Q_PROPERTY(QVariantList bookmarks READ bookmarks NOTIFY bookmarksChanged)
 
 public:
@@ -41,6 +42,7 @@ public:
     QString currentUsername() const;
     bool isLoading() const { return m_isLoading; }
     QStringList friends() const;
+    QStringList pendingRequests() const;
     QVariantList bookmarks() const;
 
     Q_INVOKABLE void setProfile(const QString &profileName);
@@ -69,6 +71,9 @@ public:
 
     // Friends & DM Management
     Q_INVOKABLE void addFriend(const QString &username);
+    Q_INVOKABLE void acceptFriend(const QString &username);
+    Q_INVOKABLE void rejectFriend(const QString &username);
+    Q_INVOKABLE void removeFriend(const QString &username);
     Q_INVOKABLE void checkFriendsStatus();
 
 signals:
@@ -77,6 +82,7 @@ signals:
     void currentUsernameChanged();
     void isLoadingChanged();
     void friendsChanged();
+    void pendingRequestsChanged();
     void bookmarksChanged();
 
     void verificationResult(bool success, const QString &message);
@@ -90,6 +96,9 @@ signals:
     void userProfileFetched(bool success, const QString &username);
 
     void addFriendResult(bool success, const QString &message, const QString &username);
+    void acceptFriendResult(bool success, const QString &message, const QString &username);
+    void rejectFriendResult(bool success, const QString &message, const QString &username);
+    void removeFriendResult(bool success, const QString &message, const QString &username);
     void friendStatusUpdated(const QString &username, const QString &status);
 
 private:
