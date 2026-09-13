@@ -1,7 +1,6 @@
 // qml/containers/NeoNectButton.qml
 import QtQuick
 import QtQuick.Controls
-import NeoNect 1.0
 
 Item {
     id: control

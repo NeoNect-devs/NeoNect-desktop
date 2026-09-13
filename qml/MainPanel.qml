@@ -3,7 +3,6 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
 import NeoNect.Core 1.0
-import NeoNect 1.0
 import "components"
 import "containers"
 

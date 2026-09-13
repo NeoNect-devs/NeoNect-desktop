@@ -1,7 +1,6 @@
 // qml/components/NeoNectBrandButton.qml
 import QtQuick
 import QtQuick.Layouts
-import NeoNect 1.0
 
 Item {
     id: brandRoot

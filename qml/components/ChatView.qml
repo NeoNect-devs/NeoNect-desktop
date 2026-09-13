@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import QtQuick.Controls.impl
 import "qrc:/qt/qml/NeoNect/qml/components"
 import "qrc:/qt/qml/NeoNect/qml/containers"
 import "UIHelpers.js" as UIHelpers

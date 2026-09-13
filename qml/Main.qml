@@ -3,9 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import NeoNect 1.0
 import NeoNect.Core 1.0
-import "."
 
 Window {
     id: root

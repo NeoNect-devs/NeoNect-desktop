@@ -1,6 +1,5 @@
 // qml/containers/NeoNectTextField.qml
 import QtQuick
-import NeoNect 1.0
 
 Item {
     id: control

@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Layouts
-import NeoNect 1.0
 import "../components"
 
 Rectangle {

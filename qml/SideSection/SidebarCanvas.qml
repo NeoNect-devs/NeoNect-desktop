@@ -2,7 +2,6 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
-import NeoNect 1.0
 
 Item {
     id: sidebarRoot
