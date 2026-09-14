@@ -73,7 +73,7 @@ Window {
             notifWindow.showNotification(notification);
         }
         function onNotificationDismissed(id) {
-            notifWindow.removeNotification(id);
+            notifWindow.dismissPill(id);
         }
         function onNotificationsCleared() {
             notifWindow.clearAll();
@@ -118,19 +118,25 @@ Window {
         console.log("--> [NotificationPill] Screen pill displayed at: (" + notifWindow.x + ", " + notifWindow.y + ") size: " + notifWindow.width + "x" + notifWindow.height + " | Title: " + notifObj.title);
     }
 
-    function removeNotification(id) {
+    // Dismiss only the floating on-screen toast pill (leaves notification in center history)
+    function dismissPill(id) {
         for (var i = 0; i < notifModel.count; ++i) {
             if (notifModel.get(i).notifId === id) {
                 notifModel.remove(i);
                 notifWindow.dismissed(id);
-                if (typeof NotificationManager !== "undefined" && NotificationManager) {
-                    NotificationManager.dismissNotification(id);
-                }
                 break;
             }
         }
         if (notifModel.count === 0) {
             notifWindow.visible = false;
+        }
+    }
+
+    // Fully dismiss notification from both floating stack and NotificationManager
+    function removeNotification(id) {
+        dismissPill(id);
+        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+            NotificationManager.dismissNotification(id);
         }
     }
 
@@ -203,7 +209,7 @@ Window {
                         pillWrapper.remainingTime -= 100;
                         if (pillWrapper.remainingTime <= 0) {
                             stop();
-                            notifWindow.removeNotification(model.notifId);
+                            notifWindow.dismissPill(model.notifId);
                         }
                     }
                 }
@@ -222,12 +228,12 @@ Window {
                     id: telegramPill
                     anchors.fill: parent
                     radius: 26 // Full Telegram pill curve
-                    color: "#17212B" // Solid Telegram dark slate obsidian
+                    color: ThemeData.windowBackground
                     border.color: {
                         if (model.type === "error") return Qt.rgba(255, 82, 82, 0.45);
                         if (model.type === "success") return Qt.rgba(35, 165, 90, 0.45);
                         if (model.type === "security") return Qt.rgba(250, 168, 26, 0.45);
-                        return pillWrapper.isHovered ? Qt.rgba(0, 210, 255, 0.4) : Qt.rgba(255, 255, 255, 0.14);
+                        return pillWrapper.isHovered ? Qt.rgba(10, 132, 255, 0.5) : ThemeData.borderColor;
                     }
                     border.width: 1
                     clip: true
@@ -320,7 +326,7 @@ Window {
                                 width: 9; height: 9
                                 radius: 4.5
                                 color: "#23A55A"
-                                border.color: "#17212B"
+                                border.color: ThemeData.windowBackground
                                 border.width: 1.5
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
@@ -340,7 +346,7 @@ Window {
 
                                 Text {
                                     text: model.title
-                                    color: "#FFFFFF"
+                                    color: ThemeData.textPrimary
                                     font.family: "Segoe UI"
                                     font.pixelSize: 13
                                     font.bold: true
@@ -350,7 +356,7 @@ Window {
 
                                 Text {
                                     text: "now"
-                                    color: "#7E8794"
+                                    color: ThemeData.textMuted
                                     font.family: "Segoe UI"
                                     font.pixelSize: 10
                                 }
@@ -358,7 +364,7 @@ Window {
 
                             Text {
                                 text: model.body !== "" ? model.body : "New message"
-                                color: "#9FA8B4"
+                                color: ThemeData.textSecondary
                                 font.family: "Segoe UI"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
@@ -395,7 +401,7 @@ Window {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     notifWindow.actionTriggered(model.notifId, "reply", model.channel);
-                                    notifWindow.removeNotification(model.notifId);
+                                    notifWindow.dismissPill(model.notifId);
                                 }
                             }
                         }
@@ -411,7 +417,7 @@ Window {
                             Text {
                                 anchors.centerIn: parent
                                 text: "✕"
-                                color: closeMouse.containsMouse ? "#FFFFFF" : "#7E8794"
+                                color: closeMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textMuted
                                 font.pixelSize: 11
                             }
 
@@ -420,7 +426,7 @@ Window {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: notifWindow.removeNotification(model.notifId)
+                                onClicked: notifWindow.dismissPill(model.notifId)
                             }
                         }
                     }
@@ -437,7 +443,7 @@ Window {
                             if (model.channel && model.channel !== "") {
                                 notifWindow.actionTriggered(model.notifId, "open", model.channel);
                             }
-                            notifWindow.removeNotification(model.notifId);
+                            notifWindow.dismissPill(model.notifId);
                         }
                     }
                 }

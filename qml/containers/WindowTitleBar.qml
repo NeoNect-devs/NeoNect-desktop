@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls.impl
 import "../components"
 
 Rectangle {
@@ -13,7 +14,7 @@ Rectangle {
     signal navigateToChat(string channel)
 
     height: 45
-    color: root.appState === "gateway" ? Qt.darker(ThemeData.mainWindowBackground, 1.15) : "transparent"
+    color: root.appState === "gateway" ? Qt.darker(ThemeData.windowBackground, 1.15) : "transparent"
     z: 100
 
     // ─── TOP-LEFT OVERLAPPING BRAND BUTTON ────────────────────────────
@@ -31,32 +32,86 @@ Rectangle {
         id: dragArea
         anchors.fill: parent
 
-        property point startPos: Qt.point(0, 0)
+        property bool isPressed: false
+        property bool nativeMoveStarted: false
+        property point pressLocalPos: Qt.point(0, 0)
+        property point pressGlobalPos: Qt.point(0, 0)
+        property real pressRatio: 0.5
+        property bool wasMaximizedOnPress: false
 
         onPressed: mouse => {
-            if (root.windowTarget.visibility !== Window.Maximized) {
-                // Attempt native system move first
-                var success = root.windowTarget.startSystemMove();
-                if (!success) {
-                    // Fallback to manual global drag
-                    startPos = Qt.point(mouse.x, mouse.y);
+            if (mouse.button !== Qt.LeftButton) return;
+            isPressed = true;
+            nativeMoveStarted = false;
+            pressLocalPos = Qt.point(mouse.x, mouse.y);
+            var g = dragArea.mapToGlobal(mouse.x, mouse.y);
+            pressGlobalPos = Qt.point(g.x, g.y);
+            wasMaximizedOnPress = (root.windowTarget.visibility === Window.Maximized);
+            pressRatio = root.width > 0 ? (mouse.x / root.width) : 0.5;
+
+            if (!wasMaximizedOnPress) {
+                if (root.windowTarget.startSystemMove()) {
+                    nativeMoveStarted = true;
                 }
             }
         }
 
         onPositionChanged: mouse => {
-            // Only use fallback drag if native system move is not actively handling it
-            if (root.windowTarget.visibility !== Window.Maximized && pressed) {
-                var dx = mouse.x - startPos.x;
-                var dy = mouse.y - startPos.y;
-                root.windowTarget.x += dx;
-                root.windowTarget.y += dy;
+            if (!isPressed || nativeMoveStarted) return;
+
+            var g = dragArea.mapToGlobal(mouse.x, mouse.y);
+            var dx = g.x - pressGlobalPos.x;
+            var dy = g.y - pressGlobalPos.y;
+            var distSq = dx * dx + dy * dy;
+
+            if (wasMaximizedOnPress) {
+                if (distSq > 16) {
+                    root.windowTarget.visibility = Window.Windowed;
+
+                    var targetW = root.windowTarget.width > 0 ? root.windowTarget.width : 850;
+                    root.windowTarget.x = Math.max(0, g.x - (targetW * pressRatio));
+                    root.windowTarget.y = Math.max(0, g.y - pressLocalPos.y);
+
+                    wasMaximizedOnPress = false;
+                    if (root.windowTarget.startSystemMove()) {
+                        nativeMoveStarted = true;
+                    }
+                }
+            } else {
+                if (distSq > 4) {
+                    if (root.windowTarget.startSystemMove()) {
+                        nativeMoveStarted = true;
+                    } else {
+                        root.windowTarget.x += dx;
+                        root.windowTarget.y += dy;
+                        pressGlobalPos = Qt.point(g.x, g.y);
+                    }
+                }
             }
         }
 
+        onReleased: mouse => {
+            if (!nativeMoveStarted && !wasMaximizedOnPress && mouse) {
+                var g = dragArea.mapToGlobal(mouse.x, mouse.y);
+                if (g.y <= 5) {
+                    root.windowTarget.visibility = Window.Maximized;
+                }
+            }
+            isPressed = false;
+            nativeMoveStarted = false;
+        }
+
+        onCanceled: {
+            isPressed = false;
+            nativeMoveStarted = false;
+        }
+
         onDoubleClicked: {
-            if (root.appState === "authenticated")
-                root.windowTarget.visibility = (root.windowTarget.visibility === Window.Maximized) ? Window.Windowed : Window.Maximized;
+            isPressed = false;
+            nativeMoveStarted = false;
+            root.windowTarget.visibility = (root.windowTarget.visibility === Window.Maximized)
+                ? Window.Windowed
+                : Window.Maximized;
         }
     }
 
@@ -95,24 +150,62 @@ Rectangle {
             color: "gray"
             font.pointSize: 11
         }
-        Rectangle {
-            Layout.rightMargin: 10
+        RowLayout {
+            Layout.rightMargin: 8
             Layout.alignment: Qt.AlignVCenter
-            width: 35
-            height: 35
-            radius: 4
-            color: closeMouseArea.containsMouse ? "#e81123" : "transparent"
-            Text {
-                anchors.centerIn: parent
-                text: "✕"
-                color: closeMouseArea.containsMouse ? "white" : "gray"
-                font.pointSize: 12
+            spacing: 4
+
+            Rectangle {
+                Layout.preferredWidth: 38
+                Layout.preferredHeight: 32
+                radius: 4
+                color: gatewayMinM.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "—"
+                    color: "white"
+                }
+                MouseArea {
+                    id: gatewayMinM
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: root.windowTarget.visibility = Window.Minimized
+                }
             }
-            MouseArea {
-                id: closeMouseArea
-                anchors.fill: parent
-                hoverEnabled: true
-                onClicked: root.windowTarget.close()
+            Rectangle {
+                Layout.preferredWidth: 38
+                Layout.preferredHeight: 32
+                radius: 4
+                color: gatewayMaxM.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: root.windowTarget.visibility === Window.Maximized ? "🗗" : "🗖"
+                    color: "white"
+                }
+                MouseArea {
+                    id: gatewayMaxM
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: root.windowTarget.visibility = (root.windowTarget.visibility === Window.Maximized) ? Window.Windowed : Window.Maximized
+                }
+            }
+            Rectangle {
+                Layout.preferredWidth: 38
+                Layout.preferredHeight: 32
+                radius: 4
+                color: closeMouseArea.containsMouse ? "#e81123" : "transparent"
+                Text {
+                    anchors.centerIn: parent
+                    text: "✕"
+                    color: closeMouseArea.containsMouse ? "white" : "gray"
+                    font.pointSize: 12
+                }
+                MouseArea {
+                    id: closeMouseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: root.windowTarget.close()
+                }
             }
         }
     }
@@ -137,12 +230,12 @@ Rectangle {
                 radius: 4
                 color: notifMouse.containsMouse || notifFlyout.visible ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
 
-                Image {
+                IconImage {
                     anchors.centerIn: parent
                     width: 17
                     height: 17
-                    source: "../../assets/icons/bell.svg"
-                    fillMode: Image.PreserveAspectFit
+                    source: "qrc:/qt/qml/NeoNect/assets/icons/bell.svg"
+                    color: notifMouse.containsMouse || notifFlyout.visible ? ThemeData.textPrimary : ThemeData.textSecondary
                 }
 
                 // RED DOT INDICATOR FOR UNREAD NOTIFICATIONS
@@ -153,7 +246,7 @@ Rectangle {
                     height: 8
                     radius: 4
                     color: "#FF3B30"
-                    border.color: "#17212B"
+                    border.color: ThemeData.windowBackground
                     border.width: 1.5
                     anchors.top: parent.top
                     anchors.right: parent.right
@@ -204,7 +297,7 @@ Rectangle {
                 Text {
                     anchors.centerIn: parent
                     text: "—"
-                    color: "white"
+                    color: minM.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
                 }
                 MouseArea {
                     id: minM
@@ -221,7 +314,7 @@ Rectangle {
                 Text {
                     anchors.centerIn: parent
                     text: root.windowTarget.visibility === Window.Maximized ? "🗗" : "🗖"
-                    color: "white"
+                    color: maxM.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
                 }
                 MouseArea {
                     id: maxM
@@ -238,7 +331,7 @@ Rectangle {
                 Text {
                     anchors.centerIn: parent
                     text: "✕"
-                    color: "white"
+                    color: authCloseM.containsMouse ? "#FFFFFF" : ThemeData.textSecondary
                 }
                 MouseArea {
                     id: authCloseM

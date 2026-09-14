@@ -172,6 +172,7 @@ void NotificationManager::showMessageNotification(const QString &sender,
 void NotificationManager::dismissNotification(const QString &id) {
     if (id.isEmpty()) return;
 
+    bool unreadChanged = false;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
         for (int i = 0; i < m_activeNotifications.size(); ++i) {
@@ -181,9 +182,16 @@ void NotificationManager::dismissNotification(const QString &id) {
                 break;
             }
         }
+        if (m_unreadCount > m_activeNotifications.size()) {
+            m_unreadCount = m_activeNotifications.size();
+            unreadChanged = true;
+        }
     }
 
     emit notificationDismissed(id);
+    if (unreadChanged) {
+        emit unreadCountChanged();
+    }
     emit activeNotificationsChanged();
 }
 

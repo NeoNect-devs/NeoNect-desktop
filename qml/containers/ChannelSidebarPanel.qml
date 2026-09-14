@@ -101,6 +101,7 @@ Rectangle {
 
     Connections {
         target: NetworkManager
+        ignoreUnknownSignals: true
         function onFriendsChanged() {
             sidebarRoot.syncDmModel();
         }

@@ -417,8 +417,15 @@ target_link_libraries(NeoNectStressTests PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
 )
-target_compile_options(NeoNectStressTests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
-target_link_options(NeoNectStressTests PRIVATE -fsanitize=address,undefined)
+option(ENABLE_SANITIZERS "Enable Address and Undefined sanitizers for stress tests" OFF)
+if(ENABLE_SANITIZERS)
+    if(NOT MINGW)
+        target_compile_options(NeoNectStressTests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(NeoNectStressTests PRIVATE -fsanitize=address,undefined)
+    else()
+        message(WARNING "Sanitizers are not supported on MinGW.")
+    endif()
+endif()
 
 if(WIN32)
     target_link_libraries(NeoNectStressTests PRIVATE winmm dwmapi)

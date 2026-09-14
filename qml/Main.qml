@@ -7,7 +7,7 @@ import NeoNect.Core 1.0
 
 Window {
     id: root
-    color: ThemeData.windowBackground
+    color: "transparent"
     width: 850; height: 640
     minimumWidth: 800; minimumHeight: 560
     visible: true
@@ -44,8 +44,11 @@ Window {
     }
 
     Rectangle {
+        id: windowBackground
         anchors.fill: parent
-        color: root.color
+        color: ThemeData.windowBackground
+        radius: (root.visibility === Window.Maximized || root.visibility === Window.FullScreen) ? 0 : 10
+        clip: true
 
         WindowTitleBar {
             id: titleBar
@@ -159,12 +162,74 @@ Window {
 
         // Framework Frameless Window Geometry Sizing hitboxes
         Item {
-            anchors.fill: parent; z: 101
-            visible: root.appState === "authenticated" && root.visibility !== Window.Maximized && root.visibility !== Window.FullScreen
-            MouseArea { width: 4; anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom; cursorShape: Qt.SizeHorCursor; onPressed: root.startSystemResize(Qt.LeftEdge) }
-            MouseArea { width: 4; anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom; cursorShape: Qt.SizeHorCursor; onPressed: root.startSystemResize(Qt.RightEdge) }
-            MouseArea { height: 4; anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right; cursorShape: Qt.SizeVerCursor; onPressed: root.startSystemResize(Qt.BottomEdge) }
-            MouseArea { height: 4; anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right; cursorShape: Qt.SizeVerCursor; onPressed: root.startSystemResize(Qt.TopEdge) }
+            id: resizeHitboxes
+            anchors.fill: parent
+            z: 1000
+            visible: root.visibility !== Window.Maximized && root.visibility !== Window.FullScreen
+
+            // Corner Hitboxes (14x14 pixels, z: 2 over edges)
+            MouseArea {
+                width: 14; height: 14
+                anchors.left: parent.left; anchors.top: parent.top
+                cursorShape: Qt.SizeFDiagCursor
+                z: 2
+                onPressed: root.startSystemResize(Qt.LeftEdge | Qt.TopEdge)
+            }
+            MouseArea {
+                width: 14; height: 14
+                anchors.right: parent.right; anchors.top: parent.top
+                cursorShape: Qt.SizeBDiagCursor
+                z: 2
+                onPressed: root.startSystemResize(Qt.RightEdge | Qt.TopEdge)
+            }
+            MouseArea {
+                width: 14; height: 14
+                anchors.left: parent.left; anchors.bottom: parent.bottom
+                cursorShape: Qt.SizeBDiagCursor
+                z: 2
+                onPressed: root.startSystemResize(Qt.LeftEdge | Qt.BottomEdge)
+            }
+            MouseArea {
+                width: 14; height: 14
+                anchors.right: parent.right; anchors.bottom: parent.bottom
+                cursorShape: Qt.SizeFDiagCursor
+                z: 2
+                onPressed: root.startSystemResize(Qt.RightEdge | Qt.BottomEdge)
+            }
+
+            // Edge Hitboxes (6 pixels with 14px margins so corners take precedence)
+            MouseArea {
+                width: 6
+                anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                anchors.topMargin: 14; anchors.bottomMargin: 14
+                cursorShape: Qt.SizeHorCursor
+                z: 1
+                onPressed: root.startSystemResize(Qt.LeftEdge)
+            }
+            MouseArea {
+                width: 6
+                anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+                anchors.topMargin: 14; anchors.bottomMargin: 14
+                cursorShape: Qt.SizeHorCursor
+                z: 1
+                onPressed: root.startSystemResize(Qt.RightEdge)
+            }
+            MouseArea {
+                height: 6
+                anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
+                anchors.leftMargin: 14; anchors.rightMargin: 14
+                cursorShape: Qt.SizeVerCursor
+                z: 1
+                onPressed: root.startSystemResize(Qt.TopEdge)
+            }
+            MouseArea {
+                height: 6
+                anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
+                anchors.leftMargin: 14; anchors.rightMargin: 14
+                cursorShape: Qt.SizeVerCursor
+                z: 1
+                onPressed: root.startSystemResize(Qt.BottomEdge)
+            }
         }
 
         // Global Media Fullscreen Lightbox Modal (Covers entire application)
@@ -182,15 +247,17 @@ Window {
                 root.appState = "gateway";
             }
             onSendTestNotificationRequested: {
-                globalNotifStack.showNotification({
-                    title: "NeoNect System",
-                    body: "Hey! This is a test notification from NeoNect Notification System ⚡",
-                    type: "message",
-                    avatar: "A",
-                    actionText: "Reply",
-                    channel: "system",
-                    duration: 5000
-                });
+                if (typeof NotificationManager === "undefined" || !NotificationManager) {
+                    globalNotifStack.showNotification({
+                        title: "NeoNect System",
+                        body: "Hey! This is a test notification from NeoNect Notification System ⚡",
+                        type: "message",
+                        avatar: "N",
+                        actionText: "Reply",
+                        channel: "system",
+                        duration: 5000
+                    });
+                }
             }
         }
     }

@@ -8,8 +8,10 @@ import NeoNect.Core 1.0
 Popup {
     id: flyoutRoot
 
+    readonly property int notifCount: (typeof NotificationManager !== "undefined" && NotificationManager && NotificationManager.activeNotifications) ? NotificationManager.activeNotifications.length : notifListView.count
+
     width: 360
-    height: Math.min(460, headerSection.height + 1 + (notifListView.count > 0 ? Math.min(390, notifListView.contentHeight + 10) : emptySection.height) + 12)
+    height: Math.min(460, headerSection.height + 1 + (flyoutRoot.notifCount > 0 ? Math.min(390, notifListView.contentHeight + 10) : emptySection.height) + 12)
     padding: 0
     modal: false
     focus: true
@@ -30,7 +32,7 @@ Popup {
         NumberAnimation { property: "opacity"; from: 1.0; to: 0.0; duration: 120; easing.type: Easing.InCubic }
     }
 
-    // Helper function for deterministic Telegram avatar gradient
+    // Helper function for deterministic avatar gradient
     function getAvatarGradient(name) {
         var str = (name && name.length > 0) ? name : "N";
         var code = str.charCodeAt(0);
@@ -58,8 +60,8 @@ Popup {
     // ─── BACKGROUND CONTAINER & AMBIENT SHADOW ───
     background: Rectangle {
         radius: 12
-        color: "#17212B" // Telegram Dark Obsidian
-        border.color: Qt.rgba(255, 255, 255, 0.12)
+        color: ThemeData.windowBackground
+        border.color: ThemeData.borderColor
         border.width: 1
 
         // Outer soft ambient drop shadow
@@ -67,7 +69,7 @@ Popup {
             anchors.fill: parent
             anchors.margins: -4
             radius: parent.radius + 4
-            color: Qt.rgba(0, 0, 0, 0.55)
+            color: Qt.rgba(0, 0, 0, 0.65)
             z: -1
         }
     }
@@ -91,33 +93,33 @@ Popup {
                 spacing: 8
 
                 // Header icon
-                Image {
+                IconImage {
                     source: "qrc:/qt/qml/NeoNect/assets/icons/bell.svg"
                     Layout.preferredWidth: 16
                     Layout.preferredHeight: 16
-                    fillMode: Image.PreserveAspectFit
+                    color: ThemeData.accentColor
                 }
 
                 Text {
                     text: "Notifications"
-                    color: "#FFFFFF"
+                    color: ThemeData.textPrimary
                     font.family: "Segoe UI"
                     font.bold: true
                     font.pixelSize: 13
                 }
 
-                // New badge count if unread
+                // Notification count badge
                 Rectangle {
-                    visible: (typeof NotificationManager !== "undefined" && NotificationManager) ? (NotificationManager.unreadCount > 0) : false
+                    visible: flyoutRoot.notifCount > 0
                     Layout.preferredHeight: 18
-                    Layout.preferredWidth: unreadBadgeText.implicitWidth + 10
+                    Layout.preferredWidth: Math.max(18, countBadgeText.implicitWidth + 10)
                     radius: 9
-                    color: "#0A84FF"
+                    color: ThemeData.accentColor
 
                     Text {
-                        id: unreadBadgeText
+                        id: countBadgeText
                         anchors.centerIn: parent
-                        text: (typeof NotificationManager !== "undefined" && NotificationManager) ? NotificationManager.unreadCount : "0"
+                        text: flyoutRoot.notifCount
                         color: "#FFFFFF"
                         font.family: "Segoe UI"
                         font.bold: true
@@ -130,12 +132,12 @@ Popup {
                 // "Clear all" Action Button
                 Rectangle {
                     id: clearBtn
-                    visible: notifListView.count > 0
+                    visible: flyoutRoot.notifCount > 0
                     Layout.preferredHeight: 26
                     Layout.preferredWidth: clearRow.implicitWidth + 16
                     radius: 6
-                    color: clearMouse.containsMouse ? Qt.rgba(255, 69, 58, 0.18) : Qt.rgba(255, 255, 255, 0.06)
-                    border.color: clearMouse.containsMouse ? Qt.rgba(255, 69, 58, 0.45) : Qt.rgba(255, 255, 255, 0.10)
+                    color: clearMouse.containsMouse ? Qt.rgba(255, 69, 58, 0.18) : ThemeData.itemHoverBackground
+                    border.color: clearMouse.containsMouse ? Qt.rgba(255, 69, 58, 0.45) : ThemeData.borderColor
                     border.width: 1
 
                     RowLayout {
@@ -143,16 +145,16 @@ Popup {
                         anchors.centerIn: parent
                         spacing: 5
 
-                        Image {
+                        IconImage {
                             source: "qrc:/qt/qml/NeoNect/assets/icons/trash.svg"
                             Layout.preferredWidth: 12
                             Layout.preferredHeight: 12
-                            fillMode: Image.PreserveAspectFit
+                            color: clearMouse.containsMouse ? "#FF453A" : ThemeData.textSecondary
                         }
 
                         Text {
                             text: "Clear all"
-                            color: clearMouse.containsMouse ? "#FF453A" : "#8E9BAE"
+                            color: clearMouse.containsMouse ? "#FF453A" : ThemeData.textSecondary
                             font.family: "Segoe UI"
                             font.pixelSize: 11
                             font.bold: true
@@ -178,7 +180,7 @@ Popup {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
-            color: Qt.rgba(255, 255, 255, 0.08)
+            color: ThemeData.borderColor
         }
 
         // ══════════════════════════════════════════════════════
@@ -192,21 +194,21 @@ Popup {
             ColumnLayout {
                 id: emptySection
                 anchors.centerIn: parent
-                visible: notifListView.count === 0
+                visible: flyoutRoot.notifCount === 0
                 spacing: 8
 
-                Image {
+                IconImage {
                     source: "qrc:/qt/qml/NeoNect/assets/icons/bell.svg"
                     Layout.preferredWidth: 38
                     Layout.preferredHeight: 38
                     Layout.alignment: Qt.AlignHCenter
-                    opacity: 0.30
-                    fillMode: Image.PreserveAspectFit
+                    color: ThemeData.textMuted
+                    opacity: 0.50
                 }
 
                 Text {
                     text: "No notifications"
-                    color: "#8E9BAE"
+                    color: ThemeData.textSecondary
                     font.family: "Segoe UI"
                     font.bold: true
                     font.pixelSize: 13
@@ -215,7 +217,7 @@ Popup {
 
                 Text {
                     text: "You're all caught up! New alerts will appear here."
-                    color: "#5E6877"
+                    color: ThemeData.textMuted
                     font.family: "Segoe UI"
                     font.pixelSize: 11
                     Layout.alignment: Qt.AlignHCenter
@@ -226,7 +228,7 @@ Popup {
             ListView {
                 id: notifListView
                 anchors.fill: parent
-                visible: count > 0
+                visible: flyoutRoot.notifCount > 0
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 model: (typeof NotificationManager !== "undefined" && NotificationManager) ? NotificationManager.activeNotifications : []
@@ -239,7 +241,7 @@ Popup {
                     background: Rectangle { color: "transparent" }
                     contentItem: Rectangle {
                         radius: 3
-                        color: vScroll.pressed ? "#0A84FF" : (vScroll.hovered ? Qt.rgba(255, 255, 255, 0.3) : Qt.rgba(255, 255, 255, 0.15))
+                        color: vScroll.pressed ? ThemeData.accentColor : (vScroll.hovered ? ThemeData.scrollBarThumbHover : ThemeData.scrollBarThumb)
                     }
                 }
 
@@ -247,7 +249,7 @@ Popup {
                     id: itemDelegate
                     width: notifListView.width
                     height: 58
-                    color: itemMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : "transparent"
+                    color: itemMouse.containsMouse ? ThemeData.itemHoverBackground : "transparent"
 
                     property var notifData: modelData
                     property var grad: flyoutRoot.getAvatarGradient(modelData.title || modelData.sender)
@@ -259,7 +261,7 @@ Popup {
                         anchors.right: parent.right
                         anchors.leftMargin: 56
                         height: 1
-                        color: Qt.rgba(255, 255, 255, 0.05)
+                        color: ThemeData.borderColor
                     }
 
                     RowLayout {
@@ -299,7 +301,7 @@ Popup {
                                     font.pixelSize: 14
                                 }
 
-                                Image {
+                                IconImage {
                                     visible: modelData.type && modelData.type !== "message"
                                     anchors.centerIn: parent
                                     source: {
@@ -309,7 +311,7 @@ Popup {
                                         return "qrc:/qt/qml/NeoNect/assets/icons/bell.svg";
                                     }
                                     width: 16; height: 16
-                                    fillMode: Image.PreserveAspectFit
+                                    color: "#FFFFFF"
                                 }
                             }
 
@@ -318,7 +320,7 @@ Popup {
                                 width: 8; height: 8
                                 radius: 4
                                 color: "#23A55A"
-                                border.color: "#17212B"
+                                border.color: ThemeData.windowBackground
                                 border.width: 1.5
                                 anchors.right: parent.right
                                 anchors.bottom: parent.bottom
@@ -338,7 +340,7 @@ Popup {
 
                                 Text {
                                     text: modelData.title || "NeoNect"
-                                    color: "#FFFFFF"
+                                    color: ThemeData.textPrimary
                                     font.family: "Segoe UI"
                                     font.bold: true
                                     font.pixelSize: 13
@@ -348,7 +350,7 @@ Popup {
 
                                 Text {
                                     text: flyoutRoot.formatTime(modelData.timestamp)
-                                    color: "#6B7684"
+                                    color: ThemeData.textMuted
                                     font.family: "Segoe UI"
                                     font.pixelSize: 11
                                 }
@@ -356,7 +358,7 @@ Popup {
 
                             Text {
                                 text: modelData.body || "New notification"
-                                color: "#9FA8B4"
+                                color: ThemeData.textSecondary
                                 font.family: "Segoe UI"
                                 font.pixelSize: 12
                                 elide: Text.ElideRight
@@ -371,14 +373,14 @@ Popup {
                             Layout.preferredWidth: 20
                             Layout.preferredHeight: 20
                             radius: 10
-                            color: dismissMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.15) : "transparent"
+                            color: dismissMouse.containsMouse ? ThemeData.itemSelectedBackground : "transparent"
                             opacity: itemMouse.containsMouse || dismissMouse.containsMouse ? 1.0 : 0.0
                             Behavior on opacity { NumberAnimation { duration: 120 } }
 
                             Text {
                                 anchors.centerIn: parent
                                 text: "✕"
-                                color: dismissMouse.containsMouse ? "#FFFFFF" : "#7E8794"
+                                color: dismissMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textMuted
                                 font.pixelSize: 11
                             }
 

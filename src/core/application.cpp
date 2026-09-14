@@ -15,10 +15,50 @@
 #include "../crypto/cryptoservice.h"
 
 #include <QQmlContext>
+#include <QQuickWindow>
 #include <QCommandLineParser>
 #include <QCommandLineOption>
 #include <iostream>
 #include <fstream>
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <dwmapi.h>
+
+#ifndef DWMWA_WINDOW_CORNER_PREFERENCE
+#define DWMWA_WINDOW_CORNER_PREFERENCE 33
+#endif
+
+#ifndef DWMWCP_ROUND
+#define DWMWCP_ROUND 2
+#endif
+
+static void setupWindows11Window(QQuickWindow *window) {
+    if (!window) return;
+    HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    if (!hwnd) return;
+
+    // 1. Force Windows 11 DWM rounded corners
+    DWORD preference = DWMWCP_ROUND;
+    DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &preference, sizeof(preference));
+
+    // 2. Extend DWM frame for native shadow
+    const MARGINS shadow = { 1, 1, 1, 1 };
+    DwmExtendFrameIntoClientArea(hwnd, &shadow);
+
+    // 3. Add WS_MAXIMIZEBOX | WS_THICKFRAME to window style
+    // This allows Aero Snap (snap to top to maximize, snap to left/right) and Windows 11 snap layouts
+    LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+    style |= WS_MAXIMIZEBOX | WS_MINIMIZEBOX | WS_THICKFRAME | WS_SYSMENU;
+    SetWindowLongPtr(hwnd, GWL_STYLE, style);
+
+    SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                 SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
+}
+#endif
 
 namespace NeoNect {
 
@@ -146,6 +186,14 @@ bool Application::loadMainUi() {
         std::cerr << "CRITICAL: engine.rootObjects() is empty!" << std::endl;
         return false;
     }
+
+    auto *window = qobject_cast<QQuickWindow*>(m_engine->rootObjects().first());
+    if (window) {
+#ifdef _WIN32
+        setupWindows11Window(window);
+#endif
+    }
+
     return true;
 }
 

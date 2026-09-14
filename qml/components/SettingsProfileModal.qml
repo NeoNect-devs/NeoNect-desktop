@@ -790,8 +790,9 @@ Rectangle {
                                 onClicked: {
                                     if (typeof NotificationManager !== "undefined" && NotificationManager) {
                                         NotificationManager.showNotification("NeoNect System", "Hey! Testing the new Telegram-style notification pill ⚡", "message", "system", "N", 5000);
+                                    } else {
+                                        modalRoot.sendTestNotificationRequested();
                                     }
-                                    modalRoot.sendTestNotificationRequested();
                                 }
                             }
                         }

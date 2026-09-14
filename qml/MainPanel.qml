@@ -11,6 +11,7 @@ Item {
 
     property string activeChannel: "friends"
     property string selectedServer: "dms"
+    property bool userToggledExpanded: false
 
     ChatMessageModel {
         id: nativeMessageModel
