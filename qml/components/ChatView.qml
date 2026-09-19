@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
+import NeoNect.Core 1.0
 import "qrc:/qt/qml/NeoNect/qml/components"
 import "qrc:/qt/qml/NeoNect/qml/containers"
 import "UIHelpers.js" as UIHelpers
@@ -17,6 +18,8 @@ ColumnLayout {
     signal openMediaModalRequested(string url, string type, string name)
     signal retryMessage(string msgId)
     signal sendMessagePayload(var itemObj)
+    signal acceptMediaRequested(string convId, string reqId)
+    signal declineMediaRequested(string convId, string reqId)
 
             visible: !(selectedServer === "dms" && activeChannel === "friends")
             Layout.fillWidth: true
@@ -90,9 +93,18 @@ ColumnLayout {
 
                         // Message Item Delegate
                         delegate: MessageDelegate {
-                            selectedServer: selectedServer
+                            selectedServer: chatViewRoot.selectedServer
+                            activeChannel: chatViewRoot.activeChannel
                             onOpenMediaModalRequested: function(url, type, name) { chatViewRoot.openMediaModalRequested(url, type, name); }
                             onRetryMessage: function(msgId) { chatViewRoot.retryMessage(msgId); }
+                            onAcceptMediaRequested: function(convId, reqId) {
+                                chatViewRoot.acceptMediaRequested(convId, reqId);
+                                MessageService.acceptMediaRequest(convId, reqId);
+                            }
+                            onDeclineMediaRequested: function(convId, reqId) {
+                                chatViewRoot.declineMediaRequested(convId, reqId);
+                                MessageService.declineMediaRequest(convId, reqId);
+                            }
                         }
 
                         // Empty State Placeholder

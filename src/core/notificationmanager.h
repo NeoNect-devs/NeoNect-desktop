@@ -47,7 +47,8 @@ public:
                                      const QString &type = "message",
                                      const QString &channel = "",
                                      const QString &avatar = "",
-                                     int durationMs = 4500);
+                                     int durationMs = 4500,
+                                     const QString &requestId = "");
 
     Q_INVOKABLE void showMessageNotification(const QString &sender,
                                             const QString &text,
@@ -56,6 +57,7 @@ public:
                                             const QString &messageType = "text");
 
     Q_INVOKABLE void dismissNotification(const QString &id);
+    Q_INVOKABLE void dismissBySender(const QString &sender, const QString &type = "");
     Q_INVOKABLE void clearAll();
     Q_INVOKABLE void playNotificationSound();
 

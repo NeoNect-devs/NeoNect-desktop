@@ -20,6 +20,8 @@ private slots:
     void testNoHardcodedFriendFallback();
     void testNetworkManagerFacadeIntegration();
     void testTwoClientChatExchange();
+    void testTwoClientFriendRequestFlow();
+    void testTwoClientMediaRequestApprovalFlow();
     void testBookmarkConnectFlow();
     void testNotificationManagerFlow();
     void testCiphertextDoesNotContainPlaintext();

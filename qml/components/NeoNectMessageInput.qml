@@ -39,8 +39,9 @@ Rectangle {
     function formatBytes(bytes) {
         if (!bytes || bytes <= 0) return "File";
         if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " Kb";
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " Mb";
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " Gb";
     }
 
     function detectMediaType(url, fileName) {
@@ -76,11 +77,18 @@ Rectangle {
             fileName = path.substring(path.lastIndexOf('\\') + 1);
         }
         var detectedType = detectMediaType(url, fileName);
+        var actualSize = 0;
+        if (typeof AudioManager !== "undefined" && AudioManager && AudioManager.getFileSize) {
+            actualSize = AudioManager.getFileSize(url);
+        }
+        if (actualSize <= 0) {
+            actualSize = (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000)));
+        }
         inputRoot.draftAttachment = {
             type: detectedType,
             url: url,
             name: fileName,
-            size: (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000))),
+            size: actualSize,
             duration: (detectedType === "video" ? 30 : (detectedType === "audio" ? 180 : 0))
         };
         inputArea.forceActiveFocus();

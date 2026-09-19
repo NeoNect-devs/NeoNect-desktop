@@ -144,6 +144,10 @@ void ChatMessageModel::removeMessage(const QString &messageId) {
             beginRemoveRows(QModelIndex(), static_cast<int>(i), static_cast<int>(i));
             m_items.erase(m_items.begin() + static_cast<long long>(i));
             endRemoveRows();
+            recalculateBlocks();
+            if (!m_items.empty()) {
+                emit dataChanged(index(0, 0), index(static_cast<int>(m_items.size()) - 1, 0), {FirstInBlockRole, LastInBlockRole});
+            }
             break;
         }
     }
@@ -256,6 +260,11 @@ void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QSt
             break;
         }
     }
+}
+
+void ChatMessageModel::onMessageRemoved(const QString &conversationId, const QString &messageId) {
+    if (!conversationId.isEmpty() && conversationId != m_activeConversationId) return;
+    removeMessage(messageId);
 }
 
 void ChatMessageModel::recalculateBlocks() {

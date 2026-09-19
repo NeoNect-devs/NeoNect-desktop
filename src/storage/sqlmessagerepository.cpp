@@ -6,6 +6,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QMetaObject>
+#include <QUuid>
 
 namespace NeoNect {
 namespace Storage {
@@ -14,17 +15,20 @@ class SqlMessageRepositoryWorker : public QObject {
     Q_OBJECT
 public:
     explicit SqlMessageRepositoryWorker(const QString& dbPath, QObject* parent = nullptr) 
-        : QObject(parent), m_dbPath(dbPath) {}
+        : QObject(parent), m_dbPath(dbPath),
+          m_connectionName(QString("MsgRepo_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces))) {}
 
     ~SqlMessageRepositoryWorker() {
         if (m_db.isOpen()) {
             m_db.close();
         }
+        m_db = QSqlDatabase();
+        QSqlDatabase::removeDatabase(m_connectionName);
     }
 
 public slots:
     void initialize() {
-        m_db = QSqlDatabase::addDatabase("QSQLITE", "MessageRepoConnection");
+        m_db = QSqlDatabase::addDatabase("QSQLITE", m_connectionName);
         m_db.setDatabaseName(m_dbPath);
         if (!m_db.open()) {
             qWarning() << "[SqlMessageRepository] Failed to open database:" << m_db.lastError().text();
@@ -156,6 +160,20 @@ public slots:
         invokeCallback(context, callback, success);
     }
 
+    void doDeleteMessage(const QString id, const QObject* context, IMessageRepository::SaveCallback callback) {
+        if (!m_db.isOpen()) {
+            invokeCallback(context, callback, false);
+            return;
+        }
+
+        QSqlQuery query(m_db);
+        query.prepare("DELETE FROM messages WHERE id = ?");
+        query.addBindValue(id);
+
+        bool success = query.exec();
+        invokeCallback(context, callback, success);
+    }
+
     void doGetMessages(const QString conversationId, int limit, qint64 beforeTimestamp, const QObject* context, IMessageRepository::FetchCallback callback) {
         std::vector<Domain::Message> results;
         if (!m_db.isOpen()) {
@@ -207,6 +225,7 @@ public slots:
 
 private:
     QString m_dbPath;
+    QString m_connectionName;
     QSqlDatabase m_db;
 
     void invokeCallback(const QObject* context, IMessageRepository::SaveCallback callback, bool success) {
@@ -253,6 +272,12 @@ void SqlMessageRepository::saveMessagesAsync(const std::vector<Domain::Message> 
 void SqlMessageRepository::updateMessageStatusAsync(const QString &id, Domain::MessageStatus status, const QString &errorText, const QObject* context, SaveCallback callback) {
     QMetaObject::invokeMethod(m_worker, [this, id, status, errorText, context, callback]() {
         m_worker->doUpdateStatus(id, status, errorText, context, callback);
+    }, Qt::QueuedConnection);
+}
+
+void SqlMessageRepository::deleteMessageAsync(const QString &id, const QObject* context, SaveCallback callback) {
+    QMetaObject::invokeMethod(m_worker, [this, id, context, callback]() {
+        m_worker->doDeleteMessage(id, context, callback);
     }, Qt::QueuedConnection);
 }
 

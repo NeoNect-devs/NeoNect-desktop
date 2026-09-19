@@ -2,6 +2,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QUuid>
 #include "../common/constants.h"
 
 namespace NeoNect {
@@ -15,6 +16,9 @@ FriendService::FriendService(std::shared_ptr<Transport::IHttpTransport> transpor
     m_heartbeatTimer = new QTimer(this);
     m_heartbeatTimer->setInterval(12000);
     connect(m_heartbeatTimer, &QTimer::timeout, this, &FriendService::checkFriendsStatus);
+
+    m_cachedFriends = m_storage->friends();
+    m_cachedPending = m_storage->pendingRequests();
 }
 
 QStringList FriendService::friends() const {
@@ -26,35 +30,10 @@ QStringList FriendService::pendingRequests() const {
 }
 
 void FriendService::loadFriends() {
-    m_transport->get("/api/v1/friends", QMap<QString, QString>(), this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError err, const QString &errStr) {
-        if (err == QNetworkReply::NoError && statusCode == 200) {
-            auto doc = QJsonDocument::fromJson(data);
-            if (!doc.isNull() && doc.object().contains("friends")) {
-                QJsonArray arr = doc.object().value("friends").toArray();
-                QStringList list;
-                for (int i = 0; i < arr.size(); i++) {
-                    list.append(arr[i].toObject().value("username").toString());
-                }
-                m_cachedFriends = list;
-                emit friendsListChanged(m_cachedFriends);
-            }
-        }
-    });
-
-    m_transport->get("/api/v1/friends/requests", QMap<QString, QString>(), this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError err, const QString &errStr) {
-        if (err == QNetworkReply::NoError && statusCode == 200) {
-            auto doc = QJsonDocument::fromJson(data);
-            if (!doc.isNull() && doc.object().contains("requests")) {
-                QJsonArray arr = doc.object().value("requests").toArray();
-                QStringList list;
-                for (int i = 0; i < arr.size(); i++) {
-                    list.append(arr[i].toObject().value("username").toString());
-                }
-                m_cachedPending = list;
-                emit pendingRequestsChanged(m_cachedPending);
-            }
-        }
-    });
+    m_cachedFriends = m_storage->friends();
+    m_cachedPending = m_storage->pendingRequests();
+    emit friendsListChanged(m_cachedFriends);
+    emit pendingRequestsChanged(m_cachedPending);
 }
 
 void FriendService::updateLastSeen(const QString &username) {
@@ -74,104 +53,244 @@ void FriendService::checkFriendsStatus() {
         return;
     }
 
-    QString csv = friendList.join(",");
-    QMap<QString, QString> params;
-    params.insert("users", csv);
+    for (const QString &friendUser : friendList) {
+        QString u = friendUser.trimmed();
+        if (u.isEmpty()) continue;
 
-    m_transport->get(Constants::EP_PRESENCE, params, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-        if (error == QNetworkReply::NoError) {
-            auto doc = QJsonDocument::fromJson(data);
-            if (!doc.isNull() && doc.object().contains("presence")) {
-                QJsonObject presenceObj = doc.object().value("presence").toObject();
-                for (auto it = presenceObj.begin(); it != presenceObj.end(); ++it) {
-                    QString username = it.key();
-                    QString status = it.value().toObject().value("status").toString();
-                    if (status == "online") {
-                        updateLastSeen(username);
+        QMap<QString, QString> params;
+        params.insert("u", u);
+
+        m_transport->get(Constants::EP_PRESENCE, params, this, [this, u](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+            Q_UNUSED(errStr);
+            if (error == QNetworkReply::NoError && statusCode == 200) {
+                auto doc = QJsonDocument::fromJson(data);
+                if (!doc.isNull() && doc.object().contains("online")) {
+                    bool isOnline = doc.object().value("online").toBool();
+                    if (isOnline) {
+                        updateLastSeen(u);
                     } else {
-                        emit friendStatusUpdated(username, status);
+                        emit friendStatusUpdated(u, "offline");
                     }
                 }
             }
-        }
-    });
-
-    loadFriends();
+        });
+    }
 }
 
 void FriendService::addFriend(const QString &username) {
     QString target = username.trimmed();
     if (target.isEmpty()) return;
 
+    QString myUsername = m_storage->username().trimmed();
+    if (!myUsername.isEmpty() && target.compare(myUsername, Qt::CaseInsensitive) == 0) {
+        emit addFriendResult(false, "You cannot add yourself as a friend.", target);
+        return;
+    }
+
+    for (const QString &f : m_cachedFriends) {
+        if (f.compare(target, Qt::CaseInsensitive) == 0) {
+            emit addFriendResult(false, target + " is already your friend.", target);
+            return;
+        }
+    }
+
+    for (const QString &p : m_cachedPending) {
+        if (p.compare(target, Qt::CaseInsensitive) == 0) {
+            acceptFriend(target);
+            emit addFriendResult(true, "Accepted incoming request from " + target, target);
+            return;
+        }
+    }
+
     QMap<QString, QString> params;
-    params.insert("q", target);
-    m_transport->get("/api/v1/friends/search", params, this, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-        if (error != QNetworkReply::NoError) {
+    params.insert("u", target);
+
+    m_transport->get(Constants::EP_USERS_AVAILABILITY, params, this, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+        Q_UNUSED(errStr);
+        if (error != QNetworkReply::NoError || statusCode != 200) {
             emit addFriendResult(false, "Failed to communicate with server.", target);
             return;
         }
 
         auto doc = QJsonDocument::fromJson(data);
-        if (!doc.isNull() && doc.object().contains("exists") && doc.object().value("exists").toBool()) {
-            QJsonObject payload;
-            payload["username"] = target;
-            QJsonDocument reqDoc(payload);
-            m_transport->post("/api/v1/friends/request", reqDoc.toJson(QJsonDocument::Compact), this, [this, target](int sc, const QByteArray &d, QNetworkReply::NetworkError err, const QString &eStr) {
-                if (err == QNetworkReply::NoError && sc == 200) {
-                    emit addFriendResult(true, "Friend request sent to " + target, target);
-                    loadFriends();
-                } else if (sc == 409) {
-                    emit addFriendResult(false, "Friend request already sent or relationship exists.", target);
-                } else {
-                    emit addFriendResult(false, "Failed to send request.", target);
-                }
-            });
-        } else {
-            emit addFriendResult(false, "User '@" + target + "' does not exist on the network.", target);
+        if (doc.isNull() || !doc.isObject()) {
+            emit addFriendResult(false, "Invalid server response.", target);
+            return;
         }
+
+        bool available = doc.object().value("available").toBool();
+        if (available) {
+            // Username is available, meaning no user with this username exists
+            emit addFriendResult(false, "User '@" + target + "' does not exist on the network.", target);
+            return;
+        }
+
+        // User exists! Send friend request packet via Relay
+        Domain::Message msg;
+        msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        msg.conversationId = "dms:" + target;
+        msg.senderId = m_storage->username();
+        msg.type = "friend_request";
+        msg.text = "Friend request";
+        msg.timestamp = QDateTime::currentSecsSinceEpoch();
+
+        m_pendingFriendRequests.insert(msg.id, target);
+        emit requestSendDomainMessage(msg);
+        emit addFriendResult(true, "Friend request sent to " + target, target);
     });
+}
+
+void FriendService::handleTransmissionStatus(const QString &targetUser, const QString &messageId, bool success, const QString &errorMessage) {
+    if (m_pendingFriendRequests.contains(messageId)) {
+        QString target = m_pendingFriendRequests.take(messageId);
+        if (success) {
+            emit addFriendResult(true, "Friend request delivered to @" + target, target);
+        } else {
+            QString err = errorMessage.isEmpty() ? "Recipient is not reachable or offline" : errorMessage;
+            emit addFriendResult(false, "Failed to deliver request to @" + target + ": " + err, target);
+        }
+    }
+}
+
+void FriendService::handleIncomingFriendPacket(const NeoNect::Domain::Message &msg) {
+    QString sender = msg.senderId.trimmed();
+    qDebug() << "[FriendService] handleIncomingFriendPacket received from:" << sender << "type:" << msg.type << "text:" << msg.text;
+    if (sender.isEmpty()) return;
+
+    QString myUsername = m_storage->username().trimmed();
+    if (!myUsername.isEmpty() && sender.compare(myUsername, Qt::CaseInsensitive) == 0) {
+        qDebug() << "[FriendService] Ignoring packet from self:" << sender;
+        return;
+    }
+
+    if (msg.type == "friend_request") {
+        for (const QString &f : m_cachedFriends) {
+            if (f.compare(sender, Qt::CaseInsensitive) == 0) {
+                qDebug() << "[FriendService]" << sender << "is already a friend.";
+                return;
+            }
+        }
+
+        bool alreadyPending = false;
+        for (const QString &p : m_cachedPending) {
+            if (p.compare(sender, Qt::CaseInsensitive) == 0) {
+                alreadyPending = true;
+                break;
+            }
+        }
+
+        if (!alreadyPending) {
+            m_cachedPending.append(sender);
+            m_storage->setPendingRequests(m_cachedPending);
+            emit pendingRequestsChanged(m_cachedPending);
+            qDebug() << "[FriendService] Emitting friendRequestReceived for:" << sender;
+            emit friendRequestReceived(sender);
+        } else {
+            qDebug() << "[FriendService]" << sender << "is already in pending requests.";
+        }
+    } else if (msg.type == "friend_accept") {
+        for (int i = m_cachedPending.size() - 1; i >= 0; --i) {
+            if (m_cachedPending[i].compare(sender, Qt::CaseInsensitive) == 0) {
+                m_cachedPending.removeAt(i);
+            }
+        }
+        m_storage->setPendingRequests(m_cachedPending);
+        emit pendingRequestsChanged(m_cachedPending);
+
+        bool alreadyFriend = false;
+        for (const QString &f : m_cachedFriends) {
+            if (f.compare(sender, Qt::CaseInsensitive) == 0) {
+                alreadyFriend = true;
+                break;
+            }
+        }
+
+        if (!alreadyFriend) {
+            m_cachedFriends.append(sender);
+            m_storage->setFriends(m_cachedFriends);
+            emit friendsListChanged(m_cachedFriends);
+            qDebug() << "[FriendService] Emitting friendAccepted for:" << sender;
+            emit friendAccepted(sender);
+        }
+    } else if (msg.type == "friend_reject") {
+        // Target rejected friend request
+    }
 }
 
 void FriendService::acceptFriend(const QString &username) {
-    QJsonObject payload;
-    payload["username"] = username;
-    QJsonDocument reqDoc(payload);
-    m_transport->post("/api/v1/friends/accept", reqDoc.toJson(QJsonDocument::Compact), this, [this, username](int sc, const QByteArray &d, QNetworkReply::NetworkError err, const QString &eStr) {
-        if (err == QNetworkReply::NoError && sc == 200) {
-            emit acceptFriendResult(true, "Accepted " + username, username);
-            loadFriends();
-        } else {
-            emit acceptFriendResult(false, "Failed to accept.", username);
+    QString target = username.trimmed();
+    if (target.isEmpty()) return;
+
+    for (int i = m_cachedPending.size() - 1; i >= 0; --i) {
+        if (m_cachedPending[i].compare(target, Qt::CaseInsensitive) == 0) {
+            m_cachedPending.removeAt(i);
         }
-    });
+    }
+    m_storage->setPendingRequests(m_cachedPending);
+    emit pendingRequestsChanged(m_cachedPending);
+
+    bool alreadyFriend = false;
+    for (const QString &f : m_cachedFriends) {
+        if (f.compare(target, Qt::CaseInsensitive) == 0) {
+            alreadyFriend = true;
+            break;
+        }
+    }
+
+    if (!alreadyFriend) {
+        m_cachedFriends.append(target);
+        m_storage->setFriends(m_cachedFriends);
+        emit friendsListChanged(m_cachedFriends);
+    }
+
+    Domain::Message msg;
+    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.conversationId = "dms:" + target;
+    msg.senderId = m_storage->username();
+    msg.type = "friend_accept";
+    msg.text = "Accepted friend request";
+    msg.timestamp = QDateTime::currentSecsSinceEpoch();
+
+    emit requestSendDomainMessage(msg);
+    emit acceptFriendResult(true, "Accepted " + target, target);
 }
 
 void FriendService::rejectFriend(const QString &username) {
-    QJsonObject payload;
-    payload["username"] = username;
-    QJsonDocument reqDoc(payload);
-    m_transport->post("/api/v1/friends/reject", reqDoc.toJson(QJsonDocument::Compact), this, [this, username](int sc, const QByteArray &d, QNetworkReply::NetworkError err, const QString &eStr) {
-        if (err == QNetworkReply::NoError && sc == 200) {
-            emit rejectFriendResult(true, "Rejected " + username, username);
-            loadFriends();
-        } else {
-            emit rejectFriendResult(false, "Failed to reject.", username);
+    QString target = username.trimmed();
+    if (target.isEmpty()) return;
+
+    for (int i = m_cachedPending.size() - 1; i >= 0; --i) {
+        if (m_cachedPending[i].compare(target, Qt::CaseInsensitive) == 0) {
+            m_cachedPending.removeAt(i);
         }
-    });
+    }
+    m_storage->setPendingRequests(m_cachedPending);
+    emit pendingRequestsChanged(m_cachedPending);
+
+    Domain::Message msg;
+    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.conversationId = "dms:" + target;
+    msg.senderId = m_storage->username();
+    msg.type = "friend_reject";
+    msg.text = "Rejected friend request";
+    msg.timestamp = QDateTime::currentSecsSinceEpoch();
+
+    emit requestSendDomainMessage(msg);
+    emit rejectFriendResult(true, "Rejected " + target, target);
 }
 
 void FriendService::removeFriend(const QString &username) {
-    QJsonObject payload;
-    payload["username"] = username;
-    QJsonDocument reqDoc(payload);
-    m_transport->post("/api/v1/friends/remove", reqDoc.toJson(QJsonDocument::Compact), this, [this, username](int sc, const QByteArray &d, QNetworkReply::NetworkError err, const QString &eStr) {
-        if (err == QNetworkReply::NoError && sc == 200) {
-            emit removeFriendResult(true, "Removed " + username, username);
-            loadFriends();
-        } else {
-            emit removeFriendResult(false, "Failed to remove.", username);
+    QString target = username.trimmed();
+    if (target.isEmpty()) return;
+
+    for (int i = m_cachedFriends.size() - 1; i >= 0; --i) {
+        if (m_cachedFriends[i].compare(target, Qt::CaseInsensitive) == 0) {
+            m_cachedFriends.removeAt(i);
         }
-    });
+    }
+    m_storage->setFriends(m_cachedFriends);
+    emit friendsListChanged(m_cachedFriends);
+    emit removeFriendResult(true, "Removed " + target, target);
 }
 
 void FriendService::startHeartbeat() {

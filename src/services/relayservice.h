@@ -33,6 +33,7 @@ public slots:
 signals:
     void incomingDomainMessageReceived(const NeoNect::Domain::Message &msg);
     void incomingDomainMessagesReceived(const std::vector<NeoNect::Domain::Message> &msgs);
+    void incomingFriendPacket(const NeoNect::Domain::Message &msg);
     void secureMessageTransmitted(const QString &targetUser, bool success);
     void messageTransmissionStatus(const QString &targetUser, const QString &messageId, bool success, const QString &errorMessage);
     void sessionUnauthorized(const QString &message);

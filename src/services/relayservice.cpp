@@ -59,7 +59,13 @@ void RelayService::handle401Error() {
 
 void RelayService::sendDomainMessage(const Domain::Message &msg) {
     QString token = m_storage->authToken();
-    QString deviceId = m_storage->deviceId();
+    QString deviceId = m_storage->deviceId().trimmed();
+    if (deviceId.isEmpty()) {
+        QString prof = m_storage->profile();
+        deviceId = QString("neonect-dev-%1%2").arg(prof.isEmpty() ? "" : prof + "-",
+                                                    QUuid::createUuid().toString(QUuid::WithoutBraces));
+        m_storage->setDeviceId(deviceId);
+    }
     QString currentUsername = m_storage->username();
     
     QString targetUser;
@@ -71,6 +77,7 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     }
 
     if (token.isEmpty() || targetUser.isEmpty()) {
+        qDebug() << "[RelayService] sendDomainMessage failed: token.isEmpty()=" << token.isEmpty() << "targetUser=" << targetUser;
         emit secureMessageTransmitted(targetUser, false);
         emit messageTransmissionStatus(targetUser, msg.id, false, "Missing session token or recipient");
         return;
@@ -89,6 +96,7 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     if (!msg.fileName.isEmpty()) packet["fileName"] = msg.fileName;
     if (msg.fileSize > 0) packet["fileSize"] = msg.fileSize;
     if (msg.duration > 0) packet["duration"] = msg.duration;
+    if (!msg.errorText.isEmpty()) packet["mediaType"] = msg.errorText;
     
     QJsonArray waveArray = QJsonDocument::fromJson(msg.waveform).array();
     if (!waveArray.isEmpty()) packet["waveform"] = waveArray;
@@ -97,6 +105,7 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
 
     auto encrypted = m_cryptoService->encryptAesGcm(packetBytes);
     if (!encrypted.success) {
+        qDebug() << "[RelayService] sendDomainMessage failed - E2EE encryption error:" << encrypted.errorMessage;
         emit secureMessageTransmitted(targetUser, false);
         emit messageTransmissionStatus(targetUser, msg.id, false, "E2EE Encryption failed: " + encrypted.errorMessage);
         return;
@@ -111,10 +120,14 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     QByteArray postData = QJsonDocument(payload).toJson(QJsonDocument::Compact);
     QString msgId = msg.id;
 
+    qDebug() << "[RelayService] Transmitting domain message to:" << targetUser << "from device:" << deviceId << "type:" << msg.type << "msgId:" << msgId;
+
     m_transport->post(Constants::EP_RELAY_SEND, postData, this, [this, targetUser, msgId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         bool ok = (error == QNetworkReply::NoError || statusCode == 200 || statusCode == 201);
         QString errorMsg = ok ? "" : (errStr.isEmpty() ? "Network relay transmission failed" : errStr);
-        if (!ok) {
+        if (ok) {
+            qDebug() << "[RelayService] sendRelayMessage succeeded for" << targetUser << "status:" << statusCode;
+        } else {
             auto doc = QJsonDocument::fromJson(data);
             if (!doc.isNull() && doc.object().contains("error")) {
                 errorMsg = doc.object().value("error").toString();
@@ -203,6 +216,7 @@ void RelayService::pollPendingMessages() {
             QString type = "text";
             QString mediaUrl = "";
             QString fileName = "";
+            QString mediaCategory = "";
             qint64 fileSize = 0;
             int duration = 0;
             QVariantList waveform;
@@ -223,9 +237,28 @@ void RelayService::pollPendingMessages() {
                 if (packetObj.contains("duration")) duration = static_cast<int>(packetObj.value("duration").toInteger());
                 if (packetObj.contains("waveform")) waveform = packetObj.value("waveform").toArray().toVariantList();
                 if (packetObj.contains("messageId")) messageUuid = packetObj.value("messageId").toString();
+                if (packetObj.contains("mediaType")) mediaCategory = packetObj.value("mediaType").toString();
                 if (packetObj.contains("timestamp") && packetObj.value("timestamp").toInteger() > 0) {
                     timestamp = packetObj.value("timestamp").toInteger();
                 }
+            }
+
+            qDebug() << "[RelayService] Decrypted packet from:" << sender << "type:" << type;
+
+            if (type == "friend_request" || type == "friend_accept" || type == "friend_reject") {
+                Domain::Message friendMsg;
+                friendMsg.serverId = msgId;
+                friendMsg.id = messageUuid;
+                friendMsg.senderId = sender;
+                friendMsg.type = type;
+                friendMsg.text = textContent;
+                friendMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+                friendMsg.conversationId = "dms:" + sender.toLower();
+
+                qDebug() << "[RelayService] Emitting incomingFriendPacket for:" << sender << "type:" << type;
+                emit incomingFriendPacket(friendMsg);
+                acknowledgeMessage(msgId);
+                continue;
             }
 
             Domain::Message domainMsg;
@@ -238,6 +271,7 @@ void RelayService::pollPendingMessages() {
             domainMsg.fileName = fileName;
             domainMsg.fileSize = fileSize;
             domainMsg.duration = duration;
+            domainMsg.errorText = mediaCategory;
             
             QJsonArray waveArray;
             for (const QVariant &v : waveform) waveArray.append(v.toInt());
@@ -245,7 +279,7 @@ void RelayService::pollPendingMessages() {
                 domainMsg.waveform = QJsonDocument(waveArray).toJson(QJsonDocument::Compact);
             }
             
-            domainMsg.status = Domain::MessageStatus::Seen;
+            domainMsg.status = (type == "media_request") ? Domain::MessageStatus::Pending : Domain::MessageStatus::Seen;
             domainMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
             
             domainMsg.conversationId = "dms:" + domainMsg.senderId.toLower();

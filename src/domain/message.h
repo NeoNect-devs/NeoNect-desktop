@@ -10,7 +10,10 @@ enum class MessageStatus {
     Sending,
     Sent,
     Failed,
-    Seen
+    Seen,
+    Pending,
+    Accepted,
+    Declined
 };
 
 struct Message {

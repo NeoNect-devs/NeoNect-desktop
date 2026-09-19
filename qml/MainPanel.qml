@@ -45,6 +45,9 @@ Item {
         function onMessageUpdated(convId, msgId, status, errorText) {
             nativeMessageModel.onMessageUpdated(convId, msgId, status, errorText);
         }
+        function onMessageRemoved(convId, msgId) {
+            nativeMessageModel.onMessageRemoved(convId, msgId);
+        }
     }
 
     signal navigateRequested(string server, string channel)
@@ -91,7 +94,13 @@ Item {
 
     function sendMessagePayload(itemObj) {
         var key = root.selectedServer + ":" + root.activeChannel;
-        MessageService.sendMessage(key, itemObj.text || itemObj.content || "", itemObj.messageType || "text", itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0, itemObj.duration || 0, itemObj.waveform || []);
+        var mType = itemObj.messageType || "text";
+        // Two-phase media transfer: images, videos, audio, and files require pre-approval; voice, text, sticker are direct
+        if (mType === "image" || mType === "video" || mType === "audio" || mType === "file") {
+            MessageService.sendMediaRequest(key, itemObj.text || itemObj.content || "", mType, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0);
+        } else {
+            MessageService.sendMessage(key, itemObj.text || itemObj.content || "", mType, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0, itemObj.duration || 0, itemObj.waveform || []);
+        }
     }
 
     function retryMessage(messageId) {
@@ -163,6 +172,8 @@ Item {
             onOpenMediaModalRequested: function(url, type, name) { root.openMediaModalRequested(url, type, name); }
             onRetryMessage: function(msgId) { root.retryMessage(msgId); }
             onSendMessagePayload: function(itemObj) { root.sendMessagePayload(itemObj); }
+            onAcceptMediaRequested: function(convId, reqId) { MessageService.acceptMediaRequest(convId, reqId); }
+            onDeclineMediaRequested: function(convId, reqId) { MessageService.declineMediaRequest(convId, reqId); }
         }
 }
 

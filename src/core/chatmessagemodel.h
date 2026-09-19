@@ -72,6 +72,7 @@ public slots:
     void onConversationLoaded(const QString &conversationId, const QVariantList &messages);
     void onMessageAdded(const QString &conversationId, const QVariantMap &message);
     void onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText);
+    void onMessageRemoved(const QString &conversationId, const QString &messageId);
     void setActiveConversation(const QString &conversationId);
 
 signals:

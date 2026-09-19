@@ -3,6 +3,7 @@
 #include "../common/constants.h"
 #include <openssl/rand.h>
 #include <openssl/evp.h>
+#include <QCryptographicHash>
 #include <mutex>
 
 namespace NeoNect {
@@ -10,6 +11,8 @@ namespace Crypto {
 
 CryptoService::CryptoService() {
     m_masterKey.resize(Constants::AES_256_KEY_SIZE);
+    QByteArray defaultKey = QCryptographicHash::hash(QByteArray(Constants::STATIC_SALT_VAULT), QCryptographicHash::Sha256);
+    std::memcpy(m_masterKey.data(), defaultKey.constData(), Constants::AES_256_KEY_SIZE);
 }
 
 void CryptoService::setMasterKey(const QByteArray &key) {

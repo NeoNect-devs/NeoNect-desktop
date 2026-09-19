@@ -86,11 +86,12 @@ Window {
         var duration = options.duration || 4500;
         var notifObj = {
             notifId: id,
+            requestId: options.requestId || id,
             title: options.title || "NeoNect",
             body: options.body || "",
-            type: options.type || "message", // "message", "friend_request", "security", "system", "success", "error"
+            type: options.type || "message", // "message", "friend_request", "media_request", "security", "system", "success", "error"
             avatar: options.avatar || "",
-            actionText: options.actionText || (options.type === "message" ? "Reply" : ""),
+            actionText: options.actionText || (options.type === "message" ? "Reply" : ((options.type === "friend_request" || options.type === "media_request") ? "Accept" : "")),
             channel: options.channel || "",
             duration: duration
         };
@@ -379,8 +380,10 @@ Window {
                             height: 24
                             implicitWidth: actionTextElem.implicitWidth + 14
                             radius: 12
-                            color: replyMouse.containsMouse ? "#0A84FF" : Qt.rgba(10, 132, 255, 0.18)
-                            border.color: Qt.rgba(10, 132, 255, 0.45)
+                            color: (model.type === "friend_request" || model.type === "media_request")
+                                   ? (replyMouse.containsMouse ? "#23A55A" : Qt.rgba(35, 165, 90, 0.25))
+                                   : (replyMouse.containsMouse ? "#0A84FF" : Qt.rgba(10, 132, 255, 0.18))
+                            border.color: (model.type === "friend_request" || model.type === "media_request") ? Qt.rgba(35, 165, 90, 0.55) : Qt.rgba(10, 132, 255, 0.45)
                             border.width: 1
                             Layout.alignment: Qt.AlignVCenter
 
@@ -400,7 +403,16 @@ Window {
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    notifWindow.actionTriggered(model.notifId, "reply", model.channel);
+                                    if (model.type === "friend_request") {
+                                        NetworkManager.acceptFriend(model.channel);
+                                    } else if (model.type === "media_request") {
+                                        var ch = (model.channel || "").toLowerCase();
+                                        var convId = ch.startsWith("dms:") ? ch : ("dms:" + ch);
+                                        var reqId = model.requestId || model.notifId;
+                                        MessageService.acceptMediaRequest(convId, reqId);
+                                    } else {
+                                        notifWindow.actionTriggered(model.notifId, "reply", model.channel);
+                                    }
                                     notifWindow.dismissPill(model.notifId);
                                 }
                             }

@@ -131,6 +131,10 @@ void TestModels::testMessageStatusAndRetry() {
     // Retry / Update to sent
     model.updateMessageStatus("msg_err_1", "sent", "");
     QCOMPARE(model.data(model.index(0), ChatMessageModel::StatusRole).toString(), "sent");
+
+    // Test onMessageRemoved removes the item
+    model.onMessageRemoved("", "msg_err_1");
+    QCOMPARE(model.rowCount(), 0);
 }
 
 void TestModels::testAudioManagerRecordingAndPlayback() {

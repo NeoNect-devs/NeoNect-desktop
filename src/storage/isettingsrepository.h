@@ -33,6 +33,9 @@ public:
     virtual QStringList friends() const = 0;
     virtual void setFriends(const QStringList &friends) = 0;
 
+    virtual QStringList pendingRequests() const = 0;
+    virtual void setPendingRequests(const QStringList &requests) = 0;
+
     virtual QVariantList bookmarks() const = 0;
     virtual void setBookmarks(const QVariantList &bookmarks) = 0;
     virtual void addBookmark(const QVariantMap &bookmark) = 0;

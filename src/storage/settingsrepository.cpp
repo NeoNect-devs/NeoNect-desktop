@@ -73,6 +73,10 @@ QString SettingsRepository::getGroupName() const {
 void SettingsRepository::setProfile(const QString &profileName) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_profile = profileName.trimmed();
+    m_cachedAuthToken.clear();
+    m_cachedUsername.clear();
+    m_cachedDeviceId.clear();
+    m_cachedPublicKey.clear();
 }
 
 QString SettingsRepository::profile() const {
@@ -94,48 +98,68 @@ void SettingsRepository::setServerUrl(const QString &url) {
 
 QString SettingsRepository::authToken() const {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_cachedAuthToken.isEmpty()) {
+        return m_cachedAuthToken;
+    }
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    return decryptString(settings.value(Constants::KEY_AUTH_TOKEN).toString());
+    m_cachedAuthToken = decryptString(settings.value(Constants::KEY_AUTH_TOKEN).toString());
+    return m_cachedAuthToken;
 }
 
 void SettingsRepository::setAuthToken(const QString &token) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    m_cachedAuthToken = token;
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
     settings.setValue(Constants::KEY_AUTH_TOKEN, encryptString(token));
 }
 
 QString SettingsRepository::username() const {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_cachedUsername.isEmpty()) {
+        return m_cachedUsername;
+    }
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    return settings.value(Constants::KEY_USERNAME).toString();
+    m_cachedUsername = settings.value(Constants::KEY_USERNAME).toString();
+    return m_cachedUsername;
 }
 
 void SettingsRepository::setUsername(const QString &username) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    m_cachedUsername = username;
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
     settings.setValue(Constants::KEY_USERNAME, username);
 }
 
 QString SettingsRepository::deviceId() const {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_cachedDeviceId.isEmpty()) {
+        return m_cachedDeviceId;
+    }
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    return settings.value(Constants::KEY_DEVICE_ID).toString();
+    m_cachedDeviceId = settings.value(Constants::KEY_DEVICE_ID).toString();
+    return m_cachedDeviceId;
 }
 
 void SettingsRepository::setDeviceId(const QString &id) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    m_cachedDeviceId = id;
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
     settings.setValue(Constants::KEY_DEVICE_ID, id);
 }
 
 QString SettingsRepository::publicKey() const {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_cachedPublicKey.isEmpty()) {
+        return m_cachedPublicKey;
+    }
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    return settings.value(Constants::KEY_PUBLIC_KEY).toString();
+    m_cachedPublicKey = settings.value(Constants::KEY_PUBLIC_KEY).toString();
+    return m_cachedPublicKey;
 }
 
 void SettingsRepository::setPublicKey(const QString &key) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    m_cachedPublicKey = key;
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
     settings.setValue(Constants::KEY_PUBLIC_KEY, key);
 }
@@ -152,8 +176,22 @@ void SettingsRepository::setFriends(const QStringList &friends) {
     settings.setValue(Constants::KEY_FRIENDS, friends);
 }
 
+QStringList SettingsRepository::pendingRequests() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+    return settings.value(Constants::KEY_PENDING_REQUESTS).toStringList();
+}
+
+void SettingsRepository::setPendingRequests(const QStringList &requests) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+    settings.setValue(Constants::KEY_PENDING_REQUESTS, requests);
+}
+
 void SettingsRepository::clearSession() {
     std::lock_guard<std::mutex> lock(m_mutex);
+    m_cachedAuthToken.clear();
+    m_cachedUsername.clear();
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
     settings.remove(Constants::KEY_AUTH_TOKEN);
     settings.remove(Constants::KEY_USERNAME);

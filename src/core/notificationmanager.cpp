@@ -103,6 +103,27 @@ void NotificationManager::setupMessageServiceHook(Services::MessageService* ms) 
             targetChannel = targetChannel.mid(4);
         }
         
+        if (type == "media_request") {
+            QString fileName = data.value("fileName").toString();
+            qint64 fileSize = data.value("fileSize").toLongLong();
+            QString mediaCategory = data.value("errorText").toString();
+            if (mediaCategory.isEmpty()) mediaCategory = "media";
+            QString sizeStr;
+            if (fileSize < 1024) {
+                sizeStr = QString("%1 B").arg(fileSize);
+            } else if (fileSize < 1024 * 1024) {
+                sizeStr = QString("%1 Kb").arg(QString::number(fileSize / 1024.0, 'f', 1));
+            } else if (fileSize < 1024LL * 1024 * 1024) {
+                sizeStr = QString("%1 Mb").arg(QString::number(fileSize / (1024.0 * 1024.0), 'f', 1));
+            } else {
+                sizeStr = QString("%1 Gb").arg(QString::number(fileSize / (1024.0 * 1024.0 * 1024.0), 'f', 2));
+            }
+            QString reqId = data.value("id").toString();
+            QString body = QString("wants to send %1: %2 (%3)").arg(mediaCategory, fileName, sizeStr);
+            showNotification(sender, body, "media_request", targetChannel, avatar, 10000, reqId);
+            return;
+        }
+
         showMessageNotification(sender, text, targetChannel, avatar, type);
     }, Qt::QueuedConnection);
 }
@@ -118,7 +139,8 @@ void NotificationManager::showNotification(const QString &title,
                                            const QString &type,
                                            const QString &channel,
                                            const QString &avatar,
-                                           int durationMs) {
+                                           int durationMs,
+                                           const QString &requestId) {
     if (!m_notificationsEnabled || m_dndEnabled) {
         return;
     }
@@ -129,6 +151,7 @@ void NotificationManager::showNotification(const QString &title,
     QVariantMap notif;
     notif["id"] = notifId;
     notif["notifId"] = notifId;
+    notif["requestId"] = requestId.isEmpty() ? notifId : requestId;
     notif["title"] = title.isEmpty() ? "NeoNect" : title;
     notif["body"] = m_previewEnabled ? body : "New message received";
     notif["type"] = type.isEmpty() ? "message" : type;
@@ -189,6 +212,38 @@ void NotificationManager::dismissNotification(const QString &id) {
     }
 
     emit notificationDismissed(id);
+    if (unreadChanged) {
+        emit unreadCountChanged();
+    }
+    emit activeNotificationsChanged();
+}
+
+void NotificationManager::dismissBySender(const QString &sender, const QString &type) {
+    if (sender.isEmpty()) return;
+
+    bool unreadChanged = false;
+    QStringList dismissedIds;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (int i = m_activeNotifications.size() - 1; i >= 0; --i) {
+            auto map = m_activeNotifications.at(i).toMap();
+            QString s = map.value("channel").toString();
+            if (s.isEmpty()) s = map.value("title").toString();
+            QString t = map.value("type").toString();
+            if (s.compare(sender, Qt::CaseInsensitive) == 0 && (type.isEmpty() || t == type)) {
+                dismissedIds.append(map.value("id").toString());
+                m_activeNotifications.removeAt(i);
+            }
+        }
+        if (m_unreadCount > m_activeNotifications.size()) {
+            m_unreadCount = m_activeNotifications.size();
+            unreadChanged = true;
+        }
+    }
+
+    for (const QString &id : dismissedIds) {
+        emit notificationDismissed(id);
+    }
     if (unreadChanged) {
         emit unreadCountChanged();
     }

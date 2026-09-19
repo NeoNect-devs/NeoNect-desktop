@@ -15,6 +15,22 @@ Rectangle {
     property string activeTab: "online" // "online", "all", "pending", "blocked", "add_friend"
     property string searchQuery: ""
     property var pendingRequests: NetworkManager.pendingRequests
+    property var activeStatus: ({})
+    property string addFriendStatusMsg: ""
+    property bool addFriendSuccess: false
+
+    Connections {
+        target: NetworkManager
+        function onFriendStatusUpdated(username, status) {
+            var copy = Object.assign({}, root.activeStatus);
+            copy[username.toLowerCase()] = status;
+            root.activeStatus = copy;
+        }
+        function onAddFriendResult(success, message, username) {
+            root.addFriendStatusMsg = message;
+            root.addFriendSuccess = success;
+        }
+    }
 
     function getStatusColor(st) {
         switch(st) {
@@ -44,7 +60,8 @@ Rectangle {
     function countOnline() {
         var c = 0;
         for (var i = 0; i < allFriends.length; i++) {
-            var st = activeStatus[allFriends[i]] || "offline";
+            var f = allFriends[i];
+            var st = (root.activeStatus && root.activeStatus[f.toLowerCase()]) ? root.activeStatus[f.toLowerCase()] : "offline";
             if (st === "online" || st === "afk" || st === "dnd") {
                 c++;
             }
@@ -152,16 +169,39 @@ Rectangle {
                     height: 28
                     radius: 4
                     color: root.activeTab === "pending" ? Qt.rgba(255, 255, 255, 0.1) : (pendingMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.05) : "transparent")
-                    implicitWidth: pendingText.implicitWidth + 16
+                    implicitWidth: pendingRow.implicitWidth + 16
 
-                    Text {
-                        id: pendingText
+                    RowLayout {
+                        id: pendingRow
                         anchors.centerIn: parent
-                        text: "Pending"
-                        color: root.activeTab === "pending" ? ThemeData.textPrimary : ThemeData.textSecondary
-                        font.family: "Segoe UI"
-                        font.pixelSize: 13
-                        font.weight: root.activeTab === "pending" ? Font.DemiBold : Font.Normal
+                        spacing: 6
+
+                        Text {
+                            id: pendingText
+                            text: "Pending"
+                            color: root.activeTab === "pending" ? ThemeData.textPrimary : ThemeData.textSecondary
+                            font.family: "Segoe UI"
+                            font.pixelSize: 13
+                            font.weight: root.activeTab === "pending" ? Font.DemiBold : Font.Normal
+                        }
+
+                        Rectangle {
+                            visible: root.pendingRequests && root.pendingRequests.length > 0
+                            width: Math.max(16, pendingBadgeText.implicitWidth + 8)
+                            height: 16
+                            radius: 8
+                            color: "#F23F43"
+
+                            Text {
+                                id: pendingBadgeText
+                                anchors.centerIn: parent
+                                text: root.pendingRequests ? root.pendingRequests.length : 0
+                                color: "#FFFFFF"
+                                font.family: "Segoe UI"
+                                font.pixelSize: 10
+                                font.bold: true
+                            }
+                        }
                     }
 
                     MouseArea {
@@ -324,6 +364,16 @@ Rectangle {
                     }
                 }
 
+                Text {
+                    visible: root.addFriendStatusMsg !== ""
+                    text: root.addFriendStatusMsg
+                    color: root.addFriendSuccess ? "#23A55A" : "#F23F43"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                    Layout.topMargin: 10
+                }
+
                 Item { Layout.fillHeight: true }
             }
 
@@ -416,7 +466,7 @@ Rectangle {
                         var sourceList = root.activeTab === "pending" ? root.pendingRequests : root.allFriends;
                         for (var i = 0; i < sourceList.length; i++) {
                             var uName = sourceList[i];
-                            var statusVal = root.activeStatus[uName] || "offline";
+                            var statusVal = (root.activeStatus && root.activeStatus[uName.toLowerCase()]) ? root.activeStatus[uName.toLowerCase()] : "offline";
                             var item = { name: uName, tag: "", status: statusVal, customStatus: "", avatarColor: "#0A84FF" };
 
                             if (root.searchQuery !== "" && item.name.toLowerCase().indexOf(root.searchQuery.toLowerCase()) === -1) {
@@ -442,10 +492,24 @@ Rectangle {
                         border.color: delegateMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
                         border.width: 1
 
+                        MouseArea {
+                            id: delegateMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            z: 0
+                            onDoubleClicked: {
+                                if (root.activeTab !== "pending") {
+                                    root.messageFriendRequested(modelData.name.toLowerCase());
+                                }
+                            }
+                        }
+
                         RowLayout {
                             anchors.fill: parent
                             anchors.leftMargin: 12; anchors.rightMargin: 12
                             spacing: 12
+                            z: 1
 
                             // Squircle Avatar with Status Pill
                             Item {
@@ -517,69 +581,130 @@ Rectangle {
                                 }
                             }
 
-                            // Action Buttons (Message & Call)
+                            // Action Buttons (Message & Call or Accept & Reject)
                             RowLayout {
                                 spacing: 8
                                 Layout.alignment: Qt.AlignVCenter
 
-                                // Message Action Button
-                                Rectangle {
-                                    width: 36; height: 36
-                                    radius: 18
-                                    color: msgBtnMouse.containsMouse ? Qt.rgba(10, 132, 255, 0.25) : "#1E1F22"
-                                    border.color: msgBtnMouse.containsMouse ? "#0A84FF" : "transparent"
-                                    border.width: 1
+                                // Pending Mode Actions: Accept and Decline Buttons
+                                RowLayout {
+                                    visible: root.activeTab === "pending"
+                                    spacing: 8
 
-                                    IconImage {
-                                        anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/NeoNect/assets/icons/chat.svg"
-                                        width: 18; height: 18
-                                        color: msgBtnMouse.containsMouse ? "#0A84FF" : "#B5BAC1"
+                                    // Accept Button
+                                    Rectangle {
+                                        width: 36; height: 36
+                                        radius: 18
+                                        color: acceptBtnMouse.containsMouse ? Qt.rgba(35, 165, 90, 0.35) : Qt.rgba(35, 165, 90, 0.15)
+                                        border.color: "#23A55A"
+                                        border.width: 1
+
+                                        IconImage {
+                                            anchors.centerIn: parent
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/check.svg"
+                                            width: 18; height: 18
+                                            color: "#23A55A"
+                                        }
+
+                                        MouseArea {
+                                            id: acceptBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                NetworkManager.acceptFriend(modelData.name);
+                                                if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                                    NotificationManager.dismissBySender(modelData.name, "friend_request");
+                                                }
+                                            }
+                                        }
                                     }
 
-                                    MouseArea {
-                                        id: msgBtnMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            root.messageFriendRequested(modelData.name.toLowerCase());
+                                    // Decline Button
+                                    Rectangle {
+                                        width: 36; height: 36
+                                        radius: 18
+                                        color: rejectBtnMouse.containsMouse ? Qt.rgba(242, 63, 67, 0.35) : Qt.rgba(242, 63, 67, 0.15)
+                                        border.color: "#F23F43"
+                                        border.width: 1
+
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "✕"
+                                            color: "#F23F43"
+                                            font.pixelSize: 14
+                                            font.bold: true
+                                        }
+
+                                        MouseArea {
+                                            id: rejectBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                NetworkManager.rejectFriend(modelData.name);
+                                                if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                                    NotificationManager.dismissBySender(modelData.name, "friend_request");
+                                                }
+                                            }
                                         }
                                     }
                                 }
 
-                                // Voice Call Action Button
-                                Rectangle {
-                                    width: 36; height: 36
-                                    radius: 18
-                                    color: callBtnMouse.containsMouse ? Qt.rgba(35, 165, 90, 0.25) : "#1E1F22"
-                                    border.color: callBtnMouse.containsMouse ? "#23A55A" : "transparent"
-                                    border.width: 1
+                                // Normal Mode Actions: Message & Call Buttons
+                                RowLayout {
+                                    visible: root.activeTab !== "pending"
+                                    spacing: 8
 
-                                    IconImage {
-                                        anchors.centerIn: parent
-                                        source: "qrc:/qt/qml/NeoNect/assets/icons/headphones.svg"
-                                        width: 18; height: 18
-                                        color: callBtnMouse.containsMouse ? "#23A55A" : "#B5BAC1"
+                                    // Message Action Button
+                                    Rectangle {
+                                        width: 36; height: 36
+                                        radius: 18
+                                        color: msgBtnMouse.containsMouse ? Qt.rgba(10, 132, 255, 0.25) : "#1E1F22"
+                                        border.color: msgBtnMouse.containsMouse ? "#0A84FF" : "transparent"
+                                        border.width: 1
+
+                                        IconImage {
+                                            anchors.centerIn: parent
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/chat.svg"
+                                            width: 18; height: 18
+                                            color: msgBtnMouse.containsMouse ? "#0A84FF" : "#B5BAC1"
+                                        }
+
+                                        MouseArea {
+                                            id: msgBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                root.messageFriendRequested(modelData.name.toLowerCase());
+                                            }
+                                        }
                                     }
 
-                                    MouseArea {
-                                        id: callBtnMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
+                                    // Voice Call Action Button
+                                    Rectangle {
+                                        width: 36; height: 36
+                                        radius: 18
+                                        color: callBtnMouse.containsMouse ? Qt.rgba(35, 165, 90, 0.25) : "#1E1F22"
+                                        border.color: callBtnMouse.containsMouse ? "#23A55A" : "transparent"
+                                        border.width: 1
+
+                                        IconImage {
+                                            anchors.centerIn: parent
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/headphones.svg"
+                                            width: 18; height: 18
+                                            color: callBtnMouse.containsMouse ? "#23A55A" : "#B5BAC1"
+                                        }
+
+                                        MouseArea {
+                                            id: callBtnMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                        }
                                     }
                                 }
-                            }
-                        }
-
-                        MouseArea {
-                            id: delegateMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onDoubleClicked: {
-                                root.messageFriendRequested(modelData.name.toLowerCase());
                             }
                         }
                     }

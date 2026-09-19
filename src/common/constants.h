@@ -50,6 +50,7 @@ namespace Constants {
     inline constexpr const char* KEY_DEVICE_ID = "device_id";
     inline constexpr const char* KEY_PUBLIC_KEY = "public_key";
     inline constexpr const char* KEY_FRIENDS = "friends";
+    inline constexpr const char* KEY_PENDING_REQUESTS = "pending_requests";
     inline constexpr const char* KEY_BOOKMARKS = "bookmarks";
 
 } // namespace Constants

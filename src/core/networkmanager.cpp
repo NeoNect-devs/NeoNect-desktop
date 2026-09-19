@@ -78,9 +78,9 @@ void NetworkManager::setupServiceSignals() {
             m_transport->setAuthToken(tokenOrError);
             emit tokenChanged();
             emit currentUsernameChanged();
-            m_relayService->startPolling();
-            m_friendService->startHeartbeat();
+            m_friendService->loadFriends();
             autoRegisterDevice();
+            m_authService->fetchUserProfile();
         } else {
             m_pendingBookmarkUsername.clear();
             m_pendingBookmarkPassword.clear();
@@ -97,8 +97,10 @@ void NetworkManager::setupServiceSignals() {
 
     // Device Service Connections
     connect(m_deviceService.get(), &NeoNect::Services::DeviceService::deviceRegistrationResult, this, [this](bool success, const QString &message) {
-        m_relayService->startPolling();
+        if (success) {
+            m_relayService->startPolling();
             m_friendService->startHeartbeat();
+        }
         emit deviceRegistrationResult(success, message);
     });
 
@@ -107,9 +109,11 @@ void NetworkManager::setupServiceSignals() {
     connect(m_deviceService.get(), &NeoNect::Services::DeviceService::recipientKeysFetched, this, &NetworkManager::recipientKeysFetched);
 
     // Relay Service Connections
-
-
-
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived, this, [this](const std::vector<NeoNect::Domain::Message> &msgs) {
+        for (const auto &msg : msgs) {
+            emit incomingRelayMessageReceived(msg.senderId, msg.conversationId, msg.text, msg.timestamp);
+        }
+    });
 
     connect(m_relayService.get(), &NeoNect::Services::RelayService::sessionUnauthorized, this, [this](const QString &message) {
         emit tokenChanged();
@@ -122,6 +126,9 @@ void NetworkManager::setupServiceSignals() {
     // Friend Service Connections
     connect(m_friendService.get(), &NeoNect::Services::FriendService::friendsListChanged, this, [this](const QStringList&) {
         emit friendsChanged();
+    });
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::pendingRequestsChanged, this, [this](const QStringList&) {
+        emit pendingRequestsChanged();
     });
 
     connect(m_friendService.get(), &NeoNect::Services::FriendService::addFriendResult, this, &NetworkManager::addFriendResult);

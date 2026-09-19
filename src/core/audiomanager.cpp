@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QUrl>
 #include <QDesktopServices>
+#include <QFileInfo>
 #include <cstring>
 
 #ifdef _WIN32
@@ -59,6 +60,28 @@ void AudioManager::openMediaFile(const QString &mediaUrl) {
         cleanPath = QUrl(cleanPath).toLocalFile();
     }
     QDesktopServices::openUrl(QUrl::fromLocalFile(cleanPath));
+}
+
+qint64 AudioManager::getFileSize(const QString &fileUrl) {
+    if (fileUrl.isEmpty()) return 0;
+    QString cleanPath = fileUrl;
+    if (cleanPath.startsWith("file:///")) {
+        cleanPath = QUrl(cleanPath).toLocalFile();
+    }
+    QFileInfo fi(cleanPath);
+    return fi.exists() ? fi.size() : 0;
+}
+
+QString AudioManager::formatFileSize(qint64 bytes) {
+    if (bytes <= 0) return "0 B";
+    if (bytes < 1024) return QString("%1 B").arg(bytes);
+    if (bytes < 1024 * 1024) {
+        return QString("%1 Kb").arg(QString::number(bytes / 1024.0, 'f', 1));
+    }
+    if (bytes < 1024LL * 1024 * 1024) {
+        return QString("%1 Mb").arg(QString::number(bytes / (1024.0 * 1024.0), 'f', 1));
+    }
+    return QString("%1 Gb").arg(QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 2));
 }
 
 void AudioManager::setVolume(qreal vol) {

@@ -4,6 +4,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QUuid>
+#include <QRandomGenerator>
 
 namespace NeoNect {
 namespace Services {
@@ -20,18 +22,40 @@ void DeviceService::registerDevice(const QString &deviceId, const QString &publi
         return;
     }
 
+    QString effectiveDevId = deviceId.trimmed();
+    if (effectiveDevId.isEmpty()) {
+        effectiveDevId = m_storage->deviceId();
+        if (effectiveDevId.isEmpty()) {
+            QString prof = m_storage->profile();
+            effectiveDevId = QString("neonect-dev-%1%2").arg(prof.isEmpty() ? "" : prof + "-",
+                                                            QUuid::createUuid().toString(QUuid::WithoutBraces));
+            m_storage->setDeviceId(effectiveDevId);
+        }
+    }
+
+    QString effectivePubKey = publicKey.trimmed();
+    if (effectivePubKey.isEmpty()) {
+        effectivePubKey = m_storage->publicKey();
+        if (effectivePubKey.isEmpty()) {
+            QByteArray keyBytes(32, 0);
+            QRandomGenerator::system()->generate(reinterpret_cast<quint32*>(keyBytes.data()),
+                                                 reinterpret_cast<quint32*>(keyBytes.data() + keyBytes.size()));
+            effectivePubKey = QString::fromLatin1(keyBytes.toBase64());
+            m_storage->setPublicKey(effectivePubKey);
+        }
+    }
+
     QJsonObject body;
-    body["device_id"] = deviceId;
-    body["public_key"] = publicKey;
+    body["device_id"] = effectiveDevId;
+    body["public_key"] = effectivePubKey;
 
     QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
     m_transport->post(Constants::EP_DEVICE_REGISTER, postData, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-        Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
-        bool success = (error == QNetworkReply::NoError);
+        bool success = (error == QNetworkReply::NoError || statusCode == 201 || statusCode == 200 || statusCode == 409);
         auto doc = QJsonDocument::fromJson(data);
-        QString msg = success ? "Device registered" : (doc.isNull() ? "Device registration failed" : doc.object().value("error").toString());
+        QString msg = (statusCode == 409) ? "Device already registered" : (success ? "Device registered" : (doc.isNull() ? "Device registration failed" : doc.object().value("error").toString()));
         emit deviceRegistrationResult(success, msg);
     });
 }

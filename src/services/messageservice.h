@@ -1,5 +1,6 @@
 #pragma once
 #include <QObject>
+#include <QHash>
 #include <memory>
 #include "storage/imessagerepository.h"
 #include "domain/message.h"
@@ -17,6 +18,12 @@ public:
     Q_INVOKABLE void sendMessage(const QString &conversationId, const QString &text, const QString &type = "text", 
                                  const QString &mediaUrl = "", const QString &fileName = "", qint64 fileSize = 0, 
                                  int duration = 0, const QVariantList &waveform = {});
+    
+    // Two-phase media request & approval protocol
+    Q_INVOKABLE void sendMediaRequest(const QString &conversationId, const QString &text, const QString &mediaType,
+                                      const QString &mediaUrl, const QString &fileName, qint64 fileSize);
+    Q_INVOKABLE void acceptMediaRequest(const QString &conversationId, const QString &requestId);
+    Q_INVOKABLE void declineMediaRequest(const QString &conversationId, const QString &requestId);
     
     // Load a conversation (UI calls this to fetch history)
     Q_INVOKABLE void loadConversation(const QString &conversationId);
@@ -36,6 +43,7 @@ signals:
     void conversationLoaded(const QString &conversationId, const QVariantList &messages);
     void messageAdded(const QString &conversationId, const QVariantMap &message);
     void messageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText);
+    void messageRemoved(const QString &conversationId, const QString &messageId);
     
     // Sent to RelayService to actually encrypt & transmit
     void transmitMessage(const NeoNect::Domain::Message &msg);
@@ -43,6 +51,8 @@ signals:
 private:
     std::shared_ptr<Storage::IMessageRepository> m_repository;
     QString m_currentUserId;
+    QHash<QString, Domain::Message> m_pendingMediaRequests;
+    QHash<QString, Domain::Message> m_receivedMediaRequests;
 
     QVariantMap domainToVariantMap(const Domain::Message &msg) const;
 };

@@ -34,6 +34,9 @@ public:
     QStringList friends() const override;
     void setFriends(const QStringList &friends) override;
 
+    QStringList pendingRequests() const override;
+    void setPendingRequests(const QStringList &requests) override;
+
     QVariantList bookmarks() const override;
     void setBookmarks(const QVariantList &bookmarks) override;
     void addBookmark(const QVariantMap &bookmark) override;
@@ -47,6 +50,10 @@ private:
 
     mutable std::mutex m_mutex;
     QString m_profile;
+    mutable QString m_cachedAuthToken;
+    mutable QString m_cachedUsername;
+    mutable QString m_cachedDeviceId;
+    mutable QString m_cachedPublicKey;
 };
 
 } // namespace Storage

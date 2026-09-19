@@ -2,28 +2,55 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
+import NeoNect.Core 1.0
 import "qrc:/qt/qml/NeoNect/qml/components"
 import "UIHelpers.js" as UIHelpers
 
                         Item {
                             id: delegateRoot
     property string selectedServer: ""
+    property string activeChannel: ""
     signal openMediaModalRequested(string url, string type, string name)
     signal retryMessage(string msgId)
-                            width: messageListView.width - 12
-                            height: messageContentColumn.implicitHeight + (model.isFirstInBlock ? 12 : 4)
+    signal acceptMediaRequested(string convId, string reqId)
+    signal declineMediaRequested(string convId, string reqId)
+    visible: !(model.messageType === "media_request" && model.status === "accepted")
+    width: messageListView.width - 12
+    height: visible ? (messageContentColumn.implicitHeight + (model.isFirstInBlock ? 12 : 4)) : 0
 
-                            readonly property bool isDM: selectedServer === "dms"
-                            readonly property bool isMe: model.fromMe
-                            readonly property bool isText: model.messageType === "text"
-                            readonly property bool isSticker: model.messageType === "sticker"
-                            readonly property bool isImage: model.messageType === "image"
-                            readonly property bool isVideo: model.messageType === "video"
-                            readonly property bool isAudio: model.messageType === "audio"
-                            readonly property bool isVoice: model.messageType === "voice"
-                            readonly property bool isFile: model.messageType === "file"
-                            readonly property bool isMediaWidget: isSticker || isImage || isVideo || isAudio || isVoice || isFile
-                            readonly property bool isFailed: model.status === "failed"
+    readonly property bool isDM: selectedServer === "dms"
+    readonly property bool isMe: model.fromMe
+    readonly property bool isText: model.messageType === "text"
+    readonly property bool isSticker: model.messageType === "sticker"
+    readonly property bool isImage: model.messageType === "image"
+    readonly property bool isVideo: model.messageType === "video"
+    readonly property bool isAudio: model.messageType === "audio"
+    readonly property bool isVoice: model.messageType === "voice"
+    readonly property bool isFile: model.messageType === "file"
+    readonly property bool isMediaRequest: model.messageType === "media_request"
+    readonly property bool isMediaWidget: isSticker || isImage || isVideo || isAudio || isVoice || isFile || isMediaRequest
+    readonly property bool isFailed: model.status === "failed"
+
+    function getConversationId() {
+        if (delegateRoot.selectedServer && delegateRoot.activeChannel) {
+            return delegateRoot.selectedServer + ":" + delegateRoot.activeChannel;
+        }
+        if (typeof chatViewRoot !== "undefined" && chatViewRoot && chatViewRoot.selectedServer && chatViewRoot.activeChannel) {
+            return chatViewRoot.selectedServer + ":" + chatViewRoot.activeChannel;
+        }
+        if (model.senderName && !model.fromMe) {
+            return "dms:" + model.senderName.toLowerCase();
+        }
+        return "";
+    }
+
+    function formatMediaRequestSize(bytes) {
+                                if (!bytes || bytes <= 0) return "0 B";
+                                if (bytes < 1024) return bytes + " B";
+                                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " Kb";
+                                if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " Mb";
+                                return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " Gb";
+                            }
 
                             // Hover background for server stream
                             Rectangle {
@@ -412,6 +439,262 @@ import "UIHelpers.js" as UIHelpers
                                                     hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
                                                     onClicked: AudioManager.openMediaFile(model.mediaUrl)
+                                                }
+                                            }
+
+                                            // 6. MEDIA REQUEST CARD (Two-Phase Transfer Flow)
+                                            Rectangle {
+                                                id: mediaRequestCard
+                                                visible: model.messageType === "media_request"
+                                                Layout.preferredWidth: Math.min(330, bubbleBox.maxContentWidth - (delegateRoot.isDM ? 20 : 0))
+                                                implicitWidth: Layout.preferredWidth
+                                                implicitHeight: requestContentCol.implicitHeight + 20
+                                                radius: 12
+                                                color: delegateRoot.isMe ? "#2F3136" : "#202225"
+                                                border.color: {
+                                                    if (model.status === "accepted") return "#23A55A";
+                                                    if (model.status === "declined") return Qt.rgba(242, 63, 67, 0.4);
+                                                    return delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.15) : Qt.rgba(88, 101, 242, 0.35);
+                                                }
+                                                border.width: 1
+
+                                                ColumnLayout {
+                                                    id: requestContentCol
+                                                    anchors.left: parent.left
+                                                    anchors.right: parent.right
+                                                    anchors.top: parent.top
+                                                    anchors.margins: 10
+                                                    spacing: 8
+
+                                                    // Header Row: Media Icon, Filename & Type/Size Badges
+                                                    RowLayout {
+                                                        Layout.fillWidth: true
+                                                        spacing: 10
+
+                                                        Rectangle {
+                                                            Layout.preferredWidth: 38
+                                                            Layout.preferredHeight: 38
+                                                            radius: 8
+                                                            color: {
+                                                                var t = (model.errorText || "").toLowerCase();
+                                                                if (t === "image") return Qt.rgba(88, 101, 242, 0.2);
+                                                                if (t === "video") return Qt.rgba(235, 69, 158, 0.2);
+                                                                if (t === "audio") return Qt.rgba(0, 163, 108, 0.2);
+                                                                return Qt.rgba(250, 166, 26, 0.2);
+                                                            }
+                                                            border.color: {
+                                                                var t = (model.errorText || "").toLowerCase();
+                                                                if (t === "image") return "#5865F2";
+                                                                if (t === "video") return "#EB459E";
+                                                                if (t === "audio") return "#00A36C";
+                                                                return "#FAA61A";
+                                                            }
+                                                            border.width: 1
+
+                                                            IconImage {
+                                                                anchors.centerIn: parent
+                                                                source: {
+                                                                    var t = (model.errorText || "").toLowerCase();
+                                                                    if (t === "image") return "qrc:/qt/qml/NeoNect/assets/icons/image.svg";
+                                                                    if (t === "video") return "qrc:/qt/qml/NeoNect/assets/icons/video.svg";
+                                                                    if (t === "audio") return "qrc:/qt/qml/NeoNect/assets/icons/music.svg";
+                                                                    return "qrc:/qt/qml/NeoNect/assets/icons/file.svg";
+                                                                }
+                                                                width: 18; height: 18
+                                                                color: parent.border.color
+                                                            }
+                                                        }
+
+                                                        ColumnLayout {
+                                                            Layout.fillWidth: true
+                                                            spacing: 2
+
+                                                            Text {
+                                                                Layout.fillWidth: true
+                                                                text: model.fileName !== "" ? model.fileName : "Media File"
+                                                                color: ThemeData.textPrimary
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 13
+                                                                font.bold: true
+                                                                elide: Text.ElideRight
+                                                            }
+
+                                                            RowLayout {
+                                                                spacing: 6
+
+                                                                Rectangle {
+                                                                    Layout.preferredHeight: 16
+                                                                    Layout.preferredWidth: catLabel.implicitWidth + 8
+                                                                    radius: 3
+                                                                    color: Qt.rgba(255, 255, 255, 0.1)
+
+                                                                    Text {
+                                                                        id: catLabel
+                                                                        anchors.centerIn: parent
+                                                                        text: (model.errorText || "FILE").toUpperCase()
+                                                                        color: ThemeData.textSecondary
+                                                                        font.family: "Segoe UI"
+                                                                        font.pixelSize: 9
+                                                                        font.bold: true
+                                                                    }
+                                                                }
+
+                                                                Text {
+                                                                    text: "•"
+                                                                    color: ThemeData.textMuted
+                                                                    font.pixelSize: 10
+                                                                }
+
+                                                                Text {
+                                                                    text: delegateRoot.formatMediaRequestSize(model.fileSize)
+                                                                    color: ThemeData.textSecondary
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 11
+                                                                    font.bold: true
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Text {
+                                                        visible: model.text !== ""
+                                                        Layout.fillWidth: true
+                                                        text: model.text
+                                                        color: ThemeData.textPrimary
+                                                        font.family: "Segoe UI"
+                                                        font.pixelSize: 12
+                                                        wrapMode: Text.Wrap
+                                                    }
+
+                                                    Rectangle {
+                                                        Layout.fillWidth: true
+                                                        height: 1
+                                                        color: Qt.rgba(255, 255, 255, 0.08)
+                                                    }
+
+                                                    Item {
+                                                        Layout.fillWidth: true
+                                                        Layout.preferredHeight: 28
+
+                                                        RowLayout {
+                                                            visible: delegateRoot.isMe
+                                                            anchors.fill: parent
+                                                            spacing: 6
+
+                                                            Text {
+                                                                text: {
+                                                                    if (model.status === "accepted") return "✓ Request accepted — Media sent";
+                                                                    if (model.status === "declined") return "✕ Request declined by recipient";
+                                                                    return "⏳ Media request sent — Awaiting approval...";
+                                                                }
+                                                                color: {
+                                                                    if (model.status === "accepted") return "#23A55A";
+                                                                    if (model.status === "declined") return "#F23F43";
+                                                                    return "#FAA61A";
+                                                                }
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 11
+                                                                font.bold: true
+                                                            }
+                                                        }
+
+                                                        RowLayout {
+                                                            visible: !delegateRoot.isMe
+                                                            anchors.fill: parent
+                                                            spacing: 8
+
+                                                            Text {
+                                                                visible: model.status === "accepted" || model.status === "declined"
+                                                                text: model.status === "accepted" ? "✓ Accepted — Receiving media" : "✕ Request declined"
+                                                                color: model.status === "accepted" ? "#23A55A" : "#F23F43"
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 11
+                                                                font.bold: true
+                                                            }
+
+                                                            RowLayout {
+                                                                visible: model.status !== "accepted" && model.status !== "declined"
+                                                                spacing: 8
+
+                                                                Rectangle {
+                                                                    Layout.preferredHeight: 26
+                                                                    Layout.preferredWidth: 72
+                                                                    radius: 13
+                                                                    color: acceptBtnMouse.containsMouse ? "#23A55A" : Qt.rgba(35, 165, 90, 0.25)
+                                                                    border.color: "#23A55A"
+                                                                    border.width: 1
+
+                                                                    RowLayout {
+                                                                        anchors.centerIn: parent
+                                                                        spacing: 4
+
+                                                                        IconImage {
+                                                                            source: "qrc:/qt/qml/NeoNect/assets/icons/check.svg"
+                                                                            Layout.preferredWidth: 12
+                                                                            Layout.preferredHeight: 12
+                                                                            color: acceptBtnMouse.containsMouse ? "#FFFFFF" : "#23A55A"
+                                                                        }
+
+                                                                        Text {
+                                                                            text: "Accept"
+                                                                            color: acceptBtnMouse.containsMouse ? "#FFFFFF" : "#23A55A"
+                                                                            font.family: "Segoe UI"
+                                                                            font.pixelSize: 11
+                                                                            font.bold: true
+                                                                        }
+                                                                    }
+
+                                                                    MouseArea {
+                                                                        id: acceptBtnMouse
+                                                                        anchors.fill: parent
+                                                                        hoverEnabled: true
+                                                                        cursorShape: Qt.PointingHandCursor
+                                                                        onClicked: {
+                                                                            var convId = delegateRoot.getConversationId();
+                                                                            if (typeof MessageService !== "undefined" && MessageService) {
+                                                                                MessageService.acceptMediaRequest(convId, model.messageId);
+                                                                            } else {
+                                                                                delegateRoot.acceptMediaRequested(convId, model.messageId);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                Rectangle {
+                                                                    Layout.preferredHeight: 26
+                                                                    Layout.preferredWidth: 68
+                                                                    radius: 13
+                                                                    color: declineBtnMouse.containsMouse ? Qt.rgba(242, 63, 67, 0.3) : Qt.rgba(242, 63, 67, 0.12)
+                                                                    border.color: "#F23F43"
+                                                                    border.width: 1
+
+                                                                    Text {
+                                                                        anchors.centerIn: parent
+                                                                        text: "Decline"
+                                                                        color: "#F23F43"
+                                                                        font.family: "Segoe UI"
+                                                                        font.pixelSize: 11
+                                                                        font.bold: true
+                                                                    }
+
+                                                                    MouseArea {
+                                                                        id: declineBtnMouse
+                                                                        anchors.fill: parent
+                                                                        hoverEnabled: true
+                                                                        cursorShape: Qt.PointingHandCursor
+                                                                        onClicked: {
+                                                                            var convId = delegateRoot.getConversationId();
+                                                                            if (typeof MessageService !== "undefined" && MessageService) {
+                                                                                MessageService.declineMediaRequest(convId, model.messageId);
+                                                                            } else {
+                                                                                delegateRoot.declineMediaRequested(convId, model.messageId);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
 

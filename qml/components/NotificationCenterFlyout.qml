@@ -308,6 +308,7 @@ Popup {
                                         if (modelData.type === "security") return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
                                         if (modelData.type === "success") return "qrc:/qt/qml/NeoNect/assets/icons/check.svg";
                                         if (modelData.type === "friend_request") return "qrc:/qt/qml/NeoNect/assets/icons/friends.svg";
+                                        if (modelData.type === "media_request") return "qrc:/qt/qml/NeoNect/assets/icons/file.svg";
                                         return "qrc:/qt/qml/NeoNect/assets/icons/bell.svg";
                                     }
                                     width: 16; height: 16
@@ -367,31 +368,210 @@ Popup {
                             }
                         }
 
-                        // C. Dismiss Button "✕"
-                        Rectangle {
-                            id: dismissItemBtn
-                            Layout.preferredWidth: 20
-                            Layout.preferredHeight: 20
-                            radius: 10
-                            color: dismissMouse.containsMouse ? ThemeData.itemSelectedBackground : "transparent"
-                            opacity: itemMouse.containsMouse || dismissMouse.containsMouse ? 1.0 : 0.0
-                            Behavior on opacity { NumberAnimation { duration: 120 } }
+                        // C. Actions: Accept/Decline for Friend Requests, or Dismiss for other notifications
+                        RowLayout {
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 6
 
-                            Text {
-                                anchors.centerIn: parent
-                                text: "✕"
-                                color: dismissMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textMuted
-                                font.pixelSize: 11
+                            // Friend Request Buttons: Accept & Decline
+                            RowLayout {
+                                visible: modelData.type === "friend_request"
+                                spacing: 6
+
+                                // Accept Button
+                                Rectangle {
+                                    id: acceptFlyoutBtn
+                                    Layout.preferredHeight: 26
+                                    Layout.preferredWidth: 62
+                                    radius: 13
+                                    color: acceptFlyoutMouse.containsMouse ? "#23A55A" : Qt.rgba(35, 165, 90, 0.2)
+                                    border.color: "#23A55A"
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 4
+
+                                        IconImage {
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/check.svg"
+                                            Layout.preferredWidth: 12
+                                            Layout.preferredHeight: 12
+                                            color: acceptFlyoutMouse.containsMouse ? "#FFFFFF" : "#23A55A"
+                                        }
+
+                                        Text {
+                                            text: "Accept"
+                                            color: acceptFlyoutMouse.containsMouse ? "#FFFFFF" : "#23A55A"
+                                            font.family: "Segoe UI"
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: acceptFlyoutMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            var sender = modelData.channel || modelData.title;
+                                            NetworkManager.acceptFriend(sender);
+                                            if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                                NotificationManager.dismissNotification(modelData.notifId || modelData.id);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Decline Button
+                                Rectangle {
+                                    id: declineFlyoutBtn
+                                    Layout.preferredWidth: 26
+                                    Layout.preferredHeight: 26
+                                    radius: 13
+                                    color: declineFlyoutMouse.containsMouse ? Qt.rgba(242, 63, 67, 0.3) : Qt.rgba(242, 63, 67, 0.15)
+                                    border.color: "#F23F43"
+                                    border.width: 1
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "✕"
+                                        color: "#F23F43"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                    }
+
+                                    MouseArea {
+                                        id: declineFlyoutMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            var sender = modelData.channel || modelData.title;
+                                            NetworkManager.rejectFriend(sender);
+                                            if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                                NotificationManager.dismissNotification(modelData.notifId || modelData.id);
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
-                            MouseArea {
-                                id: dismissMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (typeof NotificationManager !== "undefined" && NotificationManager) {
-                                        NotificationManager.dismissNotification(modelData.notifId || modelData.id);
+                            // Media Request Buttons: Accept & Decline
+                            RowLayout {
+                                visible: modelData.type === "media_request"
+                                spacing: 6
+
+                                // Accept Button
+                                Rectangle {
+                                    id: acceptMediaFlyoutBtn
+                                    Layout.preferredHeight: 26
+                                    Layout.preferredWidth: 62
+                                    radius: 13
+                                    color: acceptMediaMouse.containsMouse ? "#23A55A" : Qt.rgba(35, 165, 90, 0.2)
+                                    border.color: "#23A55A"
+                                    border.width: 1
+
+                                    RowLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 4
+
+                                        IconImage {
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/check.svg"
+                                            Layout.preferredWidth: 12
+                                            Layout.preferredHeight: 12
+                                            color: acceptMediaMouse.containsMouse ? "#FFFFFF" : "#23A55A"
+                                        }
+
+                                        Text {
+                                            text: "Accept"
+                                            color: acceptMediaMouse.containsMouse ? "#FFFFFF" : "#23A55A"
+                                            font.family: "Segoe UI"
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                        }
+                                    }
+
+                                    MouseArea {
+                                        id: acceptMediaMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            var ch = (modelData.channel || modelData.title || "").toLowerCase();
+                                            var convId = ch.startsWith("dms:") ? ch : ("dms:" + ch);
+                                            var reqId = modelData.requestId || modelData.id;
+                                            MessageService.acceptMediaRequest(convId, reqId);
+                                            if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                                NotificationManager.dismissNotification(modelData.notifId || modelData.id);
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Decline Button
+                                Rectangle {
+                                    id: declineMediaFlyoutBtn
+                                    Layout.preferredWidth: 26
+                                    Layout.preferredHeight: 26
+                                    radius: 13
+                                    color: declineMediaMouse.containsMouse ? Qt.rgba(242, 63, 67, 0.3) : Qt.rgba(242, 63, 67, 0.15)
+                                    border.color: "#F23F43"
+                                    border.width: 1
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "✕"
+                                        color: "#F23F43"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                    }
+
+                                    MouseArea {
+                                        id: declineMediaMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            var ch = (modelData.channel || modelData.title || "").toLowerCase();
+                                            var convId = ch.startsWith("dms:") ? ch : ("dms:" + ch);
+                                            var reqId = modelData.requestId || modelData.id;
+                                            MessageService.declineMediaRequest(convId, reqId);
+                                            if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                                NotificationManager.dismissNotification(modelData.notifId || modelData.id);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Standard Dismiss Button for other notification types
+                            Rectangle {
+                                id: dismissItemBtn
+                                visible: modelData.type !== "friend_request" && modelData.type !== "media_request"
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                                radius: 10
+                                color: dismissMouse.containsMouse ? ThemeData.itemSelectedBackground : "transparent"
+                                opacity: itemMouse.containsMouse || dismissMouse.containsMouse ? 1.0 : 0.0
+                                Behavior on opacity { NumberAnimation { duration: 120 } }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "✕"
+                                    color: dismissMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textMuted
+                                    font.pixelSize: 11
+                                }
+
+                                MouseArea {
+                                    id: dismissMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+                                            NotificationManager.dismissNotification(modelData.notifId || modelData.id);
+                                        }
                                     }
                                 }
                             }

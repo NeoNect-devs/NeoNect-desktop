@@ -100,6 +100,7 @@ signals:
     void rejectFriendResult(bool success, const QString &message, const QString &username);
     void removeFriendResult(bool success, const QString &message, const QString &username);
     void friendStatusUpdated(const QString &username, const QString &status);
+    void incomingRelayMessageReceived(const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp);
 
 private:
     void setIsLoading(bool loading);

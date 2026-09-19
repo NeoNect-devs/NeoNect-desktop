@@ -1,5 +1,6 @@
 #include <QStandardPaths>
 #include <QDir>
+#include <QLockFile>
 // src/core/application.cpp
 #include "application.h"
 #include "networkmanager.h"
@@ -116,9 +117,21 @@ void Application::parseCommandLine() {
 
     m_profile = parser.value(profileOption);
     m_isMockMode = parser.isSet(mockOption);
+
+    if (m_profile.isEmpty() && !m_isMockMode) {
+        static std::unique_ptr<QLockFile> s_primaryLock;
+        QString lockPath = QDir::temp().filePath("neonect_primary_instance.lock");
+        s_primaryLock = std::make_unique<QLockFile>(lockPath);
+        if (!s_primaryLock->tryLock(50)) {
+            m_profile = QString("inst_%1").arg(QCoreApplication::applicationPid());
+            std::cout << "➔ Secondary instance detected. Running with isolated profile: "
+                      << m_profile.toStdString() << std::endl;
+        }
+    }
 }
 
 void Application::initializeServices() {
+    qRegisterMetaType<NeoNect::Domain::Message>("NeoNect::Domain::Message");
     qRegisterMetaType<std::vector<NeoNect::Domain::Message>>("std::vector<NeoNect::Domain::Message>");
     m_storage = std::make_shared<Storage::SettingsRepository>(m_profile);
     m_cryptoService = std::make_shared<Crypto::CryptoService>();
@@ -144,7 +157,8 @@ void Application::initializeServices() {
     m_cryptoManager = std::make_unique<CryptoManager>(m_cryptoService, m_storage);
 
     // Phase 3 & 4 Message Storage and Services
-    QString dbPath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath("messages.db");
+    QString dbName = m_profile.isEmpty() ? "messages.db" : QString("messages_%1.db").arg(m_profile);
+    QString dbPath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(dbName);
     m_messageRepo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
     m_messageService = std::make_unique<Services::MessageService>(m_messageRepo);
 
@@ -166,6 +180,36 @@ void Application::initializeServices() {
     m_audioManager = std::make_unique<AudioManager>();
     m_notificationManager = std::make_unique<Core::NotificationManager>();
     m_notificationManager->setupMessageServiceHook(m_messageService.get());
+
+    // RelayService <-> FriendService
+    QObject::connect(m_relayService.get(), &Services::RelayService::incomingFriendPacket,
+                     friendService.get(), &Services::FriendService::handleIncomingFriendPacket);
+    QObject::connect(friendService.get(), &Services::FriendService::requestSendDomainMessage,
+                     m_relayService.get(), &Services::RelayService::sendDomainMessage);
+    QObject::connect(m_relayService.get(), &Services::RelayService::messageTransmissionStatus,
+                     friendService.get(), &Services::FriendService::handleTransmissionStatus);
+
+    // FriendService -> NotificationManager
+    QObject::connect(friendService.get(), &Services::FriendService::friendRequestReceived,
+                     m_notificationManager.get(), [this](const QString &sender) {
+        m_notificationManager->showNotification(sender, "sent you a friend request!", "friend_request", sender, sender.left(1).toUpper(), 5000);
+    });
+    QObject::connect(friendService.get(), &Services::FriendService::friendAccepted,
+                     m_notificationManager.get(), [this](const QString &sender) {
+        m_notificationManager->showNotification(sender, "accepted your friend request!", "friend_accept", sender, sender.left(1).toUpper(), 5000);
+    });
+    QObject::connect(friendService.get(), &Services::FriendService::acceptFriendResult,
+                     m_notificationManager.get(), [this](bool success, const QString &, const QString &username) {
+        if (success) {
+            m_notificationManager->dismissBySender(username, "friend_request");
+        }
+    });
+    QObject::connect(friendService.get(), &Services::FriendService::rejectFriendResult,
+                     m_notificationManager.get(), [this](bool success, const QString &, const QString &username) {
+        if (success) {
+            m_notificationManager->dismissBySender(username, "friend_request");
+        }
+    });
 }
 
 bool Application::loadMainUi() {
