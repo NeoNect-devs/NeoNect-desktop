@@ -80,6 +80,7 @@ private:
     void handleRelaySend(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleRelayPoll(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
     void handleRelayAck(const QByteArray &data, Transport::HttpResponseCallback callback);
+    void handleFriends(const QByteArray &data, Transport::HttpResponseCallback callback);
 
     mutable std::recursive_mutex m_mutex;
     QString m_baseUrl{"http://mock.neonect.local"};
@@ -93,6 +94,7 @@ private:
     qint64 m_nextMessageId{1000};
     QMap<QString, MockUser> m_users; // username -> MockUser
     QMap<QString, QString> m_tokenToUser; // token -> username
+    QSet<QString> m_friendships; // "user1:user2" sorted pairs
     std::vector<MockQueuedMessage> m_deliveryQueue;
     QMap<QString, QPair<QByteArray, int>> m_simulatedResponses;
 };

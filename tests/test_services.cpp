@@ -15,6 +15,7 @@
 #include "../src/storage/sqlmessagerepository.h"
 #include "../src/core/audiomanager.h"
 #include "../src/core/networkmanager.h"
+#include <iostream>
 #include "../src/core/notificationmanager.h"
 
 void TestServices::testAuthServiceFlow() {
@@ -817,15 +818,21 @@ void TestServices::testStaleLocalFriendsDoNotOverrideBackend() {
 
 void TestServices::testAddFriendSendsRealRequest() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_add");
+    storage->clearSession();
+    storage->setFriends({});
+    storage->setPendingRequests({});
     storage->setUsername("alice");
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    mockTransport->seedUser("alice", "password123!");
     mockTransport->seedUser("bob", "password123!");
+    mockTransport->setAuthToken("mock-token-alice");
 
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
     QSignalSpy spyResult(&friendService, &NeoNect::Services::FriendService::addFriendResult);
     QSignalSpy spySend(&friendService, &NeoNect::Services::FriendService::requestSendDomainMessage);
 
+    // 1. Success: Add bob
     friendService.addFriend("bob");
 
     QCOMPARE(spyResult.count(), 1);
@@ -834,6 +841,37 @@ void TestServices::testAddFriendSendsRealRequest() {
     auto msg = spySend.first().at(0).value<NeoNect::Domain::Message>();
     QCOMPARE(msg.type, QString("friend_request"));
     QCOMPARE(msg.conversationId, QString("dms:bob"));
+
+    // 2. Duplicate friendship: returns 409 Conflict
+    spyResult.clear();
+    spySend.clear();
+    friendService.addFriend("bob");
+    QCOMPARE(spyResult.count(), 1);
+    QCOMPARE(spyResult.first().at(0).toBool(), false);
+    QVERIFY(spyResult.first().at(1).toString().contains("already your friend"));
+    QCOMPARE(spySend.count(), 0);
+
+    // 3. User does not exist: returns 404 Not Found
+    spyResult.clear();
+    friendService.addFriend("non_existent_user");
+    QCOMPARE(spyResult.count(), 1);
+    QCOMPARE(spyResult.first().at(0).toBool(), false);
+    QVERIFY(spyResult.first().at(1).toString().contains("does not exist"));
+
+    // 4. Cannot add yourself: returns 400 Bad Request
+    spyResult.clear();
+    friendService.addFriend("alice");
+    QCOMPARE(spyResult.count(), 1);
+    QCOMPARE(spyResult.first().at(0).toBool(), false);
+    QVERIFY(spyResult.first().at(1).toString().contains("yourself", Qt::CaseInsensitive));
+
+    // 5. Unauthorized: returns 401
+    spyResult.clear();
+    mockTransport->setAuthToken("unauthorized");
+    friendService.addFriend("eve");
+    QCOMPARE(spyResult.count(), 1);
+    QCOMPARE(spyResult.first().at(0).toBool(), false);
+    QVERIFY(spyResult.first().at(1).toString().contains("Authentication required", Qt::CaseInsensitive));
 }
 
 void TestServices::testPendingFriendIsNotAccepted() {

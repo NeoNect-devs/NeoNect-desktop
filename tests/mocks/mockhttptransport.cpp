@@ -79,6 +79,12 @@ void MockHttpTransport::loadSharedState() {
         item.timestamp = qObj.value("timestamp").toInteger();
         m_deliveryQueue.push_back(item);
     }
+
+    m_friendships.clear();
+    auto friendsArr = root.value("friendships").toArray();
+    for (const auto &val : friendsArr) {
+        m_friendships.insert(val.toString());
+    }
 }
 
 void MockHttpTransport::saveSharedState() {
@@ -116,6 +122,12 @@ void MockHttpTransport::saveSharedState() {
         queueArr.append(qObj);
     }
     root["delivery_queue"] = queueArr;
+
+    QJsonArray friendsArr;
+    for (const auto &pair : m_friendships) {
+        friendsArr.append(pair);
+    }
+    root["friendships"] = friendsArr;
 
     QSaveFile saveFile(sharedStateFilePath());
     if (saveFile.open(QIODevice::WriteOnly)) {
@@ -282,6 +294,8 @@ QNetworkReply* MockHttpTransport::post(const QString &endpoint, const QByteArray
         handleRelaySend(jsonData, callback);
     } else if (endpoint == Constants::EP_RELAY_ACK) {
         handleRelayAck(jsonData, callback);
+    } else if (endpoint == Constants::EP_FRIENDS) {
+        handleFriends(jsonData, callback);
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
@@ -659,6 +673,71 @@ void MockHttpTransport::handleRelayAck(const QByteArray &data, Transport::HttpRe
     QJsonObject res;
     res["status"] = "success";
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleFriends(const QByteArray &data, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken == "unauthorized") {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    QString currentUsername;
+    if (!m_activeToken.isEmpty() && m_tokenToUser.contains(m_activeToken)) {
+        currentUsername = m_tokenToUser[m_activeToken].trimmed().toLower();
+    } else if (!m_activeToken.isEmpty()) {
+        currentUsername = m_activeToken.trimmed().toLower();
+    }
+
+    auto doc = QJsonDocument::fromJson(data);
+    QString targetUsername = doc.object().value("username").toString().trimmed().toLower();
+
+    if (targetUsername.isEmpty()) {
+        QJsonObject err;
+        err["error"] = "username is required";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    if (currentUsername.isEmpty()) {
+        currentUsername = (targetUsername == "alice") ? "bob" : "alice";
+    }
+
+    if (targetUsername == currentUsername) {
+        QJsonObject err;
+        err["error"] = "cannot add yourself as a friend";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    if (!m_users.isEmpty() && !m_users.contains(targetUsername)) {
+        QJsonObject err;
+        err["error"] = "Not Found";
+        callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+        return;
+    }
+
+    QString pairKey = (currentUsername < targetUsername)
+        ? (currentUsername + ":" + targetUsername)
+        : (targetUsername + ":" + currentUsername);
+
+    if (m_friendships.contains(pairKey)) {
+        QJsonObject err;
+        err["error"] = "friendship already exists";
+        callback(409, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentConflictError, "Conflict");
+        return;
+    }
+
+    m_friendships.insert(pairKey);
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
+    QJsonObject res;
+    res["status"] = "success";
+    callback(201, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 
 } // namespace Testing

@@ -23,12 +23,13 @@ namespace Constants {
     inline constexpr const char* EP_RELAY_POLL = "/api/v1/relay/poll";
     inline constexpr const char* EP_RELAY_ACK = "/api/v1/relay/ack";
     inline constexpr const char* EP_RELAY_WS = "/api/v1/relay/ws";
+    inline constexpr const char* EP_FRIENDS = "/api/v1/friends";
 
     // Danisa Validation & Policy Constraints
     inline constexpr int MIN_USERNAME_LENGTH = 3;
     inline constexpr int MIN_PASSWORD_LENGTH = 8;
     inline constexpr int SESSION_DURATION_HOURS = 24;
-    inline constexpr const char* SESSION_COOKIE_NAME = "danisa_sid";
+    inline constexpr const char* SESSION_COOKIE_NAME = "neonect_sid";
 
     // Cryptographic Parameters
     inline constexpr std::size_t AES_256_KEY_SIZE = 32;
