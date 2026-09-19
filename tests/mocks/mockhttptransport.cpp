@@ -341,6 +341,12 @@ void MockHttpTransport::handleSecurityVerify(Transport::HttpResponseCallback cal
 
 void MockHttpTransport::handleAvailability(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken == "unauthorized") {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
     QString username = queryParams.value("u").trimmed().toLower();
     bool exists = m_users.contains(username);
 

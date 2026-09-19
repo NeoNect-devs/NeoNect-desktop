@@ -198,6 +198,10 @@ void Application::initializeServices() {
                      m_notificationManager.get(), [this](const QString &sender) {
         m_notificationManager->showNotification(sender, "accepted your friend request!", "friend_accept", sender, sender.left(1).toUpper(), 5000);
     });
+    QObject::connect(friendService.get(), &Services::FriendService::friendRejected,
+                     m_notificationManager.get(), [this](const QString &sender) {
+        m_notificationManager->showNotification(sender, "declined your friend request.", "friend_reject", sender, sender.left(1).toUpper(), 5000);
+    });
     QObject::connect(friendService.get(), &Services::FriendService::acceptFriendResult,
                      m_notificationManager.get(), [this](bool success, const QString &, const QString &username) {
         if (success) {

@@ -21,6 +21,7 @@ private slots:
     void testNetworkManagerFacadeIntegration();
     void testTwoClientChatExchange();
     void testTwoClientFriendRequestFlow();
+    void testTwoClientFriendRequestRejectFlow();
     void testTwoClientMediaRequestApprovalFlow();
     void testBookmarkConnectFlow();
     void testNotificationManagerFlow();

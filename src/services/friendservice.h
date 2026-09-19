@@ -52,6 +52,7 @@ signals:
     void requestSendDomainMessage(const NeoNect::Domain::Message &msg);
     void friendRequestReceived(const QString &username);
     void friendAccepted(const QString &username);
+    void friendRejected(const QString &username);
 
 private:
     QTimer *m_heartbeatTimer = nullptr;

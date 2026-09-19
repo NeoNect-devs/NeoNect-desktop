@@ -612,9 +612,10 @@ Rectangle {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
-                                                NetworkManager.acceptFriend(modelData.name);
+                                                var targetName = modelData.name;
+                                                NetworkManager.acceptFriend(targetName);
                                                 if (typeof NotificationManager !== "undefined" && NotificationManager) {
-                                                    NotificationManager.dismissBySender(modelData.name, "friend_request");
+                                                    NotificationManager.dismissBySender(targetName, "friend_request");
                                                 }
                                             }
                                         }
@@ -642,9 +643,10 @@ Rectangle {
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: {
-                                                NetworkManager.rejectFriend(modelData.name);
+                                                var targetName = modelData.name;
+                                                NetworkManager.rejectFriend(targetName);
                                                 if (typeof NotificationManager !== "undefined" && NotificationManager) {
-                                                    NotificationManager.dismissBySender(modelData.name, "friend_request");
+                                                    NotificationManager.dismissBySender(targetName, "friend_request");
                                                 }
                                             }
                                         }

@@ -102,71 +102,49 @@ void FriendService::addFriend(const QString &username) {
         }
     }
 
-    QJsonObject payload;
-    payload["username"] = target;
-    QByteArray postData = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+    QMap<QString, QString> params;
+    params.insert("u", target);
 
-    m_transport->post(Constants::EP_FRIENDS, postData, this, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_USERS_AVAILABILITY, params, this, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
-        QJsonObject resObj;
-        auto doc = QJsonDocument::fromJson(data);
-        if (!doc.isNull() && doc.isObject()) {
-            resObj = doc.object();
-        }
-        QString serverErr = resObj.value("error").toString();
-
-        if (statusCode == 201 || (error == QNetworkReply::NoError && statusCode == 200)) {
-            // Success: backend registered friendship!
-            // Send friend request packet via Relay so recipient gets real-time notification
-            Domain::Message msg;
-            msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-            msg.conversationId = "dms:" + target;
-            msg.senderId = m_storage->username();
-            msg.type = "friend_request";
-            msg.text = "Friend request";
-            msg.timestamp = QDateTime::currentSecsSinceEpoch();
-
-            m_pendingFriendRequests.insert(msg.id, target);
-            emit requestSendDomainMessage(msg);
-            emit addFriendResult(true, "Friend request sent to @" + target, target);
-            return;
-        }
-
-        if (statusCode == 404) {
-            emit addFriendResult(false, "User '@" + target + "' does not exist on the network.", target);
-            return;
-        }
-        if (statusCode == 409) {
-            bool already = false;
-            for (const QString &f : m_cachedFriends) {
-                if (f.compare(target, Qt::CaseInsensitive) == 0) {
-                    already = true;
-                    break;
-                }
-            }
-            if (!already) {
-                m_cachedFriends.append(target);
-                m_storage->setFriends(m_cachedFriends);
-                emit friendsListChanged(m_cachedFriends);
-            }
-            emit addFriendResult(false, "@" + target + " is already your friend.", target);
-            return;
-        }
         if (statusCode == 401) {
             emit addFriendResult(false, "Authentication required. Please log in again.", target);
-            return;
-        }
-        if (statusCode == 400) {
-            QString msgText = serverErr.isEmpty() ? "Cannot add @" + target + " as a friend." : serverErr;
-            emit addFriendResult(false, msgText, target);
             return;
         }
         if (statusCode == 429) {
             emit addFriendResult(false, "Rate limit exceeded. Please try again later.", target);
             return;
         }
+        if (error != QNetworkReply::NoError || statusCode != 200) {
+            emit addFriendResult(false, "Failed to communicate with server.", target);
+            return;
+        }
 
-        emit addFriendResult(false, serverErr.isEmpty() ? "Failed to communicate with server." : serverErr, target);
+        auto doc = QJsonDocument::fromJson(data);
+        if (doc.isNull() || !doc.isObject()) {
+            emit addFriendResult(false, "Invalid server response.", target);
+            return;
+        }
+
+        bool available = doc.object().value("available").toBool();
+        if (available) {
+            // Username is available, meaning no user with this username exists
+            emit addFriendResult(false, "User '@" + target + "' does not exist on the network.", target);
+            return;
+        }
+
+        // User exists! Send friend request packet via Relay so recipient gets real-time notification
+        Domain::Message msg;
+        msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        msg.conversationId = "dms:" + target;
+        msg.senderId = m_storage->username();
+        msg.type = "friend_request";
+        msg.text = "Friend request";
+        msg.timestamp = QDateTime::currentSecsSinceEpoch();
+
+        m_pendingFriendRequests.insert(msg.id, target);
+        emit requestSendDomainMessage(msg);
+        emit addFriendResult(true, "Friend request sent to @" + target, target);
     });
 }
 
@@ -243,7 +221,28 @@ void FriendService::handleIncomingFriendPacket(const NeoNect::Domain::Message &m
             emit friendAccepted(sender);
         }
     } else if (msg.type == "friend_reject") {
-        // Target rejected friend request
+        for (int i = m_cachedPending.size() - 1; i >= 0; --i) {
+            if (m_cachedPending[i].compare(sender, Qt::CaseInsensitive) == 0) {
+                m_cachedPending.removeAt(i);
+            }
+        }
+        m_storage->setPendingRequests(m_cachedPending);
+        emit pendingRequestsChanged(m_cachedPending);
+
+        bool changedFriends = false;
+        for (int i = m_cachedFriends.size() - 1; i >= 0; --i) {
+            if (m_cachedFriends[i].compare(sender, Qt::CaseInsensitive) == 0) {
+                m_cachedFriends.removeAt(i);
+                changedFriends = true;
+            }
+        }
+        if (changedFriends) {
+            m_storage->setFriends(m_cachedFriends);
+            emit friendsListChanged(m_cachedFriends);
+        }
+
+        qDebug() << "[FriendService] Emitting friendRejected for:" << sender;
+        emit friendRejected(sender);
     }
 }
 
@@ -307,6 +306,18 @@ void FriendService::rejectFriend(const QString &username) {
     }
     m_storage->setPendingRequests(m_cachedPending);
     emit pendingRequestsChanged(m_cachedPending);
+
+    bool changedFriends = false;
+    for (int i = m_cachedFriends.size() - 1; i >= 0; --i) {
+        if (m_cachedFriends[i].compare(target, Qt::CaseInsensitive) == 0) {
+            m_cachedFriends.removeAt(i);
+            changedFriends = true;
+        }
+    }
+    if (changedFriends) {
+        m_storage->setFriends(m_cachedFriends);
+        emit friendsListChanged(m_cachedFriends);
+    }
 
     Domain::Message msg;
     msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
