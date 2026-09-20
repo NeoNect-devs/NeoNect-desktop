@@ -90,7 +90,13 @@ endif()
 # =====================================================================
 # 4. Define the executable target (C++ ONLY)
 # =====================================================================
+set(APP_ICON_RESOURCE "")
+if(WIN32)
+    set(APP_ICON_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/NeoNect.rc")
+endif()
+
 qt_add_executable(NeoNectApp
+    ${APP_ICON_RESOURCE}
     src/main.cpp
     src/themedata.h
 
@@ -182,7 +188,8 @@ qt_add_qml_module(NeoNectApp
         qml/SideSection/SidebarCanvas.qml
 
     RESOURCES
-        assets/logo.png
+        assets/NeoNect/icon.png
+        assets/NeoNect/icon.ico
         assets/icons/arrow-back.svg
         assets/icons/friends.svg
         assets/icons/bookmark.svg

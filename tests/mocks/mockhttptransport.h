@@ -28,7 +28,7 @@ struct MockUser {
 };
 
 /**
- * @brief In-memory / File-backed mock HTTP transport simulating the Danisa REST API.
+ * @brief In-memory / File-backed mock HTTP transport simulating the NeoNect REST API.
  * Supports multi-process communication across separate client instances via shared state.
  */
 class MockHttpTransport : public QObject, public Transport::IHttpTransport {

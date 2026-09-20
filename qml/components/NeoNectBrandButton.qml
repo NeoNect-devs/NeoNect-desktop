@@ -75,20 +75,21 @@ Item {
 
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 0
+            anchors.leftMargin: 8
             anchors.rightMargin: 8
-            spacing: 0
+            spacing: 6
 
             Image {
                 id: logoImage
-                source: "../../assets/logo.png"
-                Layout.preferredWidth: 50
-                Layout.preferredHeight: 50
+                source: "qrc:/qt/qml/NeoNect/assets/NeoNect/icon.png"
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                Layout.alignment: Qt.AlignVCenter
                 fillMode: Image.PreserveAspectFit
                 smooth: true
                 mipmap: true
 
-                scale: brandRoot.isHovered ? 1.08 : 1.0
+                scale: brandRoot.isHovered ? 1.06 : 1.0
                 Behavior on scale {
                     NumberAnimation {
                         duration: 200

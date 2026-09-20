@@ -6,7 +6,7 @@
 namespace NeoNect {
 namespace Constants {
 
-    // Network Endpoints (Danisa API v1 Contract)
+    // Network Endpoints (NeoNect API v1 Contract)
     inline constexpr const char* DEFAULT_SERVER_URL = "http://localhost:8080";
     inline constexpr const char* EP_HEALTH = "/api/v1/health";
     inline constexpr const char* EP_PRESENCE = "/api/v1/presence";
@@ -25,7 +25,7 @@ namespace Constants {
     inline constexpr const char* EP_RELAY_WS = "/api/v1/relay/ws";
     inline constexpr const char* EP_FRIENDS = "/api/v1/friends";
 
-    // Danisa Validation & Policy Constraints
+    // NeoNect Validation & Policy Constraints
     inline constexpr int MIN_USERNAME_LENGTH = 3;
     inline constexpr int MIN_PASSWORD_LENGTH = 8;
     inline constexpr int SESSION_DURATION_HOURS = 24;

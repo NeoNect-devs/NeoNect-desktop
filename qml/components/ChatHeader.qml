@@ -78,7 +78,7 @@ Rectangle {
                         text: {
                             if (selectedServer === "dms") {
                                 if (activeChannel === "saved-messages") return "Your Personal Cloud Storage & Notes";
-                                return "Danisa Zero-Knowledge E2EE Direct Messages";
+                                return "NeoNect Zero-Knowledge E2EE Direct Messages";
                             }
                             return "Secure Workspace Channel";
                         }

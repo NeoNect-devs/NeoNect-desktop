@@ -42,7 +42,7 @@ void TestServices::testAuthServiceFlow() {
     QCOMPARE(availArgs.at(0).toString(), "new_user_123");
     QCOMPARE(availArgs.at(1).toBool(), true); // available
 
-    // 3. Test registerUser with Danisa complexity requirement (letters + digits, >= 8)
+    // 3. Test registerUser with NeoNect complexity requirement (letters + digits, >= 8)
     QSignalSpy spyReg(&authService, &NeoNect::Services::AuthService::registrationResult);
     authService.registerUser("new_user_123", "secret_pass_123");
     QCOMPARE(spyReg.count(), 1);
@@ -82,14 +82,14 @@ void TestServices::testDeviceServiceFlow() {
     QCOMPARE(fetchArgs.at(0).toString(), "unit-dev-id-99");
     QCOMPARE(fetchArgs.at(1).toString(), "MOCK_PUB_KEY_99");
 
-    // Test fetchRecipientKeys (Danisa /api/v1/relay/keys)
+    // Test fetchRecipientKeys (NeoNect /api/v1/relay/keys)
     QSignalSpy spyRelayKeys(&deviceService, &NeoNect::Services::DeviceService::recipientKeysFetched);
     deviceService.fetchRecipientKeys("alex");
     QCOMPARE(spyRelayKeys.count(), 1);
     auto relayArgs = spyRelayKeys.takeFirst();
     QCOMPARE(relayArgs.at(0).toString(), "alex");
 
-    // Test revokeDevice (Danisa DELETE /api/v1/device)
+    // Test revokeDevice (NeoNect DELETE /api/v1/device)
     QSignalSpy spyRevoke(&deviceService, &NeoNect::Services::DeviceService::deviceRevocationResult);
     deviceService.revokeDevice("unit-dev-id-99");
     QCOMPARE(spyRevoke.count(), 1);

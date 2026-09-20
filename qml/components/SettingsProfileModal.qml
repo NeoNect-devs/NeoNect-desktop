@@ -77,10 +77,12 @@ Rectangle {
                     spacing: 12
 
                     Image {
-                        source: "../../assets/logo.png"
+                        source: "qrc:/qt/qml/NeoNect/assets/NeoNect/icon.png"
                         Layout.preferredWidth: 26
                         Layout.preferredHeight: 26
                         fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        mipmap: true
                     }
 
                     Text {

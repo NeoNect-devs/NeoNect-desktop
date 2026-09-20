@@ -60,36 +60,92 @@ Item {
         return Math.min(base, entryRoot.width - 32);
     }
 
-    readonly property real maxCardHeight: Math.max(300, entryRoot.height - (entryRoot.height < 600 ? 20 : 36))
+    readonly property real maxCardHeight: Math.max(280, entryRoot.height - (entryRoot.height < 600 ? 70 : 90))
 
     readonly property real targetCardHeight: {
-        var preferred = 405;
+        var preferred = 355;
         if (currentScreen === "signup") {
-            preferred = 525;
+            preferred = 445;
         } else if (currentScreen === "login") {
-            preferred = 460;
+            preferred = 375;
         } else if (currentScreen === "bookmarks") {
-            preferred = NetworkManager.bookmarks.length === 0 ? 410 : 480;
+            preferred = NetworkManager.bookmarks.length === 0 ? 380 : 430;
         } else if (currentScreen === "bookmark_edit") {
-            preferred = 475;
+            preferred = 430;
         } else {
-            preferred = 405; // "server"
+            preferred = 355; // "server" - spacious vertical budget so scrollbar never appears in initial state
         }
         return Math.min(maxCardHeight, preferred);
     }
 
+    readonly property real heroLogoSize: entryRoot.height < 600 ? 84 : (entryRoot.height < 700 ? 104 : 116)
+    readonly property real heroSectionHeight: heroLogoSize + 4 + (entryRoot.height < 600 ? 28 : 36)
+
     Rectangle {
         anchors.fill: parent
         color: ThemeData.windowBackground
+    }
 
-        // Background subtle ambient radial glow
-        Rectangle {
-            width: Math.min(entryRoot.width * 0.7, 500)
-            height: width
-            radius: width / 2
-            anchors.centerIn: parent
-            color: ThemeData.accentColor
-            opacity: 0.04
+    // ─── BRAND HEADER (ON TOP OF FORM, CLOSE TO FORM CARD) ───────────────────
+    Column {
+        id: heroHeader
+        anchors.bottom: formCard.top
+        anchors.bottomMargin: 8
+        anchors.horizontalCenter: formCard.horizontalCenter
+        spacing: 4
+
+        // Bigger Hero Logo
+        Item {
+            width: entryRoot.heroLogoSize
+            height: entryRoot.heroLogoSize
+            anchors.horizontalCenter: parent.horizontalCenter
+
+            // Ambient Radial Glow Backdrop
+            Rectangle {
+                anchors.centerIn: parent
+                width: parent.width * 1.35
+                height: parent.height * 1.35
+                radius: width / 2
+                color: "transparent"
+                gradient: Gradient {
+                    orientation: Gradient.Vertical
+                    GradientStop { position: 0.0; color: Qt.rgba(0.35, 0.42, 0.95, 0.14) }
+                    GradientStop { position: 0.55; color: Qt.rgba(0.20, 0.28, 0.70, 0.05) }
+                    GradientStop { position: 1.0; color: "transparent" }
+                }
+            }
+
+            Image {
+                id: heroLogo
+                source: "qrc:/qt/qml/NeoNect/assets/NeoNect/icon.png"
+                anchors.fill: parent
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+
+                scale: logoHoverArea.containsMouse ? 1.05 : 1.0
+                Behavior on scale {
+                    NumberAnimation { duration: 180; easing.type: Easing.OutBack }
+                }
+
+                MouseArea {
+                    id: logoHoverArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                }
+            }
+        }
+
+        // Bigger NeoNect Typography
+        Text {
+            text: "NEONECT"
+            color: ThemeData.textPrimary
+            font.family: "Segoe UI"
+            font.pointSize: entryRoot.height < 600 ? (ThemeData.fontSizeHeader + 4) : (ThemeData.fontSizeHeader + 7)
+            font.bold: true
+            font.letterSpacing: 5.0
+            anchors.horizontalCenter: parent.horizontalCenter
         }
     }
 
@@ -99,48 +155,39 @@ Item {
         height: entryRoot.targetCardHeight
         radius: 16
         color: ThemeData.panelBackground
-        anchors.centerIn: parent
-        border.color: Qt.rgba(1, 1, 1, 0.08)
+        anchors.horizontalCenter: parent.horizontalCenter
+        border.color: ThemeData.borderColor
         border.width: 1
+
+        y: {
+            var totalHeight = entryRoot.heroSectionHeight + 8 + height;
+            var topMargin = Math.max(8, Math.round((entryRoot.height - totalHeight) / 2));
+            return topMargin + entryRoot.heroSectionHeight + 8;
+        }
 
         Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
         Behavior on height { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+        Behavior on y { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
 
         Column {
             id: mainColumn
             anchors.fill: parent
-            anchors.margins: entryRoot.height < 600 ? 16 : 22
-            spacing: entryRoot.height < 600 ? 8 : 12
+            anchors.margins: entryRoot.height < 600 ? 14 : 16
+            spacing: 8
 
-            // ─── BRAND HEADER ──────────────────────────────────────────────
+            // ─── CARD SCREEN HEADER (for server & bookmarks) ────────────
             Column {
                 width: parent.width
-                spacing: 3
-
-                Image {
-                    source: "qrc:/qt/qml/NeoNect/assets/logo.png"
-                    width: entryRoot.height < 600 ? 40 : 46
-                    height: width
-                    fillMode: Image.PreserveAspectFit
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-
-                Text {
-                    text: "DANISA / NEONECT"
-                    color: ThemeData.textPrimary
-                    font.pointSize: entryRoot.height < 600 ? ThemeData.fontSizeHeader : (ThemeData.fontSizeHeader + 1)
-                    font.bold: true
-                    font.letterSpacing: 1.5
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
+                spacing: 2
+                visible: entryRoot.currentScreen === "server" || entryRoot.currentScreen === "bookmarks" || entryRoot.currentScreen === "bookmark_edit"
 
                 Text {
                     text: entryRoot.currentScreen === "server" ? "Zero-Knowledge Relay Server Connection" :
                           entryRoot.currentScreen === "bookmarks" ? "TeamSpeak-Style Server Bookmarks" :
-                          entryRoot.currentScreen === "bookmark_edit" ? (entryRoot.isEditingBookmark ? "Edit Server Connection Profile" : "Create New Server Bookmark") :
-                          entryRoot.currentScreen === "login" ? "Welcome back! Sign in to continue" : "Create your secure end-to-end encrypted account"
+                          (entryRoot.isEditingBookmark ? "Edit Server Connection Profile" : "Create New Server Bookmark")
                     color: ThemeData.textSecondary
-                    font.pointSize: ThemeData.fontSizeNormal - 3
+                    font.family: "Segoe UI"
+                    font.pointSize: ThemeData.fontSizeNormal - 2
                     anchors.horizontalCenter: parent.horizontalCenter
                 }
             }
@@ -224,8 +271,7 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
 
                 ScrollBar.vertical: ScrollBar {
-                    policy: ScrollBar.AsNeeded
-                    active: true
+                    policy: (entryRoot.currentScreen === "server" && serverView.implicitHeight <= height) ? ScrollBar.AlwaysOff : ScrollBar.AsNeeded
                 }
 
                 // ─── SCREEN 1: SERVER NODE ROUTING ────────────────────────

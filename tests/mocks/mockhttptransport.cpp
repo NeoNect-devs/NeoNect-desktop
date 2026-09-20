@@ -317,7 +317,7 @@ QNetworkReply* MockHttpTransport::deleteResource(const QString &endpoint, const 
 void MockHttpTransport::handleHealth(Transport::HttpResponseCallback callback) {
     QJsonObject res;
     res["status"] = "success";
-    res["node"] = "mock-danisa-embedded";
+    res["node"] = "mock-neonect-embedded";
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 

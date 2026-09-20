@@ -17,6 +17,7 @@
 
 #include <QQmlContext>
 #include <QQuickWindow>
+#include <QIcon>
 #include <QCommandLineParser>
 #include <QCommandLineOption>
 #include <iostream>
@@ -85,6 +86,7 @@ Application::Application(int &argc, char **argv) {
 #endif
 
     m_app = std::make_unique<QGuiApplication>(argc, argv);
+    m_app->setWindowIcon(QIcon(":/qt/qml/NeoNect/assets/NeoNect/icon.png"));
     QGuiApplication::setApplicationName("NeoNect");
     QGuiApplication::setApplicationVersion("1.0");
     QGuiApplication::setQuitOnLastWindowClosed(true);

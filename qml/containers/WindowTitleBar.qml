@@ -93,7 +93,7 @@ Rectangle {
         onReleased: mouse => {
             if (!nativeMoveStarted && !wasMaximizedOnPress && mouse) {
                 var g = dragArea.mapToGlobal(mouse.x, mouse.y);
-                if (g.y <= 5) {
+                if (g.y <= 5 && root.appState !== "gateway") {
                     root.windowTarget.visibility = Window.Maximized;
                 }
             }
@@ -107,6 +107,7 @@ Rectangle {
         }
 
         onDoubleClicked: {
+            if (root.appState === "gateway") return;
             isPressed = false;
             nativeMoveStarted = false;
             root.windowTarget.visibility = (root.windowTarget.visibility === Window.Maximized)
@@ -155,40 +156,6 @@ Rectangle {
             Layout.alignment: Qt.AlignVCenter
             spacing: 4
 
-            Rectangle {
-                Layout.preferredWidth: 38
-                Layout.preferredHeight: 32
-                radius: 4
-                color: gatewayMinM.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
-                Text {
-                    anchors.centerIn: parent
-                    text: "—"
-                    color: "white"
-                }
-                MouseArea {
-                    id: gatewayMinM
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: root.windowTarget.visibility = Window.Minimized
-                }
-            }
-            Rectangle {
-                Layout.preferredWidth: 38
-                Layout.preferredHeight: 32
-                radius: 4
-                color: gatewayMaxM.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
-                Text {
-                    anchors.centerIn: parent
-                    text: root.windowTarget.visibility === Window.Maximized ? "🗗" : "🗖"
-                    color: "white"
-                }
-                MouseArea {
-                    id: gatewayMaxM
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: root.windowTarget.visibility = (root.windowTarget.visibility === Window.Maximized) ? Window.Windowed : Window.Maximized
-                }
-            }
             Rectangle {
                 Layout.preferredWidth: 38
                 Layout.preferredHeight: 32

@@ -30,11 +30,11 @@ void AuthService::verifyServer(const QString &address) {
             if (!doc.isNull() && (doc.object().value("status").toString() == "success" ||
                                  doc.object().value("status").toString() == "ok" ||
                                  doc.object().contains("status"))) {
-                emit verificationResult(true, "Connected to Danisa Server");
+                emit verificationResult(true, "Connected to NeoNect Server");
                 return;
             }
             if (statusCode == 200) {
-                emit verificationResult(true, "Connected to Danisa Server");
+                emit verificationResult(true, "Connected to NeoNect Server");
                 return;
             }
         }

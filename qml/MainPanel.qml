@@ -282,7 +282,7 @@ Item {
                 }
 
                 Text {
-                    text: "Enter the username of a user on the Danisa network to add them to your Direct Messages."
+                    text: "Enter the username of a user on the NeoNect network to add them to your Direct Messages."
                     color: ThemeData.textSecondary
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
