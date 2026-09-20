@@ -1203,3 +1203,114 @@ void TestServices::testConnectivityAndOnlinePresence() {
     QVERIFY(!netMgr.isConnected());
     QCOMPARE(spyNetConnected.count(), 2);
 }
+
+void TestServices::testOpenConversationsActivityOrdering() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("unit_test_conv_ordering");
+    storage->setOpenConversations({});
+
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
+
+    NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    QSignalSpy spyOpenChanged(&netMgr, &NetworkManager::openConversationsChanged);
+
+    // 1. Open chat with Alice at t=1000
+    netMgr.openDirectConversation("alice", 1000);
+    QCOMPARE(netMgr.openConversations().size(), 1);
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("name").toString(), QString("alice"));
+
+    // 2. Open chat with Bob at t=2000 -> Bob has more recent activity so Bob must be at index 0 (top)
+    netMgr.openDirectConversation("bob", 2000);
+    QCOMPARE(netMgr.openConversations().size(), 2);
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("name").toString(), QString("bob"));
+    QCOMPARE(netMgr.openConversations().at(1).toMap().value("name").toString(), QString("alice"));
+
+    // 3. New message arrives from Alice at t=3000 -> Alice's activity is updated, Alice promotes to top
+    std::vector<NeoNect::Domain::Message> incoming;
+    NeoNect::Domain::Message msg;
+    msg.senderId = "alice";
+    msg.conversationId = "dms:alice";
+    msg.text = "Hey Bob!";
+    msg.type = "text";
+    msg.timestamp = 3000;
+    incoming.push_back(msg);
+
+    emit relayService->incomingDomainMessagesReceived(incoming);
+
+    QCOMPARE(netMgr.openConversations().size(), 2);
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("name").toString(), QString("alice"));
+    QCOMPARE(netMgr.openConversations().at(1).toMap().value("name").toString(), QString("bob"));
+
+    // 4. Close chat with Bob -> Bob is removed and Alice remains
+    netMgr.closeDirectConversation("bob");
+    QCOMPARE(netMgr.openConversations().size(), 1);
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("name").toString(), QString("alice"));
+
+    // 5. Verify persistence across new NetworkManager instance
+    NetworkManager netMgr2(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    QCOMPARE(netMgr2.openConversations().size(), 1);
+    QCOMPARE(netMgr2.openConversations().at(0).toMap().value("name").toString(), QString("alice"));
+
+    storage->setOpenConversations({});
+}
+
+void TestServices::testOpenConversationsUnreadCountBadge() {
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("unit_test_unread_count");
+    storage->setOpenConversations({});
+
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
+
+    NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+
+    // Initial state: 0 unread for anyone
+    QCOMPARE(netMgr.unreadCount("alice"), 0);
+
+    // 1. Incoming message from Alice increments her unread count to 1
+    netMgr.incrementUnreadCount("alice");
+    QCOMPARE(netMgr.unreadCount("alice"), 1);
+    QCOMPARE(netMgr.openConversations().size(), 1);
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("name").toString(), QString("alice"));
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("unreadCount").toInt(), 1);
+
+    // 2. Second incoming message from Alice increments count to 2
+    netMgr.incrementUnreadCount("alice");
+    QCOMPARE(netMgr.unreadCount("alice"), 2);
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("unreadCount").toInt(), 2);
+
+    // 3. Incoming message from Bob increments Bob's count to 1 and places Bob at the top
+    netMgr.incrementUnreadCount("bob");
+    QCOMPARE(netMgr.unreadCount("bob"), 1);
+    QCOMPARE(netMgr.unreadCount("alice"), 2);
+    QCOMPARE(netMgr.openConversations().size(), 2);
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("name").toString(), QString("bob"));
+    QCOMPARE(netMgr.openConversations().at(1).toMap().value("name").toString(), QString("alice"));
+
+    // 4. Reading Alice's chat clears her unread count, leaving Bob's unread intact
+    netMgr.markConversationAsRead("alice");
+    QCOMPARE(netMgr.unreadCount("alice"), 0);
+    QCOMPARE(netMgr.unreadCount("bob"), 1);
+
+    // 5. Reading Bob's chat clears his unread count as well
+    netMgr.markConversationAsRead("bob");
+    QCOMPARE(netMgr.unreadCount("bob"), 0);
+
+    // 6. Incoming message for Alice, then verify persistence across instances
+    netMgr.incrementUnreadCount("alice");
+    QCOMPARE(netMgr.unreadCount("alice"), 1);
+
+    NetworkManager netMgr2(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    QCOMPARE(netMgr2.unreadCount("alice"), 1);
+    QCOMPARE(netMgr2.unreadCount("bob"), 0);
+
+    storage->setOpenConversations({});
+}
+

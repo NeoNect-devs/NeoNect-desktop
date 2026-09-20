@@ -10,4 +10,5 @@ private slots:
     void testGettersAndSetters();
     void testClearSession();
     void testBookmarks();
+    void testOpenConversationsPersistence();
 };

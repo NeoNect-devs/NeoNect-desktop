@@ -92,3 +92,34 @@ void TestStorage::testBookmarks() {
     QCOMPARE(repo.bookmarks().size(), 0);
 }
 
+void TestStorage::testOpenConversationsPersistence() {
+    NeoNect::Storage::SettingsRepository repo("unit_test_open_convs");
+    repo.setOpenConversations({});
+
+    QCOMPARE(repo.openConversations().size(), 0);
+
+    QVariantList convs;
+    QVariantMap c1;
+    c1["name"] = "alice";
+    c1["lastActivity"] = 1000;
+    QVariantMap c2;
+    c2["name"] = "bob";
+    c2["lastActivity"] = 2000;
+    convs.append(c1);
+    convs.append(c2);
+
+    repo.setOpenConversations(convs);
+
+    // Verify persistence across repository instantiation with same profile
+    NeoNect::Storage::SettingsRepository repoReopened("unit_test_open_convs");
+    QVariantList fetched = repoReopened.openConversations();
+    QCOMPARE(fetched.size(), 2);
+    QCOMPARE(fetched.at(0).toMap().value("name").toString(), "alice");
+    QCOMPARE(fetched.at(0).toMap().value("lastActivity").toLongLong(), 1000LL);
+    QCOMPARE(fetched.at(1).toMap().value("name").toString(), "bob");
+    QCOMPARE(fetched.at(1).toMap().value("lastActivity").toLongLong(), 2000LL);
+
+    repo.setOpenConversations({});
+    QCOMPARE(repoReopened.openConversations().size(), 0);
+}
+

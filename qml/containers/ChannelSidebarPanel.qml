@@ -55,18 +55,25 @@ Rectangle {
         id: openDmListModel
     }
 
-    property var friendStatusMap: ({})
+    onActiveChannelChanged: {
+        if (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel !== "friends" && sidebarRoot.activeChannel !== "saved-messages") {
+            NetworkManager.markConversationAsRead(sidebarRoot.activeChannel);
+        }
+        sidebarRoot.syncDmModel();
+    }
 
-    // Active Open DMs tracked in session
-    property var openDms: []
+    onSelectedServerChanged: {
+        if (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel !== "friends" && sidebarRoot.activeChannel !== "saved-messages") {
+            NetworkManager.markConversationAsRead(sidebarRoot.activeChannel);
+        }
+        sidebarRoot.syncDmModel();
+    }
 
     function openDirectMessage(username) {
         if (!username) return;
         var lower = username.toLowerCase();
-        if (openDms.indexOf(lower) === -1) {
-            openDms.push(lower);
-        }
-        syncDmModel();
+        NetworkManager.openDirectConversation(lower);
+        NetworkManager.markConversationAsRead(lower);
         sidebarRoot.activeChannel = lower;
         sidebarRoot.channelSelected(lower);
         sidebarRoot.channelChanged(lower);
@@ -74,27 +81,32 @@ Rectangle {
 
     function closeDirectMessage(username) {
         var lower = username.toLowerCase();
-        var idx = openDms.indexOf(lower);
-        if (idx !== -1) {
-            openDms.splice(idx, 1);
-            syncDmModel();
-            if (sidebarRoot.activeChannel === lower) {
-                sidebarRoot.activeChannel = "friends";
-                sidebarRoot.channelSelected("friends");
-                sidebarRoot.channelChanged("friends");
-            }
+        NetworkManager.closeDirectConversation(lower);
+        if (sidebarRoot.activeChannel === lower) {
+            sidebarRoot.activeChannel = "friends";
+            sidebarRoot.channelSelected("friends");
+            sidebarRoot.channelChanged("friends");
         }
     }
 
     function syncDmModel() {
         openDmListModel.clear();
-        for (var i = 0; i < openDms.length; ++i) {
-            var friendName = openDms[i].toLowerCase();
+        var convs = (NetworkManager && NetworkManager.openConversations) ? NetworkManager.openConversations : [];
+        for (var i = 0; i < convs.length; ++i) {
+            var item = convs[i];
+            var friendName = (item.name || "").toLowerCase();
+            if (!friendName) continue;
             var st = sidebarRoot.friendStatusMap[friendName] || "offline";
+            var unread = (item.unreadCount !== undefined) ? item.unreadCount : 0;
+            if (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel.toLowerCase() === friendName) {
+                unread = 0;
+            }
             openDmListModel.append({
                 name: friendName,
                 isDM: true,
-                userStatus: st
+                userStatus: st,
+                lastActivity: item.lastActivity || 0,
+                unreadBadge: unread
             });
         }
     }
@@ -102,6 +114,9 @@ Rectangle {
     Connections {
         target: NetworkManager
         ignoreUnknownSignals: true
+        function onOpenConversationsChanged() {
+            sidebarRoot.syncDmModel();
+        }
         function onFriendsChanged() {
             sidebarRoot.syncDmModel();
         }
@@ -111,9 +126,6 @@ Rectangle {
             if (myUsername !== "" && lower === myUsername) return; // Prevent self-DM from appearing on sent message
 
             sidebarRoot.friendStatusMap[lower] = "online";
-            if (sidebarRoot.openDms.indexOf(lower) === -1) {
-                sidebarRoot.openDms.push(lower);
-            }
             sidebarRoot.syncDmModel();
         }
         function onFriendStatusUpdated(username, status) {
@@ -126,6 +138,30 @@ Rectangle {
                     sidebarRoot.friendStatusMap[key] = "offline";
                 }
                 sidebarRoot.syncDmModel();
+            }
+        }
+    }
+
+    Connections {
+        target: MessageService
+        ignoreUnknownSignals: true
+        function onMessageAdded(convId, message) {
+            if (convId && convId.startsWith("dms:")) {
+                var peer = convId.substring(4).toLowerCase();
+                var ts = (message && message.timestamp) ? (message.timestamp * 1000) : Date.now();
+
+                var myUsername = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
+                var sender = (message && message.sender) ? message.sender.toLowerCase() : ((message && message.senderId) ? message.senderId.toLowerCase() : "");
+                var isFromMe = (sender !== "" && sender === myUsername) || (message && message.fromMe) || (message && message.isOutgoing);
+
+                var isCurrentChatActive = (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel.toLowerCase() === peer);
+
+                if (isCurrentChatActive || isFromMe) {
+                    NetworkManager.updateConversationActivity(peer, ts);
+                    NetworkManager.markConversationAsRead(peer);
+                } else {
+                    NetworkManager.incrementUnreadCount(peer);
+                }
             }
         }
     }
@@ -250,8 +286,12 @@ Rectangle {
                 isDM: model.isDM
                 canClose: model.isDM
                 userStatus: model.userStatus
+                unreadBadge: model.unreadBadge || 0
                 isSelected: sidebarRoot.activeChannel === model.name
                 onClicked: {
+                    if (model.isDM) {
+                        NetworkManager.markConversationAsRead(model.name);
+                    }
                     sidebarRoot.activeChannel = model.name;
                     sidebarRoot.channelSelected(model.name);
                     sidebarRoot.channelChanged(model.name);

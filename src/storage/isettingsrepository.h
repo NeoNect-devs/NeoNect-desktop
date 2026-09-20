@@ -42,6 +42,9 @@ public:
     virtual void updateBookmark(const QVariantMap &bookmark) = 0;
     virtual void removeBookmark(const QString &id) = 0;
 
+    virtual QVariantList openConversations() const = 0;
+    virtual void setOpenConversations(const QVariantList &conversations) = 0;
+
     virtual void clearSession() = 0;
 };
 

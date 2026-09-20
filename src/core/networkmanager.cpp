@@ -6,6 +6,7 @@
 #include "../crypto/cryptoservice.h"
 #include <QDebug>
 #include <QDateTime>
+#include <algorithm>
 
 NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
                                std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
@@ -20,6 +21,10 @@ NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTranspor
       m_authService(std::move(authService)), m_deviceService(std::move(deviceService)),
       m_relayService(std::move(relayService)), m_friendService(std::move(friendService))
 {
+    if (m_storage) {
+        m_openConversations = m_storage->openConversations();
+        sortOpenConversations();
+    }
     if (m_authService) {
         setupServiceSignals();
     }
@@ -111,6 +116,9 @@ void NetworkManager::setupServiceSignals() {
     // Relay Service Connections
     connect(m_relayService.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived, this, [this](const std::vector<NeoNect::Domain::Message> &msgs) {
         for (const auto &msg : msgs) {
+            if (msg.type != "typing_start" && msg.type != "typing_stop" && !msg.senderId.trimmed().isEmpty()) {
+                updateConversationActivity(msg.senderId, msg.timestamp);
+            }
             emit incomingRelayMessageReceived(msg.senderId, msg.conversationId, msg.text, msg.timestamp);
         }
     });
@@ -257,6 +265,12 @@ void NetworkManager::setProfile(const QString &profileName) {
     emit currentUsernameChanged();
     emit bookmarksChanged();
 
+    if (m_storage) {
+        m_openConversations = m_storage->openConversations();
+        sortOpenConversations();
+        emit openConversationsChanged();
+    }
+
     m_friendService->loadFriends();
     // Auto-login removed
 }
@@ -346,4 +360,146 @@ void NetworkManager::checkFriendsStatus() {
 
 void NetworkManager::checkUserStatus(const QString &username) {
     m_friendService->checkUserStatus(username);
+}
+
+void NetworkManager::sortOpenConversations() {
+    std::sort(m_openConversations.begin(), m_openConversations.end(), [](const QVariant &a, const QVariant &b) {
+        qint64 tA = a.toMap().value("lastActivity").toLongLong();
+        qint64 tB = b.toMap().value("lastActivity").toLongLong();
+        if (tA != tB) {
+            return tA > tB; // More recent activity first
+        }
+        return a.toMap().value("name").toString().compare(b.toMap().value("name").toString(), Qt::CaseInsensitive) < 0;
+    });
+}
+
+QVariantList NetworkManager::openConversations() const {
+    return m_openConversations;
+}
+
+void NetworkManager::openDirectConversation(const QString &username, qint64 activityTimestamp) {
+    QString lower = username.trimmed().toLower();
+    if (lower.isEmpty()) return;
+
+    qint64 ts = activityTimestamp > 0 ? activityTimestamp : QDateTime::currentMSecsSinceEpoch();
+
+    bool found = false;
+    for (int i = 0; i < m_openConversations.size(); ++i) {
+        QVariantMap map = m_openConversations.at(i).toMap();
+        if (map.value("name").toString().toLower() == lower) {
+            map["lastActivity"] = ts;
+            m_openConversations[i] = map;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        QVariantMap map;
+        map["name"] = lower;
+        map["lastActivity"] = ts;
+        map["unreadCount"] = 0;
+        m_openConversations.append(map);
+    }
+
+    sortOpenConversations();
+    if (m_storage) {
+        m_storage->setOpenConversations(m_openConversations);
+    }
+    emit openConversationsChanged();
+}
+
+void NetworkManager::closeDirectConversation(const QString &username) {
+    QString lower = username.trimmed().toLower();
+    if (lower.isEmpty()) return;
+
+    bool removed = false;
+    for (int i = 0; i < m_openConversations.size(); ++i) {
+        if (m_openConversations.at(i).toMap().value("name").toString().toLower() == lower) {
+            m_openConversations.removeAt(i);
+            removed = true;
+            break;
+        }
+    }
+
+    if (removed) {
+        if (m_storage) {
+            m_storage->setOpenConversations(m_openConversations);
+        }
+        emit openConversationsChanged();
+    }
+}
+
+void NetworkManager::updateConversationActivity(const QString &username, qint64 activityTimestamp) {
+    openDirectConversation(username, activityTimestamp);
+}
+
+int NetworkManager::unreadCount(const QString &username) const {
+    QString lower = username.trimmed().toLower();
+    for (const QVariant &item : m_openConversations) {
+        QVariantMap map = item.toMap();
+        if (map.value("name").toString().toLower() == lower) {
+            return map.value("unreadCount", 0).toInt();
+        }
+    }
+    return 0;
+}
+
+void NetworkManager::markConversationAsRead(const QString &username) {
+    QString lower = username.trimmed().toLower();
+    if (lower.isEmpty()) return;
+
+    bool updated = false;
+    for (int i = 0; i < m_openConversations.size(); ++i) {
+        QVariantMap map = m_openConversations.at(i).toMap();
+        if (map.value("name").toString().toLower() == lower) {
+            if (map.value("unreadCount", 0).toInt() > 0) {
+                map["unreadCount"] = 0;
+                m_openConversations[i] = map;
+                updated = true;
+            }
+            break;
+        }
+    }
+
+    if (updated) {
+        if (m_storage) {
+            m_storage->setOpenConversations(m_openConversations);
+        }
+        emit openConversationsChanged();
+    }
+}
+
+void NetworkManager::incrementUnreadCount(const QString &username) {
+    QString lower = username.trimmed().toLower();
+    if (lower.isEmpty()) return;
+
+    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    bool found = false;
+    for (int i = 0; i < m_openConversations.size(); ++i) {
+        QVariantMap map = m_openConversations.at(i).toMap();
+        if (map.value("name").toString().toLower() == lower) {
+            int current = map.value("unreadCount", 0).toInt();
+            map["unreadCount"] = current + 1;
+            map["lastActivity"] = now;
+            m_openConversations[i] = map;
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) {
+        QVariantMap map;
+        map["name"] = lower;
+        map["lastActivity"] = now;
+        map["unreadCount"] = 1;
+        m_openConversations.append(map);
+    }
+
+    sortOpenConversations();
+
+    if (m_storage) {
+        m_storage->setOpenConversations(m_openConversations);
+    }
+    emit openConversationsChanged();
 }

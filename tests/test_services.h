@@ -31,4 +31,6 @@ private slots:
     void testRequestCancellationOnServiceDestruction();
     void testPhase10ABackendProtocolCompliance();
     void testConnectivityAndOnlinePresence();
+    void testOpenConversationsActivityOrdering();
+    void testOpenConversationsUnreadCountBadge();
 };

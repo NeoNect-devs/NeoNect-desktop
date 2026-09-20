@@ -24,7 +24,7 @@ Rectangle {
     Layout.fillWidth: true
     width: ListView.view ? ListView.view.width : (parent ? parent.width : 200)
     implicitWidth: 200
-    height: itemRoot.isSpecialNav ? 42 : (itemRoot.isDM ? 48 : 36)
+    height: itemRoot.isSpecialNav ? 40 : (itemRoot.isDM ? 48 : 36)
     radius: 8
     color: isActive ? Qt.rgba(255, 255, 255, 0.1) : (mouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.05) : "transparent")
 
@@ -126,58 +126,31 @@ Rectangle {
             }
         }
 
-        // ─── 2. LABELS & METADATA SECTION ───
-        ColumnLayout {
+        // ─── 2. CHANNEL / DM NAME LABEL ───
+        Text {
             Layout.fillWidth: true
-            spacing: 1
             Layout.alignment: Qt.AlignVCenter
-
-            Text {
-                Layout.fillWidth: true
-                text: itemRoot.isSpecialNav ? (itemRoot.specialType === "friends" ? "Friends" : "Saved Messages") : (itemRoot.isDM ? itemRoot.channelName.replace(/^\w/, c => c.toUpperCase()) : itemRoot.channelName)
-                color: itemRoot.isActive ? "#FFFFFF" : (mouseArea.containsMouse ? "#FFFFFF" : ThemeData.textSecondary)
-                font.family: "Segoe UI"
-                font.pixelSize: 14
-                font.weight: itemRoot.isActive ? Font.DemiBold : Font.Normal
-                elide: Text.ElideRight
-            }
-
-            Text {
-                visible: !itemRoot.isSpecialNav && itemRoot.isDM
-                Layout.fillWidth: true
-                text: {
-                    var st = (itemRoot.userStatus || "").toLowerCase();
-                    if (st === "online") return "Online";
-                    if (st === "afk" || st === "idle") return "Idle / AFK";
-                    if (st === "dnd") return "Do Not Disturb";
-                    return "Offline";
-                }
-                color: {
-                    var st = (itemRoot.userStatus || "").toLowerCase();
-                    if (st === "online") return "#23A55A";
-                    if (st === "afk" || st === "idle") return "#FAA81A";
-                    if (st === "dnd") return "#F23F43";
-                    return ThemeData.textMuted;
-                }
-                font.family: "Segoe UI"
-                font.pixelSize: 11
-                elide: Text.ElideRight
-            }
+            text: itemRoot.isSpecialNav ? (itemRoot.specialType === "friends" ? "Friends" : "Saved Messages") : (itemRoot.isDM ? itemRoot.channelName.replace(/^\w/, c => c.toUpperCase()) : itemRoot.channelName)
+            color: itemRoot.isActive ? "#FFFFFF" : (mouseArea.containsMouse ? "#FFFFFF" : ThemeData.textSecondary)
+            font.family: "Segoe UI"
+            font.pixelSize: 14
+            font.weight: itemRoot.isActive ? Font.DemiBold : Font.Normal
+            elide: Text.ElideRight
         }
 
-        // ─── 3. ONLINE BADGE COUNT (FOR FRIENDS) ───
+        // ─── 3. UNREAD MESSAGE COUNT BADGE ───
         Rectangle {
-            visible: itemRoot.isSpecialNav && itemRoot.specialType === "friends" && itemRoot.unreadBadge > 0
+            visible: itemRoot.unreadBadge > 0
             height: 18
             radius: 9
-            color: "#23A55A"
+            color: (itemRoot.isSpecialNav && itemRoot.specialType === "friends") ? "#23A55A" : "#0A84FF"
             implicitWidth: Math.max(18, badgeText.implicitWidth + 8)
             Layout.alignment: Qt.AlignVCenter
 
             Text {
                 id: badgeText
                 anchors.centerIn: parent
-                text: itemRoot.unreadBadge.toString()
+                text: itemRoot.unreadBadge > 99 ? "99+" : itemRoot.unreadBadge.toString()
                 color: "#FFFFFF"
                 font.family: "Segoe UI"
                 font.pixelSize: 10

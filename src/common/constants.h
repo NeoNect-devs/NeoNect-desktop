@@ -53,6 +53,7 @@ namespace Constants {
     inline constexpr const char* KEY_FRIENDS = "friends";
     inline constexpr const char* KEY_PENDING_REQUESTS = "pending_requests";
     inline constexpr const char* KEY_BOOKMARKS = "bookmarks";
+    inline constexpr const char* KEY_OPEN_CONVERSATIONS = "open_conversations";
 
 } // namespace Constants
 } // namespace NeoNect

@@ -266,5 +266,27 @@ void SettingsRepository::removeBookmark(const QString &id) {
     }
 }
 
+QVariantList SettingsRepository::openConversations() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+    QString jsonStr = settings.value(Constants::KEY_OPEN_CONVERSATIONS).toString();
+    if (jsonStr.trimmed().isEmpty()) {
+        return QVariantList();
+    }
+    QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
+    if (!doc.isArray()) {
+        return QVariantList();
+    }
+    return doc.array().toVariantList();
+}
+
+void SettingsRepository::setOpenConversations(const QVariantList &conversations) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+    QJsonArray arr = QJsonArray::fromVariantList(conversations);
+    QJsonDocument doc(arr);
+    settings.setValue(Constants::KEY_OPEN_CONVERSATIONS, QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+}
+
 } // namespace Storage
 } // namespace NeoNect

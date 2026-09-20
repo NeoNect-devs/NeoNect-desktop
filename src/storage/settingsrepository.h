@@ -43,6 +43,9 @@ public:
     void updateBookmark(const QVariantMap &bookmark) override;
     void removeBookmark(const QString &id) override;
 
+    QVariantList openConversations() const override;
+    void setOpenConversations(const QVariantList &conversations) override;
+
     void clearSession() override;
 
 private:

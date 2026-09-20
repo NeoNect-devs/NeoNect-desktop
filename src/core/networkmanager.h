@@ -24,6 +24,7 @@ class NetworkManager : public QObject {
     Q_PROPERTY(QStringList friends READ friends NOTIFY friendsChanged)
     Q_PROPERTY(QStringList pendingRequests READ pendingRequests NOTIFY pendingRequestsChanged)
     Q_PROPERTY(QVariantList bookmarks READ bookmarks NOTIFY bookmarksChanged)
+    Q_PROPERTY(QVariantList openConversations READ openConversations NOTIFY openConversationsChanged)
 
 public:
     explicit NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
@@ -79,6 +80,15 @@ public:
     Q_INVOKABLE void checkFriendsStatus();
     Q_INVOKABLE void checkUserStatus(const QString &username);
 
+    // Persistent & Activity-Sorted Direct Conversations
+    QVariantList openConversations() const;
+    Q_INVOKABLE void openDirectConversation(const QString &username, qint64 activityTimestamp = 0);
+    Q_INVOKABLE void closeDirectConversation(const QString &username);
+    Q_INVOKABLE void updateConversationActivity(const QString &username, qint64 activityTimestamp = 0);
+    Q_INVOKABLE int unreadCount(const QString &username) const;
+    Q_INVOKABLE void markConversationAsRead(const QString &username);
+    Q_INVOKABLE void incrementUnreadCount(const QString &username);
+
 signals:
     void serverUrlChanged();
     void tokenChanged();
@@ -88,6 +98,7 @@ signals:
     void friendsChanged();
     void pendingRequestsChanged();
     void bookmarksChanged();
+    void openConversationsChanged();
 
     void verificationResult(bool success, const QString &message);
     void availabilityResult(const QString &username, bool available, const QString &error);
@@ -110,6 +121,7 @@ private:
     void setIsLoading(bool loading);
     void setupServiceSignals();
     void autoRegisterDevice();
+    void sortOpenConversations();
 
     std::shared_ptr<NeoNect::Transport::IHttpTransport> m_transport;
     std::shared_ptr<NeoNect::Storage::ISettingsRepository> m_storage;
@@ -124,4 +136,5 @@ private:
     QString m_sessionToken;
     QString m_pendingBookmarkUsername;
     QString m_pendingBookmarkPassword;
+    QVariantList m_openConversations;
 };
