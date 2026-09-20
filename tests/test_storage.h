@@ -11,4 +11,6 @@ private slots:
     void testClearSession();
     void testBookmarks();
     void testOpenConversationsPersistence();
+    void testAccountScopedConversations();
+    void testAccountScopedFriends();
 };

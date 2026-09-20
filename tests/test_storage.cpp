@@ -123,3 +123,87 @@ void TestStorage::testOpenConversationsPersistence() {
     QCOMPARE(repoReopened.openConversations().size(), 0);
 }
 
+void TestStorage::testAccountScopedConversations() {
+    NeoNect::Storage::SettingsRepository repo("test_account_scope");
+
+    // Alice logs in and adds a conversation
+    repo.setUsername("alice");
+    repo.setAuthToken("token_alice");
+    QVariantList aliceConvs;
+    QVariantMap c1;
+    c1["name"] = "charlie";
+    aliceConvs.append(c1);
+    repo.setOpenConversations(aliceConvs);
+    QCOMPARE(repo.openConversations().size(), 1);
+    QCOMPARE(repo.openConversations().at(0).toMap().value("name").toString(), "charlie");
+
+    // Alice logs out
+    repo.clearSession();
+
+    // Bob logs in - should have 0 open conversations initially
+    repo.setUsername("bob");
+    repo.setAuthToken("token_bob");
+    QCOMPARE(repo.openConversations().size(), 0);
+
+    // Bob adds his own conversation
+    QVariantList bobConvs;
+    QVariantMap c2;
+    c2["name"] = "david";
+    bobConvs.append(c2);
+    repo.setOpenConversations(bobConvs);
+    QCOMPARE(repo.openConversations().size(), 1);
+    QCOMPARE(repo.openConversations().at(0).toMap().value("name").toString(), "david");
+
+    // Bob logs out and Alice logs back in
+    repo.clearSession();
+    repo.setUsername("alice");
+    QCOMPARE(repo.openConversations().size(), 1);
+    QCOMPARE(repo.openConversations().at(0).toMap().value("name").toString(), "charlie");
+
+    // Cleanup
+    repo.setOpenConversations({});
+    repo.setUsername("bob");
+    repo.setOpenConversations({});
+    repo.clearSession();
+}
+
+void TestStorage::testAccountScopedFriends() {
+    NeoNect::Storage::SettingsRepository repo("test_account_scoped_friends");
+    repo.clearSession();
+
+    // Alice logs in and adds friends
+    repo.setUsername("alice");
+    repo.setFriends({"friend1", "friend2"});
+    repo.setPendingRequests({"pending1"});
+    QCOMPARE(repo.friends().size(), 2);
+    QCOMPARE(repo.pendingRequests().size(), 1);
+
+    // Alice logs out
+    repo.clearSession();
+
+    // Bob logs in - should have 0 friends and 0 pending requests
+    repo.setUsername("bob");
+    QCOMPARE(repo.friends().size(), 0);
+    QCOMPARE(repo.pendingRequests().size(), 0);
+
+    // Bob adds his own friend
+    repo.setFriends({"friend_of_bob"});
+    QCOMPARE(repo.friends().size(), 1);
+    QCOMPARE(repo.friends().at(0), QString("friend_of_bob"));
+
+    // Switch back to Alice - should still have Alice's friends
+    repo.clearSession();
+    repo.setUsername("alice");
+    QCOMPARE(repo.friends().size(), 2);
+    QCOMPARE(repo.pendingRequests().size(), 1);
+
+    // Cleanup
+    repo.setFriends({});
+    repo.setPendingRequests({});
+    repo.setUsername("bob");
+    repo.setFriends({});
+    repo.setPendingRequests({});
+    repo.clearSession();
+}
+
+

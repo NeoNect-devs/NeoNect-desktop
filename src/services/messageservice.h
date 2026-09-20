@@ -34,6 +34,9 @@ public:
     // Seen Receipts (Direct Messages)
     Q_INVOKABLE void sendSeenReceipt(const QString &conversationId, const QString &messageId = "all");
 
+    // Retry sending a previously failed message or media
+    Q_INVOKABLE void retryMessage(const QString &messageId);
+
     // Provide the current user's ID so we can derive 'fromMe' logic if needed, or pass it to UI
     void setCurrentUserId(const QString &userId);
 
@@ -58,6 +61,7 @@ signals:
 private:
     std::shared_ptr<Storage::IMessageRepository> m_repository;
     QString m_currentUserId;
+    QHash<QString, Domain::Message> m_outgoingMessages;
     QHash<QString, Domain::Message> m_pendingMediaRequests;
     QHash<QString, Domain::Message> m_receivedMediaRequests;
 

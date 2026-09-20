@@ -160,7 +160,15 @@ int main(int argc, char *argv[]) {
         int r17 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testSeenReceiptsAndUpdateCheckmark" << "-v2");
         std::cout << "    Result: " << (r17 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17);
+        std::cout << "--> Testing testSelfDirectMessageAndSavedMessagesFlow..." << std::endl;
+        int r18 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testSelfDirectMessageAndSavedMessagesFlow" << "-o" << "test_self.txt,txt");
+        std::cout << "    Result: " << (r18 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        std::cout << "--> Testing testRetryMessageFlow..." << std::endl;
+        int r19 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRetryMessageFlow" << "-o" << "test_retry.txt,txt");
+        std::cout << "    Result: " << (r19 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19);
     }
 
     {

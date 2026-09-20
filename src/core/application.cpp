@@ -159,16 +159,19 @@ void Application::initializeServices() {
     m_cryptoManager = std::make_unique<CryptoManager>(m_cryptoService, m_storage);
 
     // Phase 3 & 4 Message Storage and Services
-    QString dbName = m_profile.isEmpty() ? "messages.db" : QString("messages_%1.db").arg(m_profile);
-    QString dbPath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(dbName);
+    QString initialUser = m_networkManager->currentUsername().trimmed().toLower();
+    QString dbPath = getUserDatabasePath(initialUser);
     m_messageRepo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
     m_messageService = std::make_unique<Services::MessageService>(m_messageRepo);
 
-    // Wire MessageService dependencies
+    // Wire MessageService dependencies & dynamic account database switching
     QObject::connect(m_networkManager.get(), &NetworkManager::currentUsernameChanged, m_messageService.get(), [this]() {
-        m_messageService->setCurrentUserId(m_storage->username());
+        QString user = m_networkManager->currentUsername().trimmed().toLower();
+        m_messageService->setCurrentUserId(user);
+        QString userDbPath = getUserDatabasePath(user);
+        m_messageRepo->switchDatabase(userDbPath);
     });
-    m_messageService->setCurrentUserId(m_storage->username()); // Initial set
+    m_messageService->setCurrentUserId(initialUser); // Initial set
     
     // RelayService -> MessageService (Incoming)
     QObject::connect(m_relayService.get(), &Services::RelayService::incomingDomainMessagesReceived, m_messageService.get(), &Services::MessageService::handleIncomingMessages);
@@ -264,6 +267,18 @@ void Application::registerQmlTypes() {
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", m_notificationManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "MessageService", m_messageService.get());
     qmlRegisterType<ChatMessageModel>("NeoNect.Core", 1, 0, "ChatMessageModel");
+}
+
+QString Application::getUserDatabasePath(const QString &username) const {
+    QString cleanUser = username.trimmed().toLower();
+    QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(baseDir);
+    if (cleanUser.isEmpty()) {
+        QString dbName = m_profile.isEmpty() ? "messages_guest.db" : QString("messages_%1_guest.db").arg(m_profile);
+        return QDir(baseDir).filePath(dbName);
+    }
+    QString dbName = m_profile.isEmpty() ? QString("messages_%1.db").arg(cleanUser) : QString("messages_%1_%2.db").arg(m_profile, cleanUser);
+    return QDir(baseDir).filePath(dbName);
 }
 
 } // namespace NeoNect

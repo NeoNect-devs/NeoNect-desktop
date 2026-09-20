@@ -977,9 +977,9 @@ void TestServices::testAddFriendSendsRealRequest() {
 void TestServices::testPendingFriendIsNotAccepted() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_pend");
     storage->clearSession();
+    storage->setUsername("alice");
     storage->setFriends({});
     storage->setPendingRequests({});
-    storage->setUsername("alice");
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
@@ -1000,9 +1000,9 @@ void TestServices::testPendingFriendIsNotAccepted() {
 void TestServices::testAcceptedFriendAppears() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_acc");
     storage->clearSession();
+    storage->setUsername("alice");
     storage->setFriends({});
     storage->setPendingRequests({"david"});
-    storage->setUsername("alice");
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
@@ -1023,9 +1023,9 @@ void TestServices::testAcceptedFriendAppears() {
 void TestServices::testRejectedFriendDoesNotAppear() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_rej");
     storage->clearSession();
+    storage->setUsername("alice");
     storage->setFriends({});
     storage->setPendingRequests({"eve"});
-    storage->setUsername("alice");
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
@@ -1411,5 +1411,224 @@ void TestServices::testSeenReceiptsAndUpdateCheckmark() {
 
     storageAlice->clearSession();
     storageBob->clearSession();
+}
+
+void TestServices::testSelfDirectMessageAndSavedMessagesFlow() {
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    crypto->setMasterKey(QByteArray(32, 1));
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("client_test_self");
+    storage->clearSession();
+    storage->setUsername("alice");
+    storage->setAuthToken("token_alice");
+    storage->setDeviceId("dev_alice");
+    storage->setOpenConversations({});
+
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
+
+    NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+
+    // 1. Verify netMgr rejects opening DM with oneself ("alice")
+    netMgr.openDirectConversation("alice", 1000);
+    QCOMPARE(netMgr.openConversations().size(), 0);
+
+    // 2. Open chat with Bob -> allowed
+    netMgr.openDirectConversation("bob", 2000);
+    QCOMPARE(netMgr.openConversations().size(), 1);
+    QCOMPARE(netMgr.openConversations().at(0).toMap().value("name").toString(), QString("bob"));
+
+    // 3. Update activity or unread for self -> ignored
+    netMgr.updateConversationActivity("alice", 3000);
+    QCOMPARE(netMgr.openConversations().size(), 1);
+    netMgr.incrementUnreadCount("alice");
+    QCOMPARE(netMgr.unreadCount("alice"), 0);
+
+    // 4. Test MessageService with saved-messages: saved locally as Sent, NO network transmission
+    auto repo = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto msgService = std::make_shared<NeoNect::Services::MessageService>(repo);
+    msgService->setCurrentUserId("alice");
+
+    QSignalSpy spyTransmit(msgService.get(), &NeoNect::Services::MessageService::transmitMessage);
+    QSignalSpy spyUpdated(msgService.get(), &NeoNect::Services::MessageService::messageUpdated);
+
+    msgService->sendMessage("dms:saved-messages", "Personal Note 1");
+    QTest::qWait(100);
+
+    // Verify transmitMessage was NOT emitted for saved-messages
+    QCOMPARE(spyTransmit.count(), 0);
+
+    // Verify message updated to "sent"
+    QVERIFY(!spyUpdated.isEmpty());
+    QCOMPARE(spyUpdated.last().at(2).toString(), QString("sent"));
+
+    // Verify message persistence in DB as "sent"
+    QSignalSpy spyLoaded(msgService.get(), &NeoNect::Services::MessageService::conversationLoaded);
+    msgService->loadConversation("dms:saved-messages");
+    QVERIFY(spyLoaded.wait(500));
+    auto loaded = spyLoaded.first().at(1).toList();
+    QCOMPARE(loaded.size(), 1);
+    QCOMPARE(loaded.at(0).toMap().value("status").toString(), QString("sent"));
+    QCOMPARE(loaded.at(0).toMap().value("text").toString(), QString("Personal Note 1"));
+
+    // 5. Test sendMediaRequest for saved-messages -> directly stored as media, no transmit
+    msgService->sendMediaRequest("dms:saved-messages", "My photo", "image", "file:///pic.png", "pic.png", 500);
+    QTest::qWait(100);
+    QCOMPARE(spyTransmit.count(), 0);
+
+    // 6. Test RelayService ignores saved-messages
+    QSignalSpy spyStatus(relayService.get(), &NeoNect::Services::RelayService::messageTransmissionStatus);
+    NeoNect::Domain::Message dummyMsg;
+    dummyMsg.id = "msg-dummy";
+    dummyMsg.conversationId = "dms:saved-messages";
+    dummyMsg.text = "Hello self";
+    relayService->sendDomainMessage(dummyMsg);
+    QCOMPARE(spyStatus.count(), 1);
+    QCOMPARE(spyStatus.first().at(2).toBool(), true); // success = true, bypassed network
+
+    storage->clearSession();
+}
+
+void TestServices::testRetryMessageFlow() {
+    auto repo = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto msgService = std::make_shared<NeoNect::Services::MessageService>(repo);
+    msgService->setCurrentUserId("alice");
+
+    QSignalSpy spyAdded(msgService.get(), &NeoNect::Services::MessageService::messageAdded);
+    QSignalSpy spyUpdated(msgService.get(), &NeoNect::Services::MessageService::messageUpdated);
+    QSignalSpy spyTransmit(msgService.get(), &NeoNect::Services::MessageService::transmitMessage);
+
+    // 1. Send normal message to Bob
+    msgService->sendMessage("dms:bob", "Hello Bob!");
+    QVERIFY(spyTransmit.wait(500));
+    QCOMPARE(spyAdded.count(), 1);
+    QCOMPARE(spyTransmit.count(), 1);
+
+    QString msgId = spyAdded.first().at(1).toMap().value("id").toString();
+    QVERIFY(!msgId.isEmpty());
+
+    // 2. Simulate transmission failure
+    msgService->handleMessageDeliveryStatus(msgId, false, "Connection timed out");
+    QCOMPARE(spyUpdated.count(), 1);
+    QCOMPARE(spyUpdated.last().at(2).toString(), QString("failed"));
+    QCOMPARE(spyUpdated.last().at(3).toString(), QString("Connection timed out"));
+
+    // 3. Retry sending the message
+    spyUpdated.clear();
+    spyTransmit.clear();
+    msgService->retryMessage(msgId);
+
+    // Should immediately transition to "sending" with empty errorText
+    QVERIFY(!spyUpdated.isEmpty());
+    QCOMPARE(spyUpdated.last().at(2).toString(), QString("sending"));
+    QCOMPARE(spyUpdated.last().at(3).toString(), QString(""));
+
+    // Should re-emit transmitMessage
+    QCOMPARE(spyTransmit.count(), 1);
+    auto retriedMsg = spyTransmit.first().at(0).value<NeoNect::Domain::Message>();
+    QCOMPARE(retriedMsg.id, msgId);
+    QCOMPARE(retriedMsg.text, QString("Hello Bob!"));
+
+    // 4. Simulate transmission success
+    spyUpdated.clear();
+    msgService->handleMessageDeliveryStatus(msgId, true, "");
+    QCOMPARE(spyUpdated.count(), 1);
+    QCOMPARE(spyUpdated.last().at(2).toString(), QString("sent"));
+
+    // Verify persisted status in DB is "sent"
+    QSignalSpy spyLoaded(msgService.get(), &NeoNect::Services::MessageService::conversationLoaded);
+    msgService->loadConversation("dms:bob");
+    QVERIFY(spyLoaded.wait(500));
+    auto loaded = spyLoaded.first().at(1).toList();
+    QCOMPARE(loaded.size(), 1);
+    QCOMPARE(loaded.at(0).toMap().value("status").toString(), QString("sent"));
+
+    // 5. Test Media Request failure & retry
+    spyAdded.clear();
+    spyUpdated.clear();
+    spyTransmit.clear();
+
+    msgService->sendMediaRequest("dms:bob", "Vacation Video", "video", "file:///video.mp4", "video.mp4", 1024 * 1024 * 5);
+    QVERIFY(spyTransmit.wait(500));
+    QCOMPARE(spyAdded.count(), 1);
+    QString reqId = spyAdded.first().at(1).toMap().value("id").toString();
+
+    // Simulate failure
+    msgService->handleMessageDeliveryStatus(reqId, false, "Recipient offline");
+    QCOMPARE(spyUpdated.count(), 1);
+    QCOMPARE(spyUpdated.last().at(2).toString(), QString("failed"));
+
+    // Retry media request
+    spyUpdated.clear();
+    spyTransmit.clear();
+    msgService->retryMessage(reqId);
+
+    QVERIFY(!spyUpdated.isEmpty());
+    QCOMPARE(spyUpdated.last().at(2).toString(), QString("sending"));
+    QCOMPARE(spyTransmit.count(), 1);
+    auto retriedReq = spyTransmit.first().at(0).value<NeoNect::Domain::Message>();
+    QCOMPARE(retriedReq.id, reqId);
+    QCOMPARE(retriedReq.type, QString("media_request"));
+
+    // 6. Test retry of cold message loaded from SQLite (not in memory cache)
+    NeoNect::Domain::Message coldMsg;
+    coldMsg.id = "cold-failed-msg-123";
+    coldMsg.conversationId = "dms:charlie";
+    coldMsg.senderId = "alice";
+    coldMsg.type = "image";
+    coldMsg.text = "Photo from cold DB";
+    coldMsg.mediaUrl = "file:///image.jpg";
+    coldMsg.fileName = "image.jpg";
+    coldMsg.fileSize = 4096;
+    coldMsg.status = NeoNect::Domain::MessageStatus::Failed;
+    coldMsg.errorText = "P2P transfer aborted";
+    coldMsg.timestamp = 1700000000;
+
+    repo->saveMessageAsync(coldMsg, nullptr, [](bool) {});
+    QTest::qWait(200);
+
+    // Create a new MessageService instance with same repo so memory cache is empty
+    auto freshMsgService = std::make_shared<NeoNect::Services::MessageService>(repo);
+    freshMsgService->setCurrentUserId("alice");
+
+    QSignalSpy freshSpyUpdated(freshMsgService.get(), &NeoNect::Services::MessageService::messageUpdated);
+    QSignalSpy freshSpyTransmit(freshMsgService.get(), &NeoNect::Services::MessageService::transmitMessage);
+
+    freshMsgService->retryMessage("cold-failed-msg-123");
+    QVERIFY(freshSpyTransmit.wait(500));
+    QCOMPARE(freshSpyTransmit.count(), 1);
+    auto retriedCold = freshSpyTransmit.first().at(0).value<NeoNect::Domain::Message>();
+    QCOMPARE(retriedCold.id, QString("cold-failed-msg-123"));
+    QCOMPARE(retriedCold.text, QString("Photo from cold DB"));
+    QCOMPARE(retriedCold.mediaUrl, QString("file:///image.jpg"));
+
+    QVERIFY(!freshSpyUpdated.isEmpty());
+    QCOMPARE(freshSpyUpdated.last().at(2).toString(), QString("sending"));
+
+    // 7. Retry for saved-messages: verifies instant local sent resolution
+    NeoNect::Domain::Message savedMsg;
+    savedMsg.id = "saved-failed-msg-456";
+    savedMsg.conversationId = "dms:saved-messages";
+    savedMsg.senderId = "alice";
+    savedMsg.type = "text";
+    savedMsg.text = "My note that failed";
+    savedMsg.status = NeoNect::Domain::MessageStatus::Failed;
+    savedMsg.timestamp = 1700000050;
+
+    repo->saveMessageAsync(savedMsg, nullptr, [](bool) {});
+    QTest::qWait(200);
+
+    freshSpyUpdated.clear();
+    freshSpyTransmit.clear();
+    freshMsgService->retryMessage("saved-failed-msg-456");
+    QTest::qWait(200);
+
+    // Should NOT transmit over network
+    QCOMPARE(freshSpyTransmit.count(), 0);
+    // Should update to sent
+    QVERIFY(!freshSpyUpdated.isEmpty());
+    QCOMPARE(freshSpyUpdated.last().at(2).toString(), QString("sent"));
 }
 

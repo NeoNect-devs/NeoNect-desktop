@@ -15,6 +15,11 @@ MessageService::MessageService(std::shared_ptr<Storage::IMessageRepository> repo
 }
 
 void MessageService::setCurrentUserId(const QString &userId) {
+    if (m_currentUserId != userId) {
+        m_outgoingMessages.clear();
+        m_pendingMediaRequests.clear();
+        m_receivedMediaRequests.clear();
+    }
     m_currentUserId = userId;
 }
 
@@ -39,16 +44,24 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
     }
     msg.waveform = QJsonDocument(waveArray).toJson(QJsonDocument::Compact);
     
-    msg.status = Domain::MessageStatus::Sending;
+    bool isSavedMessages = (conversationId == "dms:saved-messages" || conversationId == "saved-messages");
+    msg.status = isSavedMessages ? Domain::MessageStatus::Sent : Domain::MessageStatus::Sending;
     msg.timestamp = QDateTime::currentMSecsSinceEpoch();
+
+    m_outgoingMessages.insert(msg.id, msg);
 
     QVariantMap msgMap = domainToVariantMap(msg);
     emit messageAdded(msg.conversationId, msgMap);
 
-    m_repository->saveMessageAsync(msg, this, [this, msg, msgMap](bool success) {
+    m_repository->saveMessageAsync(msg, this, [this, msg, isSavedMessages](bool success) {
         if (!success) {
             qWarning() << "[MessageService] Failed to save outgoing message locally.";
             emit messageUpdated(msg.conversationId, msg.id, "failed", "Local DB Error");
+            return;
+        }
+
+        if (isSavedMessages) {
+            emit messageUpdated(msg.conversationId, msg.id, "sent", "");
             return;
         }
 
@@ -57,7 +70,7 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
 }
 
 void MessageService::sendTyping(const QString &conversationId, bool isTyping) {
-    if (conversationId.isEmpty() || !conversationId.startsWith("dms:")) return;
+    if (conversationId.isEmpty() || !conversationId.startsWith("dms:") || conversationId == "dms:saved-messages" || conversationId == "saved-messages") return;
     Domain::Message msg;
     msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     msg.conversationId = conversationId;
@@ -69,7 +82,7 @@ void MessageService::sendTyping(const QString &conversationId, bool isTyping) {
 }
 
 void MessageService::sendSeenReceipt(const QString &conversationId, const QString &messageId) {
-    if (conversationId.isEmpty() || !conversationId.startsWith("dms:")) return;
+    if (conversationId.isEmpty() || !conversationId.startsWith("dms:") || conversationId == "dms:saved-messages" || conversationId == "saved-messages") return;
     Domain::Message msg;
     msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     msg.conversationId = conversationId;
@@ -84,6 +97,12 @@ void MessageService::sendSeenReceipt(const QString &conversationId, const QStrin
 void MessageService::sendMediaRequest(const QString &conversationId, const QString &text, const QString &mediaType,
                                       const QString &mediaUrl, const QString &fileName, qint64 fileSize)
 {
+    bool isSavedMessages = (conversationId == "dms:saved-messages" || conversationId == "saved-messages");
+    if (isSavedMessages) {
+        sendMessage(conversationId, text, mediaType, mediaUrl, fileName, fileSize, 0, {});
+        return;
+    }
+
     Domain::Message msg;
     msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     msg.conversationId = conversationId;
@@ -98,6 +117,7 @@ void MessageService::sendMediaRequest(const QString &conversationId, const QStri
     msg.timestamp = QDateTime::currentMSecsSinceEpoch();
 
     m_pendingMediaRequests.insert(msg.id, msg);
+    m_outgoingMessages.insert(msg.id, msg);
 
     QVariantMap msgMap = domainToVariantMap(msg);
     emit messageAdded(msg.conversationId, msgMap);
@@ -244,6 +264,8 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                 payloadMsg.status = Domain::MessageStatus::Sending;
                 payloadMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
 
+                m_outgoingMessages.insert(payloadMsg.id, payloadMsg);
+
                 QVariantMap msgMap = domainToVariantMap(payloadMsg);
                 emit messageAdded(payloadMsg.conversationId, msgMap);
 
@@ -307,9 +329,66 @@ void MessageService::handleMessageDeliveryStatus(const QString &messageId, bool 
     QString statusStr = success ? "sent" : "failed";
     emit messageUpdated("", messageId, statusStr, errorText);
 
+    if (m_outgoingMessages.contains(messageId)) {
+        m_outgoingMessages[messageId].status = status;
+        m_outgoingMessages[messageId].errorText = errorText;
+    }
+    if (m_pendingMediaRequests.contains(messageId)) {
+        m_pendingMediaRequests[messageId].status = status;
+        m_pendingMediaRequests[messageId].errorText = errorText;
+    }
+
     m_repository->updateMessageStatusAsync(messageId, status, errorText, this, [messageId](bool dbSuccess) {
         if (!dbSuccess) {
             qWarning() << "[MessageService] Failed to update message delivery status in DB for:" << messageId;
+        }
+    });
+}
+
+void MessageService::retryMessage(const QString &messageId) {
+    if (messageId.isEmpty()) return;
+
+    auto executeRetry = [this](Domain::Message msg) {
+        bool isSavedMessages = (msg.conversationId == "dms:saved-messages" || msg.conversationId == "saved-messages");
+        if (isSavedMessages) {
+            msg.status = Domain::MessageStatus::Sent;
+            msg.errorText = "";
+            m_outgoingMessages.insert(msg.id, msg);
+            m_repository->updateMessageStatusAsync(msg.id, Domain::MessageStatus::Sent, "", this, nullptr);
+            emit messageUpdated(msg.conversationId, msg.id, "sent", "");
+            return;
+        }
+
+        msg.status = Domain::MessageStatus::Sending;
+        msg.errorText = "";
+        m_outgoingMessages.insert(msg.id, msg);
+
+        emit messageUpdated(msg.conversationId, msg.id, "sending", "");
+        m_repository->updateMessageStatusAsync(msg.id, Domain::MessageStatus::Sending, "", this, nullptr);
+
+        if (msg.type == "media_request") {
+            m_pendingMediaRequests.insert(msg.id, msg);
+            emit transmitMessage(msg);
+        } else {
+            emit transmitMessage(msg);
+        }
+    };
+
+    if (m_outgoingMessages.contains(messageId)) {
+        executeRetry(m_outgoingMessages.value(messageId));
+        return;
+    }
+
+    if (m_pendingMediaRequests.contains(messageId)) {
+        executeRetry(m_pendingMediaRequests.value(messageId));
+        return;
+    }
+
+    m_repository->getMessageByIdAsync(messageId, this, [executeRetry, messageId](const std::optional<Domain::Message>& optMsg) {
+        if (optMsg.has_value()) {
+            executeRetry(optMsg.value());
+        } else {
+            qWarning() << "[MessageService] retryMessage: Message not found in DB or cache for id:" << messageId;
         }
     });
 }
@@ -322,6 +401,7 @@ QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const
     map["senderId"] = msg.senderId;
     map["fromMe"] = (msg.senderId.toLower() == m_currentUserId.toLower());
     map["type"] = msg.type;
+    map["messageType"] = msg.type;
     map["text"] = msg.text;
     map["mediaUrl"] = msg.mediaUrl;
     map["fileName"] = msg.fileName;

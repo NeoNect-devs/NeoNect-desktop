@@ -16,7 +16,26 @@ function formatSize(bytes) {
 
 function isPlayableVideo(url, fileName) {
     var path = (fileName || url || "").toLowerCase();
-    return path.endsWith(".mp4") || path.endsWith(".webm") || path.endsWith(".mov") || path.endsWith(".m4v") || path.endsWith(".avi");
+    return path.endsWith(".mp4") || path.endsWith(".webm") || path.endsWith(".mov") || path.endsWith(".m4v") || path.endsWith(".avi") || path.endsWith(".mkv") || path.endsWith(".wmv");
+}
+
+function formatMediaSource(rawUrl) {
+    if (!rawUrl || typeof rawUrl !== "string") return "";
+    var s = rawUrl.trim();
+    if (s.length === 0) return "";
+    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("file://") || s.startsWith("qrc:/") || s.startsWith("data:")) {
+        return s;
+    }
+    // Convert backslashes to forward slashes
+    s = s.replace(/\\/g, "/");
+    if (s.startsWith("/")) {
+        return "file://" + s;
+    }
+    // Windows drive letters like C:/
+    if (/^[A-Za-z]:\//.test(s)) {
+        return "file:///" + s;
+    }
+    return "file:///" + s;
 }
 
 function getFileExtension(fileName, url) {

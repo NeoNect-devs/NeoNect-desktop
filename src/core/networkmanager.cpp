@@ -23,9 +23,10 @@ NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTranspor
 {
     if (m_storage) {
         QVariantList raw = m_storage->openConversations();
+        QString myUser = m_storage->username().trimmed().toLower();
         for (const auto &c : raw) {
             QString name = c.toMap().value("name").toString().trimmed().toLower();
-            if (!name.isEmpty() && name != "saved-messages" && name != "friends") {
+            if (!name.isEmpty() && name != "saved-messages" && name != "friends" && (myUser.isEmpty() || name != myUser)) {
                 m_openConversations.append(c);
             }
         }
@@ -90,6 +91,23 @@ void NetworkManager::setupServiceSignals() {
             m_transport->setAuthToken(tokenOrError);
             emit tokenChanged();
             emit currentUsernameChanged();
+
+            // Reload user-scoped open conversations
+            m_openConversations.clear();
+            if (m_storage) {
+                QVariantList raw = m_storage->openConversations();
+                QString myUser = m_storage->username().trimmed().toLower();
+                for (const auto &c : raw) {
+                    QString name = c.toMap().value("name").toString().trimmed().toLower();
+                    if (!name.isEmpty() && name != "saved-messages" && name != "friends" && (myUser.isEmpty() || name != myUser)) {
+                        m_openConversations.append(c);
+                    }
+                }
+                sortOpenConversations();
+                m_storage->setOpenConversations(m_openConversations);
+            }
+            emit openConversationsChanged();
+
             m_friendService->loadFriends();
             autoRegisterDevice();
             m_authService->fetchUserProfile();
@@ -122,8 +140,10 @@ void NetworkManager::setupServiceSignals() {
 
     // Relay Service Connections
     connect(m_relayService.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived, this, [this](const std::vector<NeoNect::Domain::Message> &msgs) {
+        QString myUser = currentUsername().trimmed().toLower();
         for (const auto &msg : msgs) {
-            if (msg.type != "typing_start" && msg.type != "typing_stop" && !msg.senderId.trimmed().isEmpty()) {
+            QString sender = msg.senderId.trimmed().toLower();
+            if (msg.type != "typing_start" && msg.type != "typing_stop" && !sender.isEmpty() && (myUser.isEmpty() || sender != myUser)) {
                 updateConversationActivity(msg.senderId, msg.timestamp);
             }
             emit incomingRelayMessageReceived(msg.senderId, msg.conversationId, msg.text, msg.timestamp);
@@ -131,8 +151,12 @@ void NetworkManager::setupServiceSignals() {
     });
 
     connect(m_relayService.get(), &NeoNect::Services::RelayService::sessionUnauthorized, this, [this](const QString &message) {
+        m_sessionToken.clear();
+        m_openConversations.clear();
+        emit openConversationsChanged();
         emit tokenChanged();
         emit currentUsernameChanged();
+        emit isConnectedChanged();
         emit loginResult(false, message);
     });
 
@@ -309,6 +333,9 @@ void NetworkManager::logoutUser() {
     m_relayService->stopPolling();
     m_friendService->stopHeartbeat();
     m_authService->logoutUser();
+    m_friendService->loadFriends();
+    m_openConversations.clear();
+    emit openConversationsChanged();
     emit tokenChanged();
     emit currentUsernameChanged();
     emit isConnectedChanged();
@@ -386,7 +413,11 @@ QVariantList NetworkManager::openConversations() const {
 
 void NetworkManager::openDirectConversation(const QString &username, qint64 activityTimestamp) {
     QString lower = username.trimmed().toLower();
-    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends") return;
+    QString myUser = currentUsername().trimmed().toLower();
+    if (myUser.isEmpty() && m_storage) {
+        myUser = m_storage->username().trimmed().toLower();
+    }
+    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends" || (!myUser.isEmpty() && lower == myUser)) return;
 
     qint64 ts = activityTimestamp > 0 ? activityTimestamp : QDateTime::currentMSecsSinceEpoch();
 
@@ -439,7 +470,11 @@ void NetworkManager::closeDirectConversation(const QString &username) {
 
 void NetworkManager::updateConversationActivity(const QString &username, qint64 activityTimestamp) {
     QString lower = username.trimmed().toLower();
-    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends") return;
+    QString myUser = currentUsername().trimmed().toLower();
+    if (myUser.isEmpty() && m_storage) {
+        myUser = m_storage->username().trimmed().toLower();
+    }
+    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends" || (!myUser.isEmpty() && lower == myUser)) return;
     openDirectConversation(lower, activityTimestamp);
 }
 
@@ -456,7 +491,11 @@ int NetworkManager::unreadCount(const QString &username) const {
 
 void NetworkManager::markConversationAsRead(const QString &username) {
     QString lower = username.trimmed().toLower();
-    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends") return;
+    QString myUser = currentUsername().trimmed().toLower();
+    if (myUser.isEmpty() && m_storage) {
+        myUser = m_storage->username().trimmed().toLower();
+    }
+    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends" || (!myUser.isEmpty() && lower == myUser)) return;
 
     bool updated = false;
     for (int i = 0; i < m_openConversations.size(); ++i) {
@@ -481,7 +520,11 @@ void NetworkManager::markConversationAsRead(const QString &username) {
 
 void NetworkManager::incrementUnreadCount(const QString &username) {
     QString lower = username.trimmed().toLower();
-    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends") return;
+    QString myUser = currentUsername().trimmed().toLower();
+    if (myUser.isEmpty() && m_storage) {
+        myUser = m_storage->username().trimmed().toLower();
+    }
+    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends" || (!myUser.isEmpty() && lower == myUser)) return;
 
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     bool found = false;

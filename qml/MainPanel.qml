@@ -138,8 +138,7 @@ Item {
             MessageService.sendTyping(key, false);
         }
         var mType = itemObj.messageType || "text";
-        // Two-phase media transfer: images, videos, audio, and files require pre-approval; voice, text, sticker are direct
-        if (mType === "image" || mType === "video" || mType === "audio" || mType === "file") {
+        if (mType === "media_request") {
             MessageService.sendMediaRequest(key, itemObj.text || itemObj.content || "", mType, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0);
         } else {
             MessageService.sendMessage(key, itemObj.text || itemObj.content || "", mType, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0, itemObj.duration || 0, itemObj.waveform || []);
@@ -147,9 +146,10 @@ Item {
     }
 
     function retryMessage(messageId) {
-        // MessageService handles retrying internally if we expose an endpoint, or we can just send it again?
-        // Let's assume we don't need retry functionality perfectly for this phase, but if we do:
-        // MessageService.retryMessage(messageId);
+        if (!messageId) return;
+        if (typeof MessageService !== "undefined" && MessageService) {
+            MessageService.retryMessage(messageId);
+        }
     }
 
 

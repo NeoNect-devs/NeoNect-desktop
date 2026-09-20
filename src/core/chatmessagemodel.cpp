@@ -3,6 +3,26 @@
 #include <QUuid>
 #include <QDateTime>
 
+static QString detectMediaType(const QString &mediaUrl, const QString &fileName, const QString &fallbackType) {
+    QString target = (fileName.isEmpty() ? mediaUrl : fileName).toLower();
+    if (target.endsWith(".png") || target.endsWith(".jpg") || target.endsWith(".jpeg") ||
+        target.endsWith(".webp") || target.endsWith(".gif") || target.endsWith(".bmp") ||
+        target.endsWith(".svg") || target.endsWith(".ico") || target.endsWith(".tiff")) {
+        return "image";
+    }
+    if (target.endsWith(".mp4") || target.endsWith(".webm") || target.endsWith(".mov") ||
+        target.endsWith(".mkv") || target.endsWith(".avi") || target.endsWith(".m4v") ||
+        target.endsWith(".flv") || target.endsWith(".wmv") || target.endsWith(".3gp")) {
+        return "video";
+    }
+    if (target.endsWith(".mp3") || target.endsWith(".wav") || target.endsWith(".ogg") ||
+        target.endsWith(".flac") || target.endsWith(".m4a") || target.endsWith(".aac") ||
+        target.endsWith(".opus") || target.endsWith(".wma")) {
+        return "audio";
+    }
+    return fallbackType.isEmpty() ? "file" : fallbackType;
+}
+
 ChatMessageModel::ChatMessageModel(QObject *parent)
     : QAbstractListModel(parent) {
     m_items.reserve(128);
@@ -88,7 +108,11 @@ void ChatMessageModel::insertMessage(const QString &text, bool fromMe, const QSt
     item.fromMe = fromMe;
     item.senderName = senderName;
     item.senderAvatar = senderAvatar;
-    item.messageType = messageType.isEmpty() ? "text" : messageType;
+    QString resolvedType = messageType;
+    if ((resolvedType == "file" || resolvedType == "text" || resolvedType.isEmpty()) && (!mediaUrl.isEmpty() || !fileName.isEmpty())) {
+        resolvedType = detectMediaType(mediaUrl, fileName, resolvedType);
+    }
+    item.messageType = resolvedType.isEmpty() ? "text" : resolvedType;
     item.mediaUrl = mediaUrl;
     item.fileName = fileName;
     item.fileSize = fileSize;
@@ -109,9 +133,12 @@ void ChatMessageModel::insertMessageItem(const QVariantMap &map) {
     bool fromMe = map.value("fromMe", false).toBool();
     QString senderName = map.value("senderName", fromMe ? "Me" : "Anonymous").toString();
     QString senderAvatar = map.value("senderAvatar", "").toString();
-    QString messageType = map.value("messageType", "text").toString();
     QString mediaUrl = map.value("mediaUrl", "").toString();
     QString fileName = map.value("fileName", "").toString();
+    QString messageType = map.contains("messageType") ? map.value("messageType").toString() : map.value("type", "text").toString();
+    if ((messageType == "file" || messageType == "text" || messageType.isEmpty()) && (!mediaUrl.isEmpty() || !fileName.isEmpty())) {
+        messageType = detectMediaType(mediaUrl, fileName, messageType);
+    }
     qint64 fileSize = map.value("fileSize", 0).toLongLong();
     int duration = map.value("duration", 0).toInt();
     QVariantList waveform = map.value("waveform").toList();
@@ -202,9 +229,13 @@ MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {
     item.fromMe = map.value("fromMe").toBool();
     item.senderName = map.contains("senderId") && !map.value("senderId").toString().isEmpty() ? map.value("senderId").toString() : map.value("senderName").toString();
     item.senderAvatar = item.senderName.isEmpty() ? "" : item.senderName.left(1).toUpper();
-    item.messageType = map.value("type", "text").toString();
     item.mediaUrl = map.value("mediaUrl").toString();
     item.fileName = map.value("fileName").toString();
+    QString rawType = map.contains("type") ? map.value("type").toString() : map.value("messageType", "text").toString();
+    if ((rawType == "file" || rawType == "text" || rawType.isEmpty()) && (!item.mediaUrl.isEmpty() || !item.fileName.isEmpty())) {
+        rawType = detectMediaType(item.mediaUrl, item.fileName, rawType);
+    }
+    item.messageType = rawType;
     item.fileSize = map.value("fileSize").toLongLong();
     item.duration = map.value("duration").toInt();
     item.waveform = map.value("waveform").toList();

@@ -93,7 +93,16 @@ Rectangle {
                             AudioManager.pauseAudio();
                         }
                     } else {
-                        if (musicRoot.hasPlaybackError || !musicRoot.audioUrl) {
+                        if (musicRoot.hasPlaybackError) {
+                            musicRoot.hasPlaybackError = false;
+                            var s = musicRoot.audioUrl;
+                            musicPlayer.source = "";
+                            musicPlayer.source = s;
+                            musicPlayer.play();
+                            if (musicRoot.messageId && typeof MessageService !== "undefined" && MessageService) {
+                                MessageService.retryMessage(musicRoot.messageId);
+                            }
+                        } else if (!musicRoot.audioUrl) {
                             AudioManager.playAudio(musicRoot.messageId, musicRoot.audioUrl, musicRoot.duration);
                         } else {
                             musicPlayer.play();

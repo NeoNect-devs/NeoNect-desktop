@@ -2,6 +2,7 @@
 #include "domain/message.h"
 #include <vector>
 #include <functional>
+#include <optional>
 #include <QObject>
 
 namespace NeoNect {
@@ -15,6 +16,7 @@ public:
     // For simplicity, we can pass a QObject* context and use QMetaObject::invokeMethod or similar.
     using SaveCallback = std::function<void(bool success)>;
     using FetchCallback = std::function<void(const std::vector<Domain::Message>& messages)>;
+    using MessageCallback = std::function<void(const std::optional<Domain::Message>&)>;
 
     virtual void saveMessageAsync(const Domain::Message &msg, const QObject* context, SaveCallback callback) = 0;
     virtual void saveMessagesAsync(const std::vector<Domain::Message> &msgs, const QObject* context, SaveCallback callback) = 0;
@@ -22,6 +24,8 @@ public:
     virtual void markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context = nullptr, SaveCallback callback = nullptr) = 0;
     virtual void deleteMessageAsync(const QString &id, const QObject* context = nullptr, SaveCallback callback = nullptr) = 0;
     virtual void getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, FetchCallback callback) = 0;
+    virtual void getMessageByIdAsync(const QString &id, const QObject* context, MessageCallback callback) = 0;
+    virtual void switchDatabase(const QString& dbPath) = 0;
 };
 
 }

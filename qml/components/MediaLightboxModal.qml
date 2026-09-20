@@ -4,6 +4,7 @@ import QtQuick.Controls
 import QtQuick.Controls.impl
 import QtMultimedia
 import NeoNect.Core 1.0
+import "UIHelpers.js" as UIHelpers
 
 Rectangle {
     id: lightboxRoot
@@ -44,7 +45,7 @@ Rectangle {
     }
 
     function open(url, type, name) {
-        lightboxRoot.mediaUrl = url;
+        lightboxRoot.mediaUrl = UIHelpers.formatMediaSource(url);
         lightboxRoot.mediaType = type || "image";
         lightboxRoot.fileName = name || "Media";
         lightboxRoot.zoomScale = 1.0;

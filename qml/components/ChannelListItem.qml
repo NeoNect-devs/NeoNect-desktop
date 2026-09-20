@@ -30,6 +30,14 @@ Rectangle {
 
     Behavior on color { ColorAnimation { duration: 100 } }
 
+    MouseArea {
+        id: mouseArea
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: itemRoot.clicked()
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 8
@@ -178,16 +186,12 @@ Rectangle {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: itemRoot.closeClicked()
+                z: 10
+                onClicked: function(mouse) {
+                    mouse.accepted = true;
+                    itemRoot.closeClicked();
+                }
             }
         }
-    }
-
-    MouseArea {
-        id: mouseArea
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: itemRoot.clicked()
     }
 }

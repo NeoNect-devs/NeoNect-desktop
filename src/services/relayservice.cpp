@@ -127,6 +127,13 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
         targetUser = msg.conversationId;
     }
 
+    if (targetUser.compare("saved-messages", Qt::CaseInsensitive) == 0) {
+        qDebug() << "[RelayService] sendDomainMessage: Skipping network relay for saved-messages.";
+        emit secureMessageTransmitted(targetUser, true);
+        emit messageTransmissionStatus(targetUser, msg.id, true, "");
+        return;
+    }
+
     if (token.isEmpty() || targetUser.isEmpty()) {
         qDebug() << "[RelayService] sendDomainMessage failed: token.isEmpty()=" << token.isEmpty() << "targetUser=" << targetUser << "conversationId=" << msg.conversationId;
         emit secureMessageTransmitted(targetUser, false);

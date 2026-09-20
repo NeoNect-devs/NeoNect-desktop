@@ -174,7 +174,7 @@ ColumnLayout {
                                         if (!fileName || fileName.indexOf('\\') !== -1) {
                                             fileName = path.substring(path.lastIndexOf('\\') + 1);
                                         }
-                                        var detectedType = root.detectMediaType(url, fileName);
+                                        var detectedType = UIHelpers.detectMediaType(url, fileName);
                                         var itemObj = {
                                             messageId: "msg_" + Date.now() + "_" + i,
                                             text: "",

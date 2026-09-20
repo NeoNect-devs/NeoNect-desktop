@@ -13,8 +13,8 @@ Rectangle {
     opacity: 0.0
     z: 99999
 
-    signal logoutRequested()
-    signal sendTestNotificationRequested()
+    signal logoutRequested
+    signal sendTestNotificationRequested
     signal profileUpdated(string displayName, string bio, string status)
 
     property string currentTab: "profile" // "profile", "appearance", "notifications", "privacy", "logout"
@@ -33,7 +33,10 @@ Rectangle {
     }
 
     Behavior on opacity {
-        NumberAnimation { duration: 200; easing.type: Easing.InOutQuad }
+        NumberAnimation {
+            duration: 200
+            easing.type: Easing.InOutQuad
+        }
     }
 
     // Dismiss modal on clicking backdrop
@@ -54,7 +57,9 @@ Rectangle {
         anchors.centerIn: parent
 
         // Prevent clicks inside modal from closing
-        MouseArea { anchors.fill: parent }
+        MouseArea {
+            anchors.fill: parent
+        }
 
         ColumnLayout {
             anchors.fill: parent
@@ -96,7 +101,8 @@ Rectangle {
 
                     // Close ✕ Button
                     Rectangle {
-                        width: 28; height: 28
+                        width: 28
+                        height: 28
                         radius: 14
                         color: closeMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.15) : "transparent"
 
@@ -141,52 +147,6 @@ Rectangle {
                         anchors.fill: parent
                         anchors.margins: 10
                         spacing: 4
-
-                        // Helper Navigation Item Component
-                        component NavTabButton: Rectangle {
-                            property string tabId: ""
-                            property string tabTitle: ""
-                            property string tabIconSource: ""
-                            property bool isDanger: false
-
-                            width: parent ? parent.width : 190
-                            height: 38
-                            radius: 8
-                            color: modalRoot.currentTab === tabId ? (isDanger ? Qt.rgba(255, 82, 82, 0.2) : Qt.rgba(10, 132, 255, 0.2)) : (navMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : "transparent")
-
-                            Behavior on color { ColorAnimation { duration: 120 } }
-
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 12
-                                anchors.rightMargin: 12
-                                spacing: 10
-
-                                IconImage {
-                                    source: tabIconSource
-                                    width: 17; height: 17
-                                    color: isDanger ? "#FF5252" : (modalRoot.currentTab === tabId ? (tabId === "appearance" ? "#00E5FF" : (tabId === "notifications" ? "#FAA81A" : (tabId === "privacy" ? "#23A55A" : "#0A84FF"))) : (navMouse.containsMouse ? "#FFFFFF" : "#949BA4"))
-                                    Layout.alignment: Qt.AlignVCenter
-                                }
-
-                                Text {
-                                    text: tabTitle
-                                    color: isDanger ? "#FF5252" : (modalRoot.currentTab === tabId ? "#FFFFFF" : (navMouse.containsMouse ? "#FFFFFF" : "#949BA4"))
-                                    font.family: "Segoe UI"
-                                    font.pixelSize: 13
-                                    font.weight: modalRoot.currentTab === tabId ? Font.DemiBold : Font.Normal
-                                    Layout.fillWidth: true
-                                }
-                            }
-
-                            MouseArea {
-                                id: navMouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: modalRoot.currentTab = tabId
-                            }
-                        }
 
                         NavTabButton {
                             tabId: "profile"
@@ -271,10 +231,12 @@ Rectangle {
 
                                 // Avatar with Status Pill
                                 Item {
-                                    width: 72; height: 72
+                                    width: 72
+                                    height: 72
 
                                     Rectangle {
-                                        width: 72; height: 72
+                                        width: 72
+                                        height: 72
                                         radius: 18
                                         color: ThemeData.accentColor
                                         border.color: Qt.rgba(255, 255, 255, 0.2)
@@ -292,12 +254,16 @@ Rectangle {
 
                                     // Online Status Pill Under Avatar
                                     Rectangle {
-                                        width: 32; height: 9
+                                        width: 32
+                                        height: 9
                                         radius: 4.5
                                         color: {
-                                            if (modalRoot.currentStatus === "online") return "#23A55A";
-                                            if (modalRoot.currentStatus === "afk") return "#FAA81A";
-                                            if (modalRoot.currentStatus === "dnd") return "#F23F43";
+                                            if (modalRoot.currentStatus === "online")
+                                                return "#23A55A";
+                                            if (modalRoot.currentStatus === "afk")
+                                                return "#FAA81A";
+                                            if (modalRoot.currentStatus === "dnd")
+                                                return "#F23F43";
                                             return "#80848E";
                                         }
                                         border.color: "#0F1013"
@@ -336,7 +302,8 @@ Rectangle {
                             }
 
                             Rectangle {
-                                Layout.fillWidth: true; height: 1
+                                Layout.fillWidth: true
+                                height: 1
                                 color: Qt.rgba(255, 255, 255, 0.08)
                             }
 
@@ -352,45 +319,6 @@ Rectangle {
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
-
-                                component StatusPillOption: Rectangle {
-                                    property string statusKey: ""
-                                    property string statusLabel: ""
-                                    property string statusColor: ""
-
-                                    Layout.fillWidth: true
-                                    height: 34
-                                    radius: 8
-                                    color: modalRoot.currentStatus === statusKey ? Qt.rgba(255, 255, 255, 0.12) : (statusMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : Qt.rgba(255, 255, 255, 0.03))
-                                    border.color: modalRoot.currentStatus === statusKey ? statusColor : "transparent"
-                                    border.width: 1
-
-                                    RowLayout {
-                                        anchors.centerIn: parent
-                                        spacing: 6
-
-                                        Rectangle {
-                                            width: 14; height: 6; radius: 3
-                                            color: statusColor
-                                        }
-
-                                        Text {
-                                            text: statusLabel
-                                            color: modalRoot.currentStatus === statusKey ? "#FFFFFF" : "#949BA4"
-                                            font.family: "Segoe UI"
-                                            font.pixelSize: 12
-                                            font.weight: modalRoot.currentStatus === statusKey ? Font.DemiBold : Font.Normal
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        id: statusMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: modalRoot.currentStatus = statusKey
-                                    }
-                                }
 
                                 StatusPillOption {
                                     statusKey: "online"
@@ -424,7 +352,8 @@ Rectangle {
                             }
 
                             Rectangle {
-                                Layout.fillWidth: true; height: 38
+                                Layout.fillWidth: true
+                                height: 38
                                 radius: 8
                                 color: "#14161A"
                                 border.color: nameInput.activeFocus ? "#0A84FF" : Qt.rgba(255, 255, 255, 0.1)
@@ -433,7 +362,8 @@ Rectangle {
                                 TextInput {
                                     id: nameInput
                                     anchors.fill: parent
-                                    anchors.leftMargin: 12; anchors.rightMargin: 12
+                                    anchors.leftMargin: 12
+                                    anchors.rightMargin: 12
                                     verticalAlignment: TextInput.AlignVCenter
                                     text: modalRoot.customDisplayName
                                     color: "#FFFFFF"
@@ -453,7 +383,8 @@ Rectangle {
                             }
 
                             Rectangle {
-                                Layout.fillWidth: true; height: 60
+                                Layout.fillWidth: true
+                                height: 60
                                 radius: 8
                                 color: "#14161A"
                                 border.color: bioInput.activeFocus ? "#0A84FF" : Qt.rgba(255, 255, 255, 0.1)
@@ -493,51 +424,6 @@ Rectangle {
                                 Layout.fillWidth: true
                                 spacing: 10
 
-                                component ThemeCard: Rectangle {
-                                    property int tIndex: 0
-                                    property string tName: ""
-                                    property string tBgColor: ""
-                                    property string tPanelColor: ""
-
-                                    Layout.fillWidth: true
-                                    height: 70
-                                    radius: 10
-                                    color: tBgColor
-                                    border.color: modalRoot.selectedThemeIndex === tIndex ? "#00E5FF" : Qt.rgba(255, 255, 255, 0.15)
-                                    border.width: modalRoot.selectedThemeIndex === tIndex ? 2 : 1
-
-                                    ColumnLayout {
-                                        anchors.centerIn: parent
-                                        spacing: 4
-
-                                        Rectangle {
-                                            width: 24; height: 24; radius: 6
-                                            color: tPanelColor
-                                            border.color: Qt.rgba(255, 255, 255, 0.2)
-                                            Layout.alignment: Qt.AlignHCenter
-                                        }
-
-                                        Text {
-                                            text: tName
-                                            color: "#FFFFFF"
-                                            font.family: "Segoe UI"
-                                            font.pixelSize: 11
-                                            font.bold: modalRoot.selectedThemeIndex === tIndex
-                                            Layout.alignment: Qt.AlignHCenter
-                                        }
-                                    }
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            modalRoot.selectedThemeIndex = tIndex;
-                                            if (tIndex === 0) ThemeData.loadOledPreset();
-                                            else if (tIndex === 1) ThemeData.loadSoftDarkPreset();
-                                        }
-                                    }
-                                }
-
                                 ThemeCard {
                                     tIndex: 0
                                     tName: "Cyber Dark"
@@ -559,7 +445,8 @@ Rectangle {
                             }
 
                             Rectangle {
-                                Layout.fillWidth: true; height: 1
+                                Layout.fillWidth: true
+                                height: 1
                                 color: Qt.rgba(255, 255, 255, 0.08)
                             }
 
@@ -576,34 +463,31 @@ Rectangle {
                                 Layout.fillWidth: true
                                 spacing: 12
 
-                                component AccentColorCircle: Rectangle {
-                                    property string hexColor: ""
-                                    property string colorName: ""
-
-                                    width: 32; height: 32; radius: 16
-                                    color: hexColor
-                                    border.color: modalRoot.selectedAccentColor === hexColor ? "#FFFFFF" : "transparent"
-                                    border.width: 2.5
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            modalRoot.selectedAccentColor = hexColor;
-                                            ThemeData.accentColor = hexColor;
-                                        }
-                                    }
+                                AccentColorCircle {
+                                    hexColor: "#00E5FF"
+                                    colorName: "Electric Cyan"
                                 }
-
-                                AccentColorCircle { hexColor: "#00E5FF"; colorName: "Electric Cyan" }
-                                AccentColorCircle { hexColor: "#0A84FF"; colorName: "Royal Blue" }
-                                AccentColorCircle { hexColor: "#23A55A"; colorName: "Emerald Green" }
-                                AccentColorCircle { hexColor: "#FAA81A"; colorName: "Amber Gold" }
-                                AccentColorCircle { hexColor: "#FF5252"; colorName: "Crimson Red" }
+                                AccentColorCircle {
+                                    hexColor: "#0A84FF"
+                                    colorName: "Royal Blue"
+                                }
+                                AccentColorCircle {
+                                    hexColor: "#23A55A"
+                                    colorName: "Emerald Green"
+                                }
+                                AccentColorCircle {
+                                    hexColor: "#FAA81A"
+                                    colorName: "Amber Gold"
+                                }
+                                AccentColorCircle {
+                                    hexColor: "#FF5252"
+                                    colorName: "Crimson Red"
+                                }
                             }
 
                             Rectangle {
-                                Layout.fillWidth: true; height: 1
+                                Layout.fillWidth: true
+                                height: 1
                                 color: Qt.rgba(255, 255, 255, 0.08)
                             }
 
@@ -630,7 +514,9 @@ Rectangle {
 
                             Slider {
                                 Layout.fillWidth: true
-                                from: 12; to: 18; stepSize: 1
+                                from: 12
+                                to: 18
+                                stepSize: 1
                                 value: ThemeData.fontSizeNormal
                                 onMoved: ThemeData.fontSizeNormal = Math.round(value)
                             }
@@ -741,17 +627,30 @@ Rectangle {
                                     id: cornerCombo
                                     Layout.preferredWidth: 170
                                     model: [
-                                        { text: "Bottom Right (Default)", value: "bottom-right" },
-                                        { text: "Top Right", value: "top-right" },
-                                        { text: "Bottom Left", value: "bottom-left" },
-                                        { text: "Top Left", value: "top-left" }
+                                        {
+                                            text: "Bottom Right (Default)",
+                                            value: "bottom-right"
+                                        },
+                                        {
+                                            text: "Top Right",
+                                            value: "top-right"
+                                        },
+                                        {
+                                            text: "Bottom Left",
+                                            value: "bottom-left"
+                                        },
+                                        {
+                                            text: "Top Left",
+                                            value: "top-left"
+                                        }
                                     ]
                                     textRole: "text"
                                     valueRole: "value"
                                     currentIndex: {
                                         var cur = (typeof NotificationManager !== "undefined" && NotificationManager) ? NotificationManager.screenCorner : "bottom-right";
                                         for (var i = 0; i < model.length; ++i) {
-                                            if (model[i].value === cur) return i;
+                                            if (model[i].value === cur)
+                                                return i;
                                         }
                                         return 0;
                                     }
@@ -765,7 +664,8 @@ Rectangle {
                             }
 
                             Rectangle {
-                                Layout.fillWidth: true; height: 1
+                                Layout.fillWidth: true
+                                height: 1
                                 color: Qt.rgba(255, 255, 255, 0.08)
                             }
 
@@ -778,14 +678,14 @@ Rectangle {
                             }
 
                             Text {
-                                text: "Test the Telegram-style notification pill system by sending a live test notification."
+                                text: "Test the notification pill system by sending a live test notification."
                                 color: "#80848E"
                                 font.family: "Segoe UI"
                                 font.pixelSize: 12
                             }
 
                             NeoNectButton {
-                                text: "⚡ Send Telegram Notification Pill"
+                                text: "⚡ Send NeoNect Notification Pill"
                                 highlighted: true
                                 Layout.preferredWidth: 260
                                 Layout.preferredHeight: 36
@@ -830,7 +730,8 @@ Rectangle {
 
                                     IconImage {
                                         source: "qrc:/qt/qml/NeoNect/assets/icons/shield.svg"
-                                        width: 24; height: 24
+                                        width: 24
+                                        height: 24
                                         color: "#23A55A"
                                         Layout.alignment: Qt.AlignVCenter
                                     }
@@ -866,7 +767,8 @@ Rectangle {
                             }
 
                             Rectangle {
-                                Layout.fillWidth: true; height: 38
+                                Layout.fillWidth: true
+                                height: 38
                                 radius: 8
                                 color: "#14161A"
                                 border.color: Qt.rgba(255, 255, 255, 0.1)
@@ -919,7 +821,8 @@ Rectangle {
                                 }
 
                                 Rectangle {
-                                    width: 140; height: 36
+                                    width: 140
+                                    height: 36
                                     radius: 8
                                     color: logoutMouse.containsMouse ? "#D32F2F" : "#FF5252"
 
@@ -947,6 +850,168 @@ Rectangle {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // Helper Navigation Item Component
+    component NavTabButton: Rectangle {
+        property string tabId: ""
+        property string tabTitle: ""
+        property string tabIconSource: ""
+        property bool isDanger: false
+
+        width: parent ? parent.width : 190
+        height: 38
+        radius: 8
+        color: modalRoot.currentTab === tabId ? (isDanger ? Qt.rgba(255, 82, 82, 0.2) : Qt.rgba(10, 132, 255, 0.2)) : (navMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : "transparent")
+
+        Behavior on color {
+            ColorAnimation {
+                duration: 120
+            }
+        }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            spacing: 10
+
+            IconImage {
+                source: tabIconSource
+                width: 17
+                height: 17
+                color: isDanger ? "#FF5252" : (modalRoot.currentTab === tabId ? (tabId === "appearance" ? "#00E5FF" : (tabId === "notifications" ? "#FAA81A" : (tabId === "privacy" ? "#23A55A" : "#0A84FF"))) : (navMouse.containsMouse ? "#FFFFFF" : "#949BA4"))
+                Layout.alignment: Qt.AlignVCenter
+            }
+
+            Text {
+                text: tabTitle
+                color: isDanger ? "#FF5252" : (modalRoot.currentTab === tabId ? "#FFFFFF" : (navMouse.containsMouse ? "#FFFFFF" : "#949BA4"))
+                font.family: "Segoe UI"
+                font.pixelSize: 13
+                font.weight: modalRoot.currentTab === tabId ? Font.DemiBold : Font.Normal
+                Layout.fillWidth: true
+            }
+        }
+
+        MouseArea {
+            id: navMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: modalRoot.currentTab = tabId
+        }
+    }
+
+    component StatusPillOption: Rectangle {
+        property string statusKey: ""
+        property string statusLabel: ""
+        property string statusColor: ""
+
+        Layout.fillWidth: true
+        height: 34
+        radius: 8
+        color: modalRoot.currentStatus === statusKey ? Qt.rgba(255, 255, 255, 0.12) : (statusMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : Qt.rgba(255, 255, 255, 0.03))
+        border.color: modalRoot.currentStatus === statusKey ? statusColor : "transparent"
+        border.width: 1
+
+        RowLayout {
+            anchors.centerIn: parent
+            spacing: 6
+
+            Rectangle {
+                width: 14
+                height: 6
+                radius: 3
+                color: statusColor
+            }
+
+            Text {
+                text: statusLabel
+                color: modalRoot.currentStatus === statusKey ? "#FFFFFF" : "#949BA4"
+                font.family: "Segoe UI"
+                font.pixelSize: 12
+                font.weight: modalRoot.currentStatus === statusKey ? Font.DemiBold : Font.Normal
+            }
+        }
+
+        MouseArea {
+            id: statusMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: modalRoot.currentStatus = statusKey
+        }
+    }
+
+    component ThemeCard: Rectangle {
+        property int tIndex: 0
+        property string tName: ""
+        property string tBgColor: ""
+        property string tPanelColor: ""
+
+        Layout.fillWidth: true
+        height: 70
+        radius: 10
+        color: tBgColor
+        border.color: modalRoot.selectedThemeIndex === tIndex ? "#00E5FF" : Qt.rgba(255, 255, 255, 0.15)
+        border.width: modalRoot.selectedThemeIndex === tIndex ? 2 : 1
+
+        ColumnLayout {
+            anchors.centerIn: parent
+            spacing: 4
+
+            Rectangle {
+                width: 24
+                height: 24
+                radius: 6
+                color: tPanelColor
+                border.color: Qt.rgba(255, 255, 255, 0.2)
+                Layout.alignment: Qt.AlignHCenter
+            }
+
+            Text {
+                text: tName
+                color: "#FFFFFF"
+                font.family: "Segoe UI"
+                font.pixelSize: 11
+                font.bold: modalRoot.selectedThemeIndex === tIndex
+                Layout.alignment: Qt.AlignHCenter
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                modalRoot.selectedThemeIndex = tIndex;
+                if (tIndex === 0)
+                    ThemeData.loadOledPreset();
+                else if (tIndex === 1)
+                    ThemeData.loadSoftDarkPreset();
+            }
+        }
+    }
+
+    component AccentColorCircle: Rectangle {
+        property string hexColor: ""
+        property string colorName: ""
+
+        width: 32
+        height: 32
+        radius: 16
+        color: hexColor
+        border.color: modalRoot.selectedAccentColor === hexColor ? "#FFFFFF" : "transparent"
+        border.width: 2.5
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                modalRoot.selectedAccentColor = hexColor;
+                ThemeData.accentColor = hexColor;
             }
         }
     }

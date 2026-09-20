@@ -363,37 +363,84 @@ Rectangle {
                 font.pixelSize: 10
             }
 
-            Rectangle {
+            RowLayout {
                 Layout.alignment: Qt.AlignHCenter
-                width: 160; height: 32
-                radius: 6
-                color: extBtnMouse.containsMouse ? "#0066CC" : ThemeData.accentColor
+                spacing: 8
 
-                RowLayout {
-                    anchors.centerIn: parent
-                    spacing: 6
+                Rectangle {
+                    width: 80; height: 32
+                    radius: 6
+                    color: retryBtnMouse.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.25)
+                    border.color: "#E53935"
+                    border.width: 1
 
-                    IconImage {
-                        source: "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
-                        width: 14; height: 14
-                        color: "#FFFFFF"
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        IconImage {
+                            source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
+                            width: 12; height: 12
+                            color: "#FFFFFF"
+                        }
+
+                        Text {
+                            text: "Retry"
+                            color: "#FFFFFF"
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
                     }
 
-                    Text {
-                        text: "Open System Player ↗"
-                        color: "#FFFFFF"
-                        font.family: "Segoe UI"
-                        font.pixelSize: 11
-                        font.bold: true
+                    MouseArea {
+                        id: retryBtnMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            videoRoot.hasPlaybackError = false;
+                            player.source = "";
+                            player.source = videoRoot.videoUrl;
+                            player.play();
+                            if (videoRoot.messageId && typeof MessageService !== "undefined" && MessageService) {
+                                MessageService.retryMessage(videoRoot.messageId);
+                            }
+                        }
                     }
                 }
 
-                MouseArea {
-                    id: extBtnMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: AudioManager.openMediaFile(videoRoot.videoUrl)
+                Rectangle {
+                    width: 140; height: 32
+                    radius: 6
+                    color: extBtnMouse.containsMouse ? "#0066CC" : ThemeData.accentColor
+
+                    RowLayout {
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        IconImage {
+                            source: "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
+                            width: 14; height: 14
+                            color: "#FFFFFF"
+                        }
+
+                        Text {
+                            text: "Open Player ↗"
+                            color: "#FFFFFF"
+                            font.family: "Segoe UI"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                    }
+
+                    MouseArea {
+                        id: extBtnMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: AudioManager.openMediaFile(videoRoot.videoUrl)
+                    }
                 }
             }
         }

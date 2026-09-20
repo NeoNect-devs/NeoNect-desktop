@@ -34,4 +34,6 @@ private slots:
     void testOpenConversationsActivityOrdering();
     void testOpenConversationsUnreadCountBadge();
     void testSeenReceiptsAndUpdateCheckmark();
+    void testSelfDirectMessageAndSavedMessagesFlow();
+    void testRetryMessageFlow();
 };

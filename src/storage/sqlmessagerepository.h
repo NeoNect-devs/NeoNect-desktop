@@ -21,6 +21,8 @@ public:
     void markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context = nullptr, SaveCallback callback = nullptr) override;
     void deleteMessageAsync(const QString &id, const QObject* context = nullptr, SaveCallback callback = nullptr) override;
     void getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, FetchCallback callback) override;
+    void getMessageByIdAsync(const QString &id, const QObject* context, MessageCallback callback) override;
+    void switchDatabase(const QString& dbPath) override;
 
 private:
     QThread* m_workerThread;

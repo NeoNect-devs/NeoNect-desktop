@@ -50,6 +50,11 @@ public:
 
 private:
     QString getGroupName() const;
+    QString getConversationsKey() const;
+    QString getFriendsKey() const;
+    QString getPendingRequestsKey() const;
+    QString getDeviceIdKey() const;
+    QString getPublicKeyKey() const;
 
     mutable std::mutex m_mutex;
     QString m_profile;

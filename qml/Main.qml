@@ -71,9 +71,14 @@ Window {
             onNavigateToChat: (channel) => {
                 if (channel && channel !== "") {
                     root.currentSelectedServer = "dms";
-                    root.currentActiveChannel = channel.toLowerCase();
+                    var myUser = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
+                    var target = channel.toLowerCase();
+                    if (target === myUser || target === "saved-messages") {
+                        target = "saved-messages";
+                    }
+                    root.currentActiveChannel = target;
                     if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
-                        channelsPanel.openDirectMessage(channel.toLowerCase());
+                        channelsPanel.openDirectMessage(target);
                     }
                     if (typeof mainPanel !== "undefined" && mainPanel && mainPanel.focusMessageInput) {
                         mainPanel.focusMessageInput();
@@ -143,24 +148,42 @@ Window {
                                 id: mainPanel
                                 selectedServer: root.currentSelectedServer
                                 activeChannel: root.currentActiveChannel
-                                onNavigateRequested: (srv, chan) => {
-                                    root.currentSelectedServer = srv;
-                                    if (chan && chan !== "") {
-                                        root.currentActiveChannel = chan;
-                                        if (srv === "dms" && chan !== "friends" && chan !== "saved-messages" && typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
-                                            channelsPanel.openDirectMessage(chan);
-                                        }
-                                    }
-                                }
-                                onOpenDirectMessageRequested: (username) => {
-                                    if (username && username !== "") {
-                                        root.currentSelectedServer = "dms";
-                                        if (username !== "friends" && username !== "saved-messages") {
-                                            channelsPanel.openDirectMessage(username);
-                                        }
-                                        root.currentActiveChannel = username.toLowerCase();
-                                    }
-                                }
+                                 onNavigateRequested: (srv, chan) => {
+                                     root.currentSelectedServer = srv;
+                                     if (chan && chan !== "") {
+                                         var myUser = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
+                                         var target = chan.toLowerCase();
+                                         if (srv === "dms" && (target === myUser || target === "saved-messages")) {
+                                             root.currentActiveChannel = "saved-messages";
+                                             if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
+                                                 channelsPanel.openDirectMessage("saved-messages");
+                                             }
+                                         } else {
+                                             root.currentActiveChannel = target;
+                                             if (srv === "dms" && target !== "friends" && typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
+                                                 channelsPanel.openDirectMessage(target);
+                                             }
+                                         }
+                                     }
+                                 }
+                                 onOpenDirectMessageRequested: (username) => {
+                                     if (username && username !== "") {
+                                         root.currentSelectedServer = "dms";
+                                         var myUser = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
+                                         var target = username.toLowerCase();
+                                         if (target === myUser || target === "saved-messages") {
+                                             root.currentActiveChannel = "saved-messages";
+                                             if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
+                                                 channelsPanel.openDirectMessage("saved-messages");
+                                             }
+                                         } else {
+                                             root.currentActiveChannel = target;
+                                             if (target !== "friends" && typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
+                                                 channelsPanel.openDirectMessage(target);
+                                             }
+                                         }
+                                     }
+                                 }
                                 onOpenMediaModalRequested: (url, type, name) => {
                                     globalLightboxModal.open(url, type, name);
                                 }
@@ -289,9 +312,14 @@ Window {
             root.requestActivate();
             if (channel && channel !== "") {
                 root.currentSelectedServer = "dms";
-                root.currentActiveChannel = channel.toLowerCase();
+                var myUser = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
+                var target = channel.toLowerCase();
+                if (target === myUser || target === "saved-messages") {
+                    target = "saved-messages";
+                }
+                root.currentActiveChannel = target;
                 if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
-                    channelsPanel.openDirectMessage(channel.toLowerCase());
+                    channelsPanel.openDirectMessage(target);
                 }
                 if (action === "reply") {
                     if (typeof mainPanel !== "undefined" && mainPanel && mainPanel.focusMessageInput) {

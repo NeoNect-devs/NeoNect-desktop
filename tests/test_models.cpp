@@ -110,6 +110,46 @@ void TestModels::testRichMessageInsertion() {
     QCOMPARE(model.data(model.index(1), ChatMessageModel::MessageTypeRole).toString(), "voice");
     QCOMPARE(model.data(model.index(1), ChatMessageModel::DurationRole).toInt(), 12);
     QCOMPARE(model.data(model.index(1), ChatMessageModel::WaveformRole).toList().size(), 4);
+
+    // 3. Image file auto-detection
+    QVariantMap imgFileMsg;
+    imgFileMsg["messageId"] = "img_003";
+    imgFileMsg["messageType"] = "file";
+    imgFileMsg["mediaUrl"] = "file:///C:/Users/test/photo.PNG";
+    imgFileMsg["fileName"] = "photo.PNG";
+    model.insertMessageItem(imgFileMsg);
+    QCOMPARE(model.rowCount(), 3);
+    QCOMPARE(model.data(model.index(2), ChatMessageModel::MessageTypeRole).toString(), "image");
+
+    // 4. Video file auto-detection
+    QVariantMap vidFileMsg;
+    vidFileMsg["messageId"] = "vid_004";
+    vidFileMsg["messageType"] = "file";
+    vidFileMsg["mediaUrl"] = "file:///C:/Users/test/clip.mp4";
+    vidFileMsg["fileName"] = "clip.mp4";
+    model.insertMessageItem(vidFileMsg);
+    QCOMPARE(model.rowCount(), 4);
+    QCOMPARE(model.data(model.index(3), ChatMessageModel::MessageTypeRole).toString(), "video");
+
+    // 5. Audio file auto-detection
+    QVariantMap audioFileMsg;
+    audioFileMsg["messageId"] = "aud_005";
+    audioFileMsg["messageType"] = "file";
+    audioFileMsg["mediaUrl"] = "file:///C:/Users/test/song.mp3";
+    audioFileMsg["fileName"] = "song.mp3";
+    model.insertMessageItem(audioFileMsg);
+    QCOMPARE(model.rowCount(), 5);
+    QCOMPARE(model.data(model.index(4), ChatMessageModel::MessageTypeRole).toString(), "audio");
+
+    // 6. Generic document remains file
+    QVariantMap docFileMsg;
+    docFileMsg["messageId"] = "doc_006";
+    docFileMsg["messageType"] = "file";
+    docFileMsg["mediaUrl"] = "file:///C:/Users/test/document.pdf";
+    docFileMsg["fileName"] = "document.pdf";
+    model.insertMessageItem(docFileMsg);
+    QCOMPARE(model.rowCount(), 6);
+    QCOMPARE(model.data(model.index(5), ChatMessageModel::MessageTypeRole).toString(), "file");
 }
 
 void TestModels::testMessageStatusAndRetry() {

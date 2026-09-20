@@ -14,20 +14,34 @@ import "UIHelpers.js" as UIHelpers
     signal retryMessage(string msgId)
     signal acceptMediaRequested(string convId, string reqId)
     signal declineMediaRequested(string convId, string reqId)
-    visible: !(model.messageType === "media_request" && model.status === "accepted")
+    visible: !(delegateRoot.isMediaRequest && model.status === "accepted")
     width: messageListView.width - 12
     height: visible ? (messageContentColumn.implicitHeight + (model.isFirstInBlock ? 12 : 4)) : 0
 
+    readonly property string effectiveType: {
+        var t = (model.messageType || "").toLowerCase();
+        if (t === "media_request") return "media_request";
+        if (t === "sticker" || t === "voice") return t;
+        if (t === "image" || t === "video" || t === "audio") return t;
+        if (model.mediaUrl || model.fileName) {
+            var detected = UIHelpers.detectMediaType(model.mediaUrl, model.fileName);
+            if (detected && detected !== "file") return detected;
+            if (t === "file") return "file";
+        }
+        if (t === "text" || !t) return "text";
+        return t;
+    }
+
     readonly property bool isDM: selectedServer === "dms"
     readonly property bool isMe: model.fromMe
-    readonly property bool isText: model.messageType === "text"
-    readonly property bool isSticker: model.messageType === "sticker"
-    readonly property bool isImage: model.messageType === "image"
-    readonly property bool isVideo: model.messageType === "video"
-    readonly property bool isAudio: model.messageType === "audio"
-    readonly property bool isVoice: model.messageType === "voice"
-    readonly property bool isFile: model.messageType === "file"
-    readonly property bool isMediaRequest: model.messageType === "media_request"
+    readonly property bool isText: effectiveType === "text"
+    readonly property bool isSticker: effectiveType === "sticker"
+    readonly property bool isImage: effectiveType === "image"
+    readonly property bool isVideo: effectiveType === "video"
+    readonly property bool isAudio: effectiveType === "audio"
+    readonly property bool isVoice: effectiveType === "voice"
+    readonly property bool isFile: effectiveType === "file"
+    readonly property bool isMediaRequest: effectiveType === "media_request"
     readonly property bool isMediaWidget: isSticker || isImage || isVideo || isAudio || isVoice || isFile || isMediaRequest
     readonly property bool isFailed: model.status === "failed"
 
@@ -230,7 +244,7 @@ import "UIHelpers.js" as UIHelpers
 
                                             // 2. STICKER MESSAGE (Telegram Style)
                                             Item {
-                                                visible: model.messageType === "sticker"
+                                                visible: delegateRoot.isSticker
                                                 implicitWidth: 130; implicitHeight: 130
                                                 Layout.preferredWidth: 130; Layout.preferredHeight: 130
                                                 width: 130; height: 130
@@ -238,7 +252,7 @@ import "UIHelpers.js" as UIHelpers
                                                 Image {
                                                     anchors.centerIn: parent
                                                     width: 120; height: 120
-                                                    source: model.messageType === "sticker" ? (model.mediaUrl || "") : ""
+                                                    source: delegateRoot.isSticker ? (model.mediaUrl || "") : ""
                                                     sourceSize: Qt.size(240, 240)
                                                     fillMode: Image.PreserveAspectFit
                                                     smooth: true
@@ -248,7 +262,7 @@ import "UIHelpers.js" as UIHelpers
                                             // 3. IMAGE MESSAGE (Dynamically Scaled)
                                             Item {
                                                 id: imgDelegateItem
-                                                visible: model.messageType === "image"
+                                                visible: delegateRoot.isImage
 
                                                 readonly property real naturalW: (chatImg.sourceSize && chatImg.sourceSize.width > 0) ? chatImg.sourceSize.width : (chatImg.implicitWidth > 0 ? chatImg.implicitWidth : 320)
                                                 readonly property real naturalH: (chatImg.sourceSize && chatImg.sourceSize.height > 0) ? chatImg.sourceSize.height : (chatImg.implicitHeight > 0 ? chatImg.implicitHeight : 200)
@@ -288,37 +302,122 @@ import "UIHelpers.js" as UIHelpers
                                                     Image {
                                                         id: chatImg
                                                         anchors.fill: parent
-                                                        source: model.messageType === "image" ? (model.mediaUrl || "") : ""
+                                                        source: delegateRoot.isImage ? UIHelpers.formatMediaSource(model.mediaUrl) : ""
                                                         fillMode: Image.PreserveAspectFit
                                                         smooth: true
                                                         asynchronous: true
                                                     }
 
+                                                    // Loading state
+                                                    Rectangle {
+                                                        anchors.fill: parent
+                                                        visible: chatImg.status === Image.Loading
+                                                        color: "#16171A"
+                                                        BusyIndicator {
+                                                            anchors.centerIn: parent
+                                                            running: chatImg.status === Image.Loading
+                                                            width: 28; height: 28
+                                                        }
+                                                    }
+
+                                                    // Failed to load / download / upload overlay
+                                                    Rectangle {
+                                                        anchors.fill: parent
+                                                        visible: chatImg.status === Image.Error || (model.messageType === "image" && delegateRoot.isFailed && (!chatImg.source || chatImg.source == ""))
+                                                        color: "#1B1C20"
+                                                        border.color: Qt.rgba(242, 63, 67, 0.4)
+                                                        border.width: 1
+                                                        radius: 10
+
+                                                        ColumnLayout {
+                                                            anchors.centerIn: parent
+                                                            spacing: 8
+
+                                                            IconImage {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                source: "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg"
+                                                                width: 26; height: 26
+                                                                color: "#F23F43"
+                                                            }
+
+                                                            Text {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                text: delegateRoot.isFailed ? "Image upload failed" : "Failed to load image"
+                                                                color: "#FFFFFF"
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 12
+                                                                font.bold: true
+                                                            }
+
+                                                            Rectangle {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                width: 84; height: 26
+                                                                radius: 13
+                                                                color: imgRetryMouse.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.25)
+                                                                border.color: "#E53935"
+                                                                border.width: 1
+
+                                                                RowLayout {
+                                                                    anchors.centerIn: parent
+                                                                    spacing: 4
+                                                                    IconImage {
+                                                                        source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
+                                                                        width: 12; height: 12
+                                                                        color: "#FFFFFF"
+                                                                    }
+                                                                    Text {
+                                                                        text: "Retry"
+                                                                        color: "#FFFFFF"
+                                                                        font.family: "Segoe UI"
+                                                                        font.pixelSize: 11
+                                                                        font.bold: true
+                                                                    }
+                                                                }
+
+                                                                MouseArea {
+                                                                    id: imgRetryMouse
+                                                                    anchors.fill: parent
+                                                                    hoverEnabled: true
+                                                                    cursorShape: Qt.PointingHandCursor
+                                                                    onClicked: {
+                                                                        if (delegateRoot.isFailed) {
+                                                                            delegateRoot.retryMessage(model.messageId);
+                                                                        }
+                                                                        var s = chatImg.source;
+                                                                        chatImg.source = "";
+                                                                        chatImg.source = s;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
                                                     MouseArea {
                                                         anchors.fill: parent
+                                                        visible: chatImg.status === Image.Ready
                                                         cursorShape: Qt.PointingHandCursor
-                                                        onClicked: delegateRoot.openMediaModalRequested(model.mediaUrl, "image", model.fileName || "Image")
+                                                        onClicked: delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(model.mediaUrl), "image", model.fileName || "Image")
                                                     }
                                                 }
                                             }
 
                                             // 4. VIDEO MESSAGE (In-App Player for supported formats)
                                             VideoPlayerItem {
-                                                visible: model.messageType === "video" && UIHelpers.isPlayableVideo(model.mediaUrl, model.fileName)
+                                                visible: delegateRoot.isVideo && UIHelpers.isPlayableVideo(model.mediaUrl, model.fileName)
                                                 messageId: model.messageId
-                                                videoUrl: model.mediaUrl
+                                                videoUrl: UIHelpers.formatMediaSource(model.mediaUrl)
                                                 fileName: model.fileName || "Video"
                                                 fileSize: model.fileSize
                                                 duration: model.duration || 30
                                                 fromMe: model.fromMe
-                                                onOpenFullscreenRequested: (url, name) => delegateRoot.openMediaModalRequested(url, "video", name)
+                                                onOpenFullscreenRequested: (url, name) => delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(url), "video", name)
                                             }
 
                                             // 5. MUSIC AUDIO MESSAGE
                                             AudioMusicPlayer {
-                                                visible: model.messageType === "audio"
+                                                visible: delegateRoot.isAudio
                                                 messageId: model.messageId
-                                                audioUrl: model.mediaUrl
+                                                audioUrl: UIHelpers.formatMediaSource(model.mediaUrl)
                                                 fileName: model.fileName || "Audio"
                                                 fileSize: model.fileSize
                                                 duration: model.duration || 180
@@ -327,9 +426,9 @@ import "UIHelpers.js" as UIHelpers
 
                                             // 6. VOICE NOTE MESSAGE (Telegram Style)
                                             VoiceMessagePlayer {
-                                                visible: model.messageType === "voice"
+                                                visible: delegateRoot.isVoice
                                                 messageId: model.messageId
-                                                audioUrl: model.mediaUrl
+                                                audioUrl: UIHelpers.formatMediaSource(model.mediaUrl)
                                                 duration: model.duration || 6
                                                 waveform: model.waveform
                                                 fromMe: model.fromMe
@@ -337,7 +436,7 @@ import "UIHelpers.js" as UIHelpers
 
                                             // 7. FILE / DOCUMENT / NON-PLAYABLE MEDIA MESSAGE (Rich Card with External Open)
                                             Rectangle {
-                                                visible: model.messageType === "file" || (model.messageType === "video" && !UIHelpers.isPlayableVideo(model.mediaUrl, model.fileName))
+                                                visible: delegateRoot.isFile || (delegateRoot.isVideo && !UIHelpers.isPlayableVideo(model.mediaUrl, model.fileName))
                                                 implicitWidth: 320; implicitHeight: 64
                                                 Layout.preferredWidth: 320; Layout.preferredHeight: 64
                                                 width: 320; height: 64
@@ -445,7 +544,7 @@ import "UIHelpers.js" as UIHelpers
                                             // 6. MEDIA REQUEST CARD (Two-Phase Transfer Flow)
                                             Rectangle {
                                                 id: mediaRequestCard
-                                                visible: model.messageType === "media_request"
+                                                visible: delegateRoot.isMediaRequest
                                                 Layout.preferredWidth: Math.min(330, bubbleBox.maxContentWidth - (delegateRoot.isDM ? 20 : 0))
                                                 implicitWidth: Layout.preferredWidth
                                                 implicitHeight: requestContentCol.implicitHeight + 20
@@ -453,7 +552,7 @@ import "UIHelpers.js" as UIHelpers
                                                 color: delegateRoot.isMe ? "#2F3136" : "#202225"
                                                 border.color: {
                                                     if (model.status === "accepted") return "#23A55A";
-                                                    if (model.status === "declined") return Qt.rgba(242, 63, 67, 0.4);
+                                                    if (model.status === "declined" || model.status === "failed") return Qt.rgba(242, 63, 67, 0.4);
                                                     return delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.15) : Qt.rgba(88, 101, 242, 0.35);
                                                 }
                                                 border.width: 1
@@ -582,19 +681,57 @@ import "UIHelpers.js" as UIHelpers
                                                             spacing: 6
 
                                                             Text {
+                                                                Layout.fillWidth: true
                                                                 text: {
                                                                     if (model.status === "accepted") return "✓ Request accepted — Media sent";
                                                                     if (model.status === "declined") return "✕ Request declined by recipient";
+                                                                    if (model.status === "failed") return "⚠ Transfer failed — Tap retry to re-send";
                                                                     return "⏳ Media request sent — Awaiting approval...";
                                                                 }
                                                                 color: {
                                                                     if (model.status === "accepted") return "#23A55A";
-                                                                    if (model.status === "declined") return "#F23F43";
+                                                                    if (model.status === "declined" || model.status === "failed") return "#F23F43";
                                                                     return "#FAA61A";
                                                                 }
                                                                 font.family: "Segoe UI"
                                                                 font.pixelSize: 11
                                                                 font.bold: true
+                                                                elide: Text.ElideRight
+                                                            }
+
+                                                            // Retry Button inside media request card when failed
+                                                            Rectangle {
+                                                                visible: model.status === "failed"
+                                                                width: 68; height: 24
+                                                                radius: 12
+                                                                color: reqRetryMouse.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.25)
+                                                                border.color: "#E53935"
+                                                                border.width: 1
+
+                                                                RowLayout {
+                                                                    anchors.centerIn: parent
+                                                                    spacing: 4
+                                                                    IconImage {
+                                                                        source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
+                                                                        width: 11; height: 11
+                                                                        color: "#FFFFFF"
+                                                                    }
+                                                                    Text {
+                                                                        text: "Retry"
+                                                                        color: "#FFFFFF"
+                                                                        font.family: "Segoe UI"
+                                                                        font.pixelSize: 10
+                                                                        font.bold: true
+                                                                    }
+                                                                }
+
+                                                                MouseArea {
+                                                                    id: reqRetryMouse
+                                                                    anchors.fill: parent
+                                                                    hoverEnabled: true
+                                                                    cursorShape: Qt.PointingHandCursor
+                                                                    onClicked: delegateRoot.retryMessage(model.messageId)
+                                                                }
                                                             }
                                                         }
 
@@ -700,7 +837,7 @@ import "UIHelpers.js" as UIHelpers
 
                                             // Caption for media messages
                                             Text {
-                                                visible: (model.messageType === "image" || model.messageType === "video" || model.messageType === "file") && model.text !== ""
+                                                visible: (delegateRoot.isImage || delegateRoot.isVideo || delegateRoot.isAudio || delegateRoot.isFile) && model.text !== ""
                                                 Layout.fillWidth: true
                                                 text: model.text
                                                 color: (delegateRoot.isDM && delegateRoot.isMe) ? "#FFFFFF" : ThemeData.textPrimary

@@ -26,6 +26,20 @@ public:
         QSqlDatabase::removeDatabase(m_connectionName);
     }
 
+    void doSwitchDatabase(const QString &newDbPath) {
+        if (m_dbPath == newDbPath && m_db.isOpen()) {
+            return;
+        }
+        if (m_db.isOpen()) {
+            m_db.close();
+        }
+        m_db = QSqlDatabase();
+        QSqlDatabase::removeDatabase(m_connectionName);
+        m_connectionName = QString("MsgRepo_%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+        m_dbPath = newDbPath;
+        initialize();
+    }
+
 public slots:
     void initialize() {
         m_db = QSqlDatabase::addDatabase("QSQLITE", m_connectionName);
@@ -247,6 +261,40 @@ public slots:
         invokeFetchCallback(context, callback, results);
     }
 
+    void doGetMessageById(const QString id, const QObject* context, IMessageRepository::MessageCallback callback) {
+        std::optional<Domain::Message> result;
+        if (!m_db.isOpen()) {
+            invokeMessageCallback(context, callback, result);
+            return;
+        }
+
+        QSqlQuery query(m_db);
+        query.prepare("SELECT id, server_id, conversation_id, sender_id, type, text, media_url, file_name, file_size, duration, waveform, status, error_text, timestamp "
+                      "FROM messages WHERE id = ?");
+        query.addBindValue(id);
+
+        if (query.exec() && query.next()) {
+            Domain::Message msg;
+            msg.id = query.value(0).toString();
+            msg.serverId = query.value(1).toLongLong();
+            msg.conversationId = query.value(2).toString();
+            msg.senderId = query.value(3).toString();
+            msg.type = query.value(4).toString();
+            msg.text = query.value(5).toString();
+            msg.mediaUrl = query.value(6).toString();
+            msg.fileName = query.value(7).toString();
+            msg.fileSize = query.value(8).toLongLong();
+            msg.duration = query.value(9).toInt();
+            msg.waveform = query.value(10).toByteArray();
+            msg.status = static_cast<Domain::MessageStatus>(query.value(11).toInt());
+            msg.errorText = query.value(12).toString();
+            msg.timestamp = query.value(13).toLongLong();
+            result = msg;
+        }
+
+        invokeMessageCallback(context, callback, result);
+    }
+
 private:
     QString m_dbPath;
     QString m_connectionName;
@@ -263,6 +311,13 @@ private:
         if (!context || !callback) return;
         QMetaObject::invokeMethod(const_cast<QObject*>(context), [callback, results]() {
             callback(results);
+        }, Qt::QueuedConnection);
+    }
+
+    void invokeMessageCallback(const QObject* context, IMessageRepository::MessageCallback callback, const std::optional<Domain::Message>& result) {
+        if (!context || !callback) return;
+        QMetaObject::invokeMethod(const_cast<QObject*>(context), [callback, result]() {
+            callback(result);
         }, Qt::QueuedConnection);
     }
 };
@@ -314,6 +369,18 @@ void SqlMessageRepository::deleteMessageAsync(const QString &id, const QObject* 
 void SqlMessageRepository::getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, FetchCallback callback) {
     QMetaObject::invokeMethod(m_worker, [this, conversationId, limit, beforeTimestamp, context, callback]() {
         m_worker->doGetMessages(conversationId, limit, beforeTimestamp, context, callback);
+    }, Qt::QueuedConnection);
+}
+
+void SqlMessageRepository::getMessageByIdAsync(const QString &id, const QObject* context, MessageCallback callback) {
+    QMetaObject::invokeMethod(m_worker, [this, id, context, callback]() {
+        m_worker->doGetMessageById(id, context, callback);
+    }, Qt::QueuedConnection);
+}
+
+void SqlMessageRepository::switchDatabase(const QString &dbPath) {
+    QMetaObject::invokeMethod(m_worker, [this, dbPath]() {
+        m_worker->doSwitchDatabase(dbPath);
     }, Qt::QueuedConnection);
 }
 

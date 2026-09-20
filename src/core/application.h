@@ -42,6 +42,7 @@ private:
     void initializeServices();
     void registerQmlTypes();
     bool loadMainUi();
+    QString getUserDatabasePath(const QString &username) const;
 
     std::unique_ptr<QGuiApplication> m_app;
     std::unique_ptr<QQmlApplicationEngine> m_engine;
