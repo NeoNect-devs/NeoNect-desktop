@@ -28,6 +28,9 @@ public:
     // Load a conversation (UI calls this to fetch history)
     Q_INVOKABLE void loadConversation(const QString &conversationId);
 
+    // Ephemeral Typing Status (Direct Messages)
+    Q_INVOKABLE void sendTyping(const QString &conversationId, bool isTyping);
+
     // Provide the current user's ID so we can derive 'fromMe' logic if needed, or pass it to UI
     void setCurrentUserId(const QString &userId);
 
@@ -44,6 +47,7 @@ signals:
     void messageAdded(const QString &conversationId, const QVariantMap &message);
     void messageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText);
     void messageRemoved(const QString &conversationId, const QString &messageId);
+    void peerTypingStatusChanged(const QString &conversationId, const QString &senderId, bool isTyping);
     
     // Sent to RelayService to actually encrypt & transmit
     void transmitMessage(const NeoNect::Domain::Message &msg);

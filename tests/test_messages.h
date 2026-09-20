@@ -12,4 +12,6 @@ private slots:
     void testRepositoryReopenPersistence();
     void testMessageServiceIntegration();
     void testMessageModelPopulation();
+    void testTypingStatusTransmissionAndHandling();
+    void testMessageDeliveryStatusTransitions();
 };

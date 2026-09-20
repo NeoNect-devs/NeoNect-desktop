@@ -58,3 +58,9 @@ function getAvatarColor(sender) {
     var c = (hash & 0x00FFFFFF).toString(16).toUpperCase();
     return "#" + "00000".substring(0, 6 - c.length) + c;
 }
+
+function isRTL(text) {
+    if (!text) return false;
+    return /[\u0600-\u06FF\u0750-\u077F\u0590-\u05FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(text);
+}
+

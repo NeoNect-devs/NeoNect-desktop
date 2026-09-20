@@ -56,6 +56,18 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
     });
 }
 
+void MessageService::sendTyping(const QString &conversationId, bool isTyping) {
+    if (conversationId.isEmpty() || !conversationId.startsWith("dms:")) return;
+    Domain::Message msg;
+    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.conversationId = conversationId;
+    msg.senderId = m_currentUserId;
+    msg.type = isTyping ? "typing_start" : "typing_stop";
+    msg.status = Domain::MessageStatus::Sent;
+    msg.timestamp = QDateTime::currentMSecsSinceEpoch();
+    emit transmitMessage(msg);
+}
+
 void MessageService::sendMediaRequest(const QString &conversationId, const QString &text, const QString &mediaType,
                                       const QString &mediaUrl, const QString &fileName, qint64 fileSize)
 {
@@ -168,6 +180,12 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
     msgsToSave.reserve(msgs.size());
 
     for (const auto& msg : msgs) {
+        if (msg.type == "typing_start" || msg.type == "typing_stop") {
+            bool isTyping = (msg.type == "typing_start");
+            emit peerTypingStatusChanged(msg.conversationId, msg.senderId, isTyping);
+            continue;
+        }
+
         if (msg.type == "media_accept") {
             QString reqId = msg.text.trimmed();
             qDebug() << "[MessageService] Received media_accept for request:" << reqId;
@@ -237,6 +255,9 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
 
         msgsToSave.push_back(currentMsg);
 
+        // When a message arrives from peer, clear their typing indicator
+        emit peerTypingStatusChanged(currentMsg.conversationId, currentMsg.senderId, false);
+
         QVariantMap msgMap = domainToVariantMap(currentMsg);
         QMetaObject::invokeMethod(this, [this, msgMap, convId = currentMsg.conversationId]() {
             emit messageAdded(convId, msgMap);
@@ -254,12 +275,12 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
 
 void MessageService::handleMessageDeliveryStatus(const QString &messageId, bool success, const QString &errorText) {
     Domain::MessageStatus status = success ? Domain::MessageStatus::Sent : Domain::MessageStatus::Failed;
-    m_repository->updateMessageStatusAsync(messageId, status, errorText, this, [this, messageId, success, errorText](bool dbSuccess) {
-        if (dbSuccess) {
-            QString statusStr = success ? "sent" : "failed";
-            // We don't have conversationId easily here unless we query the DB, 
-            // but the UI model can update by messageId globally.
-            emit messageUpdated("", messageId, statusStr, errorText);
+    QString statusStr = success ? "sent" : "failed";
+    emit messageUpdated("", messageId, statusStr, errorText);
+
+    m_repository->updateMessageStatusAsync(messageId, status, errorText, this, [messageId](bool dbSuccess) {
+        if (!dbSuccess) {
+            qWarning() << "[MessageService] Failed to update message delivery status in DB for:" << messageId;
         }
     });
 }
@@ -267,6 +288,7 @@ void MessageService::handleMessageDeliveryStatus(const QString &messageId, bool 
 QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const {
     QVariantMap map;
     map["id"] = msg.id;
+    map["messageId"] = msg.id;
     map["conversationId"] = msg.conversationId;
     map["senderId"] = msg.senderId;
     map["fromMe"] = (msg.senderId.toLower() == m_currentUserId.toLower());

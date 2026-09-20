@@ -116,7 +116,7 @@ void ChatMessageModel::insertMessageItem(const QVariantMap &map) {
     int duration = map.value("duration", 0).toInt();
     QVariantList waveform = map.value("waveform").toList();
     QString status = map.value("status", "sent").toString();
-    QString id = map.value("messageId", "").toString();
+    QString id = map.contains("messageId") && !map.value("messageId").toString().isEmpty() ? map.value("messageId").toString() : map.value("id").toString();
     qint64 timestamp = map.value("timestamp", 0).toLongLong();
 
     insertMessage(text, fromMe, senderName, senderAvatar, messageType, mediaUrl, fileName, fileSize, duration, waveform, status, id, timestamp);
@@ -197,10 +197,10 @@ void ChatMessageModel::setActiveConversation(const QString &conversationId) {
 
 MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {
     MessageItem item;
-    item.id = map.value("id").toString();
+    item.id = map.contains("id") && !map.value("id").toString().isEmpty() ? map.value("id").toString() : map.value("messageId").toString();
     item.text = map.value("text").toString();
     item.fromMe = map.value("fromMe").toBool();
-    item.senderName = map.value("senderId").toString();
+    item.senderName = map.contains("senderId") && !map.value("senderId").toString().isEmpty() ? map.value("senderId").toString() : map.value("senderName").toString();
     item.senderAvatar = item.senderName.isEmpty() ? "" : item.senderName.left(1).toUpper();
     item.messageType = map.value("type", "text").toString();
     item.mediaUrl = map.value("mediaUrl").toString();

@@ -225,7 +225,7 @@ import "UIHelpers.js" as UIHelpers
                                                 wrapMode: Text.WrapAnywhere
                                                 textFormat: Text.PlainText
                                                 // Dynamic LTR vs RTL alignment
-                                                horizontalAlignment: root.isRTL(model.text) ? Text.AlignRight : Text.AlignLeft
+                                                horizontalAlignment: UIHelpers.isRTL(model.text) ? Text.AlignRight : Text.AlignLeft
                                             }
 
                                             // 2. STICKER MESSAGE (Telegram Style)
@@ -401,7 +401,7 @@ import "UIHelpers.js" as UIHelpers
                                                             spacing: 6
 
                                                             Text {
-                                                                text: root.formatBytes(model.fileSize)
+                                                                text: UIHelpers.formatSize(model.fileSize)
                                                                 color: delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.75) : ThemeData.textSecondary
                                                                 font.family: "Segoe UI"
                                                                 font.pixelSize: 10
@@ -707,7 +707,7 @@ import "UIHelpers.js" as UIHelpers
                                                 font.family: "Segoe UI"
                                                 font.pixelSize: 13
                                                 wrapMode: Text.Wrap
-                                                horizontalAlignment: root.isRTL(model.text) ? Text.AlignRight : Text.AlignLeft
+                                                horizontalAlignment: UIHelpers.isRTL(model.text) ? Text.AlignRight : Text.AlignLeft
                                             }
 
                                             // DM Bubble Footer: Timestamp & Delivery Status

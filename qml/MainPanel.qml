@@ -48,6 +48,18 @@ Item {
         function onMessageRemoved(convId, msgId) {
             nativeMessageModel.onMessageRemoved(convId, msgId);
         }
+        function onPeerTypingStatusChanged(convId, senderId, isTyping) {
+            var currentConvId = root.selectedServer + ":" + root.activeChannel;
+            if (convId === currentConvId || (root.selectedServer === "dms" && senderId.toLowerCase() === root.activeChannel.toLowerCase())) {
+                root.isOtherTyping = isTyping;
+                root.typingUser = senderId;
+                if (isTyping) {
+                    peerTypingTimeoutTimer.restart();
+                } else {
+                    peerTypingTimeoutTimer.stop();
+                }
+            }
+        }
     }
 
     signal navigateRequested(string server, string channel)
@@ -76,7 +88,18 @@ Item {
 
     
 
+    Timer {
+        id: peerTypingTimeoutTimer
+        interval: 4500
+        repeat: false
+        onTriggered: {
+            root.isOtherTyping = false;
+        }
+    }
+
     function switchChannel() {
+        root.isOtherTyping = false;
+        peerTypingTimeoutTimer.stop();
         if (root.selectedServer === "dms" && root.activeChannel === "friends") {
             return;
         }
@@ -94,6 +117,9 @@ Item {
 
     function sendMessagePayload(itemObj) {
         var key = root.selectedServer + ":" + root.activeChannel;
+        if (root.selectedServer === "dms") {
+            MessageService.sendTyping(key, false);
+        }
         var mType = itemObj.messageType || "text";
         // Two-phase media transfer: images, videos, audio, and files require pre-approval; voice, text, sticker are direct
         if (mType === "image" || mType === "video" || mType === "audio" || mType === "file") {
@@ -166,9 +192,20 @@ Item {
             selectedServer: root.selectedServer
             activeChannel: root.activeChannel
             userToggledExpanded: root.userToggledExpanded
+            isOtherTyping: root.isOtherTyping
             typingUser: root.typingUser
             messageModel: nativeMessageModel
             
+            onTypingStarted: {
+                if (root.selectedServer === "dms" && root.activeChannel !== "friends" && root.activeChannel !== "saved-messages") {
+                    MessageService.sendTyping(root.selectedServer + ":" + root.activeChannel, true);
+                }
+            }
+            onTypingStopped: {
+                if (root.selectedServer === "dms" && root.activeChannel !== "friends" && root.activeChannel !== "saved-messages") {
+                    MessageService.sendTyping(root.selectedServer + ":" + root.activeChannel, false);
+                }
+            }
             onOpenMediaModalRequested: function(url, type, name) { root.openMediaModalRequested(url, type, name); }
             onRetryMessage: function(msgId) { root.retryMessage(msgId); }
             onSendMessagePayload: function(itemObj) { root.sendMessagePayload(itemObj); }

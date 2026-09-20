@@ -199,4 +199,79 @@ void TestMessages::testMessageModelPopulation() {
     QCOMPARE(model.rowCount(), 2);
 }
 
-// QTEST_MAIN(TestMessages) // Do not do this since CMake builds multiple cpp files in one executable? Wait, I will just add it to test_main or similar.
+void TestMessages::testTypingStatusTransmissionAndHandling() {
+    QString dbPath = "test_messages_db/test6.db";
+    QFile::remove(dbPath);
+    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    Services::MessageService service(repo);
+    service.setCurrentUserId("me");
+
+    QSignalSpy spyTransmit(&service, &Services::MessageService::transmitMessage);
+    QSignalSpy spyPeerTyping(&service, &Services::MessageService::peerTypingStatusChanged);
+
+    // 1. sendTyping(..., true) emits transmitMessage with type == "typing_start"
+    service.sendTyping("dms:bob", true);
+    QCOMPARE(spyTransmit.count(), 1);
+    Domain::Message sentMsg = spyTransmit.first().at(0).value<Domain::Message>();
+    QCOMPARE(sentMsg.type, QString("typing_start"));
+    QCOMPARE(sentMsg.conversationId, QString("dms:bob"));
+
+    // 2. sendTyping(..., false) emits transmitMessage with type == "typing_stop"
+    service.sendTyping("dms:bob", false);
+    QCOMPARE(spyTransmit.count(), 2);
+    Domain::Message stopMsg = spyTransmit.at(1).at(0).value<Domain::Message>();
+    QCOMPARE(stopMsg.type, QString("typing_stop"));
+
+    // 3. Incoming typing_start packet triggers peerTypingStatusChanged(convId, senderId, true)
+    Domain::Message incomingStart;
+    incomingStart.id = "type_1";
+    incomingStart.conversationId = "dms:bob";
+    incomingStart.senderId = "bob";
+    incomingStart.type = "typing_start";
+    service.handleIncomingMessages({ incomingStart });
+
+    QCOMPARE(spyPeerTyping.count(), 1);
+    QCOMPARE(spyPeerTyping.first().at(0).toString(), QString("dms:bob"));
+    QCOMPARE(spyPeerTyping.first().at(1).toString(), QString("bob"));
+    QCOMPARE(spyPeerTyping.first().at(2).toBool(), true);
+
+    // 4. Incoming regular message auto-clears typing status
+    Domain::Message regularMsg;
+    regularMsg.id = "reg_1";
+    regularMsg.conversationId = "dms:bob";
+    regularMsg.senderId = "bob";
+    regularMsg.type = "text";
+    regularMsg.text = "Hello!";
+    service.handleIncomingMessages({ regularMsg });
+
+    QCOMPARE(spyPeerTyping.count(), 2);
+    QCOMPARE(spyPeerTyping.at(1).at(2).toBool(), false);
+}
+
+void TestMessages::testMessageDeliveryStatusTransitions() {
+    QString dbPath = "test_messages_db/test7.db";
+    QFile::remove(dbPath);
+    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    Services::MessageService service(repo);
+    service.setCurrentUserId("me");
+
+    ChatMessageModel model;
+    model.setActiveConversation("dms:alice");
+
+    QObject::connect(&service, &Services::MessageService::messageAdded,
+                     &model, &ChatMessageModel::onMessageAdded);
+    QObject::connect(&service, &Services::MessageService::messageUpdated,
+                     &model, &ChatMessageModel::onMessageUpdated);
+
+    // Send a message -> model gets it in "sending" status
+    service.sendMessage("dms:alice", "Testing status transition");
+    QCOMPARE(model.rowCount(), 1);
+    QModelIndex idx = model.index(0, 0);
+    QCOMPARE(model.data(idx, ChatMessageModel::StatusRole).toString(), QString("sending"));
+    QString msgId = model.data(idx, ChatMessageModel::MessageIdRole).toString();
+    QVERIFY(!msgId.isEmpty());
+
+    // Delivery confirmation arrives -> status transitions to "sent"
+    service.handleMessageDeliveryStatus(msgId, "sent", "");
+    QCOMPARE(model.data(idx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+}

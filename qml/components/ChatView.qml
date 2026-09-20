@@ -13,15 +13,18 @@ ColumnLayout {
     property string activeChannel: ""
     property bool userToggledExpanded: false
     property string typingUser: ""
+    property bool isOtherTyping: false
     property QtObject messageModel: null
     
+    signal typingStarted()
+    signal typingStopped()
     signal openMediaModalRequested(string url, string type, string name)
     signal retryMessage(string msgId)
     signal sendMessagePayload(var itemObj)
     signal acceptMediaRequested(string convId, string reqId)
     signal declineMediaRequested(string convId, string reqId)
 
-            visible: !(selectedServer === "dms" && activeChannel === "friends")
+    visible: !(selectedServer === "dms" && activeChannel === "friends")
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
@@ -249,7 +252,7 @@ ColumnLayout {
 
                 // ─── TYPING INDICATOR BANNER ───
                 Rectangle {
-                    visible: root.isOtherTyping && selectedServer === "dms" && activeChannel !== "saved-messages"
+                    visible: chatViewRoot.isOtherTyping && selectedServer === "dms" && activeChannel !== "saved-messages"
                     Layout.fillWidth: true
                     Layout.leftMargin: 16
                     Layout.rightMargin: 16
@@ -271,7 +274,7 @@ ColumnLayout {
                                 color: "#00E5FF"
                                 SequentialAnimation on opacity {
                                     loops: Animation.Infinite
-                                    running: root.isOtherTyping
+                                    running: chatViewRoot.isOtherTyping
                                     NumberAnimation { from: 0.2; to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
                                     NumberAnimation { from: 1.0; to: 0.2; duration: 400; easing.type: Easing.InOutQuad }
                                 }
@@ -281,7 +284,7 @@ ColumnLayout {
                                 color: "#00E5FF"
                                 SequentialAnimation on opacity {
                                     loops: Animation.Infinite
-                                    running: root.isOtherTyping
+                                    running: chatViewRoot.isOtherTyping
                                     PauseAnimation { duration: 200 }
                                     NumberAnimation { from: 0.2; to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
                                     NumberAnimation { from: 1.0; to: 0.2; duration: 400; easing.type: Easing.InOutQuad }
@@ -292,7 +295,7 @@ ColumnLayout {
                                 color: "#00E5FF"
                                 SequentialAnimation on opacity {
                                     loops: Animation.Infinite
-                                    running: root.isOtherTyping
+                                    running: chatViewRoot.isOtherTyping
                                     PauseAnimation { duration: 400 }
                                     NumberAnimation { from: 0.2; to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
                                     NumberAnimation { from: 1.0; to: 0.2; duration: 400; easing.type: Easing.InOutQuad }
@@ -302,7 +305,7 @@ ColumnLayout {
 
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: (typingUser || (activeChannel.replace(/^\w/, c => c.toUpperCase()))) + " is typing..."
+                            text: (chatViewRoot.typingUser || (activeChannel.replace(/^\w/, c => c.toUpperCase()))) + " is typing..."
                             color: "#00E5FF"
                             font.family: "Segoe UI"
                             font.pixelSize: 11
@@ -318,6 +321,8 @@ ColumnLayout {
                     Layout.margins: 12
                     channelName: selectedServer === "dms" ? activeChannel.replace("dm-", "").replace(/^\w/, c => c.toUpperCase()) : activeChannel
                     isDM: selectedServer === "dms"
+                    onTypingStarted: chatViewRoot.typingStarted()
+                    onTypingStopped: chatViewRoot.typingStopped()
 
                     onMessageSent: function(msgText) {
                         var itemObj = {
