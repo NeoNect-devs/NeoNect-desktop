@@ -91,14 +91,14 @@ Rectangle {
                     Rectangle {
                         width: 32; height: 32
                         radius: 6
-                        visible: selectedServer !== "dms" && selectedServer !== ""
+                        visible: headerRoot.selectedServer !== "dms" && headerRoot.selectedServer !== ""
                         color: membersToggleMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
 
                         IconImage {
                             anchors.centerIn: parent
                             source: "qrc:/qt/qml/NeoNect/assets/icons/users.svg"
                             width: 20; height: 20
-                            color: membersPanelExpanded ? ThemeData.textPrimary : ThemeData.textSecondary
+                            color: headerRoot.membersPanelExpanded ? ThemeData.textPrimary : ThemeData.textSecondary
                         }
 
                         MouseArea {

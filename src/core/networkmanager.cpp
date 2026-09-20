@@ -22,8 +22,15 @@ NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTranspor
       m_relayService(std::move(relayService)), m_friendService(std::move(friendService))
 {
     if (m_storage) {
-        m_openConversations = m_storage->openConversations();
+        QVariantList raw = m_storage->openConversations();
+        for (const auto &c : raw) {
+            QString name = c.toMap().value("name").toString().trimmed().toLower();
+            if (!name.isEmpty() && name != "saved-messages" && name != "friends") {
+                m_openConversations.append(c);
+            }
+        }
         sortOpenConversations();
+        m_storage->setOpenConversations(m_openConversations);
     }
     if (m_authService) {
         setupServiceSignals();
@@ -379,7 +386,7 @@ QVariantList NetworkManager::openConversations() const {
 
 void NetworkManager::openDirectConversation(const QString &username, qint64 activityTimestamp) {
     QString lower = username.trimmed().toLower();
-    if (lower.isEmpty()) return;
+    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends") return;
 
     qint64 ts = activityTimestamp > 0 ? activityTimestamp : QDateTime::currentMSecsSinceEpoch();
 
@@ -431,7 +438,9 @@ void NetworkManager::closeDirectConversation(const QString &username) {
 }
 
 void NetworkManager::updateConversationActivity(const QString &username, qint64 activityTimestamp) {
-    openDirectConversation(username, activityTimestamp);
+    QString lower = username.trimmed().toLower();
+    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends") return;
+    openDirectConversation(lower, activityTimestamp);
 }
 
 int NetworkManager::unreadCount(const QString &username) const {
@@ -447,7 +456,7 @@ int NetworkManager::unreadCount(const QString &username) const {
 
 void NetworkManager::markConversationAsRead(const QString &username) {
     QString lower = username.trimmed().toLower();
-    if (lower.isEmpty()) return;
+    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends") return;
 
     bool updated = false;
     for (int i = 0; i < m_openConversations.size(); ++i) {
@@ -472,7 +481,7 @@ void NetworkManager::markConversationAsRead(const QString &username) {
 
 void NetworkManager::incrementUnreadCount(const QString &username) {
     QString lower = username.trimmed().toLower();
-    if (lower.isEmpty()) return;
+    if (lower.isEmpty() || lower == "saved-messages" || lower == "friends") return;
 
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     bool found = false;

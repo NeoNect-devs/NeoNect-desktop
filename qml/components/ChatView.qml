@@ -45,12 +45,12 @@ ColumnLayout {
     }
 
     ChatHeader {
-                Layout.fillWidth: true
-                selectedServer: selectedServer
-                activeChannel: activeChannel
-                membersPanelExpanded: userToggledExpanded
-                onToggleMembersPanel: userToggledExpanded = !userToggledExpanded
-            }
+        Layout.fillWidth: true
+        selectedServer: chatViewRoot.selectedServer
+        activeChannel: chatViewRoot.activeChannel
+        membersPanelExpanded: chatViewRoot.userToggledExpanded
+        onToggleMembersPanel: chatViewRoot.userToggledExpanded = !chatViewRoot.userToggledExpanded
+    }
 
         RowLayout {
             Layout.fillWidth: true
@@ -395,9 +395,9 @@ ColumnLayout {
             MembersSidebarPanel {
                 id: membersPanel
                 Layout.fillHeight: true
-                selectedServer: selectedServer
-                visible: selectedServer !== "dms" && selectedServer !== ""
-                expanded: selectedServer !== "dms" && selectedServer !== "" && userToggledExpanded
+                selectedServer: chatViewRoot.selectedServer
+                visible: chatViewRoot.selectedServer !== "dms" && chatViewRoot.selectedServer !== "" && membersPanel.expanded
+                expanded: chatViewRoot.selectedServer !== "dms" && chatViewRoot.selectedServer !== "" && chatViewRoot.userToggledExpanded
             }
         }
     }

@@ -155,7 +155,9 @@ Window {
                                 onOpenDirectMessageRequested: (username) => {
                                     if (username && username !== "") {
                                         root.currentSelectedServer = "dms";
-                                        channelsPanel.openDirectMessage(username);
+                                        if (username !== "friends" && username !== "saved-messages") {
+                                            channelsPanel.openDirectMessage(username);
+                                        }
                                         root.currentActiveChannel = username.toLowerCase();
                                     }
                                 }

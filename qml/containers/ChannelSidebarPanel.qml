@@ -86,6 +86,12 @@ Rectangle {
     function openDirectMessage(username) {
         if (!username) return;
         var lower = username.toLowerCase();
+        if (lower === "saved-messages" || lower === "friends") {
+            sidebarRoot.activeChannel = lower;
+            sidebarRoot.channelSelected(lower);
+            sidebarRoot.channelChanged(lower);
+            return;
+        }
         NetworkManager.openDirectConversation(lower);
         NetworkManager.markConversationAsRead(lower);
         sidebarRoot.activeChannel = lower;
@@ -109,7 +115,7 @@ Rectangle {
         for (var i = 0; i < convs.length; ++i) {
             var item = convs[i];
             var friendName = (item.name || "").toLowerCase();
-            if (!friendName) continue;
+            if (!friendName || friendName === "saved-messages" || friendName === "friends") continue;
             var st = sidebarRoot.getFriendStatus(friendName);
             var unread = (item.unreadCount !== undefined) ? item.unreadCount : 0;
             if (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel.toLowerCase() === friendName) {
@@ -164,6 +170,7 @@ Rectangle {
         function onMessageAdded(convId, message) {
             if (convId && convId.startsWith("dms:")) {
                 var peer = convId.substring(4).toLowerCase();
+                if (peer === "saved-messages" || peer === "friends") return;
                 var rawTs = (message && message.timestamp) ? message.timestamp : 0;
                 var ts = rawTs > 0 ? (rawTs > 10000000000 ? rawTs : rawTs * 1000) : Date.now();
 

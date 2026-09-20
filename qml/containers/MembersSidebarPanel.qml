@@ -7,9 +7,9 @@ import NeoNect.Core 1.0
 Rectangle {
     id: membersRoot
 
-    property string selectedServer: "server1"
-    property bool expanded: true
-    property bool userToggledExpanded: true
+    property string selectedServer: ""
+    property bool expanded: false
+    property bool userToggledExpanded: false
 
     readonly property bool isDmOrEmpty: selectedServer === "dms" || selectedServer === ""
 
@@ -17,7 +17,7 @@ Rectangle {
     Layout.preferredWidth: (!isDmOrEmpty && expanded) ? 180 : 0
     width: (!isDmOrEmpty && expanded) ? 180 : 0
     implicitWidth: width
-    visible: !isDmOrEmpty && width > 0
+    visible: !isDmOrEmpty && expanded && width > 0
     clip: true
     color: ThemeData.panelBackground
     border.color: Qt.darker(ThemeData.panelBackground, 1.25)
