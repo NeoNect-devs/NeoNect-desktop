@@ -3,6 +3,8 @@
 #include "test_services.h"
 #include <QtTest>
 #include <QSignalSpy>
+#include <QTcpServer>
+#include <QTcpSocket>
 #include "mocks/mockhttptransport.h"
 #include "../src/transport/httptransport.h"
 #include "../src/storage/settingsrepository.h"
@@ -1085,4 +1087,119 @@ void TestServices::testNoHardcodedFriendFallback() {
     friendService.loadFriends();
     QCOMPARE(friendService.friends().size(), 0);
     QCOMPARE(friendService.pendingRequests().size(), 0);
+}
+
+void TestServices::testConnectivityAndOnlinePresence() {
+    // 1. Test WebSocketClient RFC 6455 frame parsing and handshake
+    QTcpServer server;
+    QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+    quint16 port = server.serverPort();
+
+    NeoNect::Transport::WebSocketClient client;
+    QSignalSpy spyConnected(&client, &NeoNect::Transport::WebSocketClient::connected);
+    QSignalSpy spyDisconnected(&client, &NeoNect::Transport::WebSocketClient::disconnected);
+    QSignalSpy spyText(&client, &NeoNect::Transport::WebSocketClient::textMessageReceived);
+
+    client.open(QString("http://127.0.0.1:%1").arg(port), "test-device-ws", "token-ws-123");
+    QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+    QTcpSocket *serverSideSocket = server.nextPendingConnection();
+    QVERIFY(serverSideSocket != nullptr);
+
+    // Read client upgrade request
+    QTRY_VERIFY_WITH_TIMEOUT(serverSideSocket->bytesAvailable() > 0, 2000);
+    QByteArray reqData = serverSideSocket->readAll();
+    QVERIFY(reqData.contains("GET /api/v1/relay/ws?device_id=test-device-ws"));
+    QVERIFY(reqData.contains("Upgrade: websocket"));
+    QVERIFY(reqData.contains("Sec-WebSocket-Key:"));
+    QVERIFY(reqData.contains("Authorization: Bearer token-ws-123"));
+
+    // Server accepts handshake
+    serverSideSocket->write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n");
+    serverSideSocket->flush();
+
+    // Client should transition to connected
+    QTRY_COMPARE_WITH_TIMEOUT(spyConnected.count(), 1, 2000);
+    QVERIFY(client.isConnected());
+
+    // 2. Server sends Ping frame (0x89 with 4 bytes "ping")
+    QByteArray pingFrame;
+    pingFrame.append(static_cast<char>(0x89));
+    pingFrame.append(static_cast<char>(0x04));
+    pingFrame.append("ping");
+    serverSideSocket->write(pingFrame);
+    serverSideSocket->flush();
+
+    // Server should receive Pong frame (0x8A masked with "ping" payload)
+    QTRY_VERIFY_WITH_TIMEOUT(serverSideSocket->bytesAvailable() >= 6, 2000);
+    QByteArray pongData = serverSideSocket->readAll();
+    QVERIFY(pongData.size() >= 6);
+    quint8 pongOpcode = static_cast<quint8>(pongData[0]) & 0x0F;
+    QCOMPARE(pongOpcode, static_cast<quint8>(0x0A));
+    bool isMasked = (static_cast<quint8>(pongData[1]) & 0x80) != 0;
+    QVERIFY(isMasked);
+    quint8 maskKey[4];
+    std::memcpy(maskKey, pongData.constData() + 2, 4);
+    QByteArray unmaskedPayload;
+    for (int i = 0; i < 4; ++i) {
+        unmaskedPayload.append(pongData[6 + i] ^ maskKey[i % 4]);
+    }
+    QCOMPARE(unmaskedPayload, QByteArray("ping"));
+
+    // 3. Server delivers text message over WebSocket
+    QByteArray textFrame;
+    textFrame.append(static_cast<char>(0x81));
+    QByteArray jsonMsg = "{\"id\":777,\"ciphertext\":\"mock_cipher\",\"sequence\":1}";
+    textFrame.append(static_cast<char>(jsonMsg.size()));
+    textFrame.append(jsonMsg);
+    serverSideSocket->write(textFrame);
+    serverSideSocket->flush();
+
+    QTRY_COMPARE_WITH_TIMEOUT(spyText.count(), 1, 2000);
+    QCOMPARE(spyText.first().at(0).toString(), QString::fromUtf8(jsonMsg));
+
+    // 4. Server disconnects -> client transitions to disconnected
+    serverSideSocket->disconnectFromHost();
+    QTRY_COMPARE_WITH_TIMEOUT(spyDisconnected.count(), 1, 2000);
+    QVERIFY(!client.isConnected());
+    client.close();
+
+    // 5. Test FriendService presence querying & immediate heartbeat check
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_presence_svc");
+    storage->clearSession();
+    storage->setFriends({"bob", "alice"});
+
+    NeoNect::Services::FriendService friendService(mockTransport, storage);
+    QSignalSpy spyPresence(&friendService, &NeoNect::Services::FriendService::friendStatusUpdated);
+
+    // Initial heartbeat immediately queries presence for friends
+    friendService.startHeartbeat();
+    QTRY_VERIFY_WITH_TIMEOUT(spyPresence.count() >= 2, 2000);
+
+    // Stop heartbeat marks all friends offline
+    spyPresence.clear();
+    friendService.stopHeartbeat();
+    QCOMPARE(spyPresence.count(), 2);
+    for (int i = 0; i < spyPresence.count(); ++i) {
+        QCOMPARE(spyPresence.at(i).at(1).toString(), QString("offline"));
+    }
+
+    // 6. Test NetworkManager isConnected reflecting server connectivity
+    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto friendServicePtr = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
+
+    NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendServicePtr);
+    QSignalSpy spyNetConnected(&netMgr, &NetworkManager::isConnectedChanged);
+
+    QVERIFY(!netMgr.isConnected());
+    emit relayService->serverConnected();
+    QVERIFY(netMgr.isConnected());
+    QCOMPARE(spyNetConnected.count(), 1);
+
+    emit relayService->serverDisconnected();
+    QVERIFY(!netMgr.isConnected());
+    QCOMPARE(spyNetConnected.count(), 2);
 }

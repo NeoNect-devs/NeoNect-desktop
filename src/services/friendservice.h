@@ -34,6 +34,7 @@ public:
     void removeFriend(const QString &username);
 
     void checkFriendsStatus();
+    void checkUserStatus(const QString &username);
     void updateLastSeen(const QString &username);
 
 public slots:

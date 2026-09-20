@@ -112,6 +112,7 @@ qt_add_executable(NeoNectApp
     # Transport
     src/transport/ihttptransport.h
     src/transport/httptransport.h src/transport/httptransport.cpp
+    src/transport/websocketclient.h src/transport/websocketclient.cpp
     tests/mocks/mockhttptransport.h tests/mocks/mockhttptransport.cpp
 
     # Services
@@ -331,6 +332,7 @@ add_executable(NeoNectTests
     # Transport
     src/transport/ihttptransport.h
     src/transport/httptransport.h src/transport/httptransport.cpp
+    src/transport/websocketclient.h src/transport/websocketclient.cpp
 
     # Services
     src/services/authservice.h src/services/authservice.cpp
@@ -394,6 +396,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
     src/transport/ihttptransport.h
     src/transport/httptransport.h src/transport/httptransport.cpp
+    src/transport/websocketclient.h src/transport/websocketclient.cpp
     src/services/authservice.h src/services/authservice.cpp
     src/services/deviceservice.h src/services/deviceservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
@@ -443,6 +446,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
     src/transport/ihttptransport.h
     src/transport/httptransport.h src/transport/httptransport.cpp
+    src/transport/websocketclient.h src/transport/websocketclient.cpp
     src/services/authservice.h src/services/authservice.cpp
     src/services/deviceservice.h src/services/deviceservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp

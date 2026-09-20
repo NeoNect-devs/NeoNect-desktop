@@ -26,6 +26,15 @@ Rectangle {
             copy[username.toLowerCase()] = status;
             root.activeStatus = copy;
         }
+        function onIsConnectedChanged() {
+            if (!NetworkManager.isConnected) {
+                var copy = Object.assign({}, root.activeStatus);
+                for (var key in copy) {
+                    copy[key] = "offline";
+                }
+                root.activeStatus = copy;
+            }
+        }
         function onAddFriendResult(success, message, username) {
             root.addFriendStatusMsg = message;
             root.addFriendSuccess = success;

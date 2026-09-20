@@ -18,16 +18,52 @@ RelayService::RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
       m_transport(std::move(transport)),
       m_storage(std::move(storage)),
       m_cryptoService(std::move(cryptoService)),
+      m_wsClient(std::make_unique<Transport::WebSocketClient>(this)),
       m_pollTimer(new QTimer(this)) {
 
     m_pollTimer->setInterval(Constants::RELAY_POLL_INTERVAL_MS);
     connect(m_pollTimer, &QTimer::timeout, this, &RelayService::pollPendingMessages);
+
+    connect(this, &RelayService::serverConnected, this, [this]() {
+        m_isWsConnected = true;
+    });
+
+    connect(this, &RelayService::serverDisconnected, this, [this]() {
+        m_isWsConnected = false;
+    });
+
+    connect(m_wsClient.get(), &Transport::WebSocketClient::connected, this, [this]() {
+        qDebug() << "[RelayService] Connected to server WebSocket relay. Online status active.";
+        emit serverConnected();
+    });
+
+    connect(m_wsClient.get(), &Transport::WebSocketClient::disconnected, this, [this]() {
+        qDebug() << "[RelayService] Disconnected from server WebSocket relay.";
+        emit serverDisconnected();
+    });
+
+    connect(m_wsClient.get(), &Transport::WebSocketClient::textMessageReceived,
+            this, &RelayService::onWebSocketMessageReceived);
 }
 
 void RelayService::startPolling() {
     if (!m_pollTimer->isActive()) {
         m_pollTimer->start();
     }
+
+    bool isMock = m_transport && m_transport->baseUrl().contains("mock.neonect.local");
+    if (isMock) {
+        m_isWsConnected = true;
+        emit serverConnected();
+    } else if (m_wsClient && !m_wsClient->isConnected()) {
+        QString devId = m_storage->deviceId().trimmed();
+        QString token = m_storage->authToken().trimmed();
+        if (!devId.isEmpty() && !token.isEmpty()) {
+            qDebug() << "[RelayService] Opening WebSocket connection for presence & delivery:" << devId;
+            m_wsClient->open(m_transport->baseUrl(), devId, token);
+        }
+    }
+
     pollPendingMessages();
 }
 
@@ -35,10 +71,25 @@ void RelayService::stopPolling() {
     if (m_pollTimer->isActive()) {
         m_pollTimer->stop();
     }
+    if (m_wsClient) {
+        m_wsClient->close();
+    }
+    m_isWsConnected = false;
+    emit serverDisconnected();
 }
 
 bool RelayService::isPolling() const {
     return m_pollTimer->isActive();
+}
+
+bool RelayService::isConnected() const {
+    if (m_isWsConnected) {
+        return true;
+    }
+    if (m_transport && m_transport->baseUrl().contains("mock.neonect.local")) {
+        return isPolling() && !m_storage->authToken().isEmpty();
+    }
+    return false;
 }
 
 void RelayService::handle401Error() {
@@ -182,113 +233,126 @@ void RelayService::pollPendingMessages() {
         if (!root.contains("messages") || !root.value("messages").isArray()) return;
         
         QJsonArray messages = root.value("messages").toArray();
-        std::vector<Domain::Message> batchMsgs;
         for (const QJsonValue &val : messages) {
             if (!val.isObject()) continue;
             QJsonObject msgObj = val.toObject();
-
             qint64 msgId = msgObj.value("id").toInteger();
-            if (m_processedMessageIds.find(msgId) != m_processedMessageIds.end()) {
-                acknowledgeMessage(msgId);
-                continue;
-            }
-            m_processedMessageIds.insert(msgId);
-
             QString base64Cipher = msgObj.value("ciphertext").toString();
-
-            if (base64Cipher.isEmpty()) {
-                acknowledgeMessage(msgId);
-                continue;
-            }
-
-            QByteArray envelopeBytes = QByteArray::fromBase64(base64Cipher.toLatin1());
-            
-            QByteArray decodedBytes = m_cryptoService->decryptAesGcmEnvelope(envelopeBytes);
-            if (decodedBytes.isEmpty()) {
-                qDebug() << "[RelayService] Failed to decrypt message (authentication failed or missing key)";
-                acknowledgeMessage(msgId);
-                continue;
-            }
-
-            QString textContent = QString::fromUtf8(decodedBytes);
-            QString sender = "Anonymous";
-            QString target = "dms:" + m_storage->username();
-            QString type = "text";
-            QString mediaUrl = "";
-            QString fileName = "";
-            QString mediaCategory = "";
-            qint64 fileSize = 0;
-            int duration = 0;
-            QVariantList waveform;
-            QString messageUuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
-            qint64 timestamp = 0;
-
-            auto packetDoc = QJsonDocument::fromJson(decodedBytes);
-            if (!packetDoc.isNull() && packetDoc.isObject()) {
-                QJsonObject packetObj = packetDoc.object();
-                if (packetObj.contains("sender")) sender = packetObj.value("sender").toString();
-                if (packetObj.contains("target")) target = packetObj.value("target").toString();
-                if (packetObj.contains("content")) textContent = packetObj.value("content").toString();
-                else if (packetObj.contains("text")) textContent = packetObj.value("text").toString();
-                if (packetObj.contains("type")) type = packetObj.value("type").toString();
-                if (packetObj.contains("mediaUrl")) mediaUrl = packetObj.value("mediaUrl").toString();
-                if (packetObj.contains("fileName")) fileName = packetObj.value("fileName").toString();
-                if (packetObj.contains("fileSize")) fileSize = packetObj.value("fileSize").toInteger();
-                if (packetObj.contains("duration")) duration = static_cast<int>(packetObj.value("duration").toInteger());
-                if (packetObj.contains("waveform")) waveform = packetObj.value("waveform").toArray().toVariantList();
-                if (packetObj.contains("messageId")) messageUuid = packetObj.value("messageId").toString();
-                if (packetObj.contains("mediaType")) mediaCategory = packetObj.value("mediaType").toString();
-                if (packetObj.contains("timestamp") && packetObj.value("timestamp").toInteger() > 0) {
-                    timestamp = packetObj.value("timestamp").toInteger();
-                }
-            }
-
-            qDebug() << "[RelayService] Decrypted packet from:" << sender << "type:" << type;
-
-            if (type == "friend_request" || type == "friend_accept" || type == "friend_reject") {
-                Domain::Message friendMsg;
-                friendMsg.serverId = msgId;
-                friendMsg.id = messageUuid;
-                friendMsg.senderId = sender;
-                friendMsg.type = type;
-                friendMsg.text = textContent;
-                friendMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
-                friendMsg.conversationId = "dms:" + sender.toLower();
-
-                qDebug() << "[RelayService] Emitting incomingFriendPacket for:" << sender << "type:" << type;
-                emit incomingFriendPacket(friendMsg);
-                acknowledgeMessage(msgId);
-                continue;
-            }
-
-            Domain::Message domainMsg;
-            domainMsg.serverId = msgId;
-            domainMsg.id = messageUuid;
-            domainMsg.senderId = sender;
-            domainMsg.type = type;
-            domainMsg.text = textContent;
-            domainMsg.mediaUrl = mediaUrl;
-            domainMsg.fileName = fileName;
-            domainMsg.fileSize = fileSize;
-            domainMsg.duration = duration;
-            domainMsg.errorText = mediaCategory;
-            
-            QJsonArray waveArray;
-            for (const QVariant &v : waveform) waveArray.append(v.toInt());
-            if (!waveArray.isEmpty()) {
-                domainMsg.waveform = QJsonDocument(waveArray).toJson(QJsonDocument::Compact);
-            }
-            
-            domainMsg.status = (type == "media_request") ? Domain::MessageStatus::Pending : Domain::MessageStatus::Seen;
-            domainMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
-            
-            domainMsg.conversationId = "dms:" + domainMsg.senderId.toLower();
-
-            batchMsgs.push_back(domainMsg);
-            acknowledgeMessage(msgId);
+            processIncomingRelayItem(msgId, base64Cipher);
         }
-        if (!batchMsgs.empty()) emit incomingDomainMessagesReceived(batchMsgs);
     });
+}
+
+void RelayService::onWebSocketMessageReceived(const QString &text) {
+    QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8());
+    if (doc.isNull() || !doc.isObject()) return;
+
+    QJsonObject msgObj = doc.object();
+    qint64 msgId = msgObj.value("id").toInteger();
+    QString base64Cipher = msgObj.value("ciphertext").toString();
+
+    qDebug() << "[RelayService] WebSocket real-time delivery received. MsgId:" << msgId;
+    processIncomingRelayItem(msgId, base64Cipher);
+}
+
+void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64Cipher) {
+    if (m_processedMessageIds.find(msgId) != m_processedMessageIds.end()) {
+        acknowledgeMessage(msgId);
+        return;
+    }
+    m_processedMessageIds.insert(msgId);
+
+    if (base64Cipher.isEmpty()) {
+        acknowledgeMessage(msgId);
+        return;
+    }
+
+    QByteArray envelopeBytes = QByteArray::fromBase64(base64Cipher.toLatin1());
+    
+    QByteArray decodedBytes = m_cryptoService->decryptAesGcmEnvelope(envelopeBytes);
+    if (decodedBytes.isEmpty()) {
+        qDebug() << "[RelayService] Failed to decrypt message (authentication failed or missing key)";
+        acknowledgeMessage(msgId);
+        return;
+    }
+
+    QString textContent = QString::fromUtf8(decodedBytes);
+    QString sender = "Anonymous";
+    QString target = "dms:" + m_storage->username();
+    QString type = "text";
+    QString mediaUrl = "";
+    QString fileName = "";
+    QString mediaCategory = "";
+    qint64 fileSize = 0;
+    int duration = 0;
+    QVariantList waveform;
+    QString messageUuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    qint64 timestamp = 0;
+
+    auto packetDoc = QJsonDocument::fromJson(decodedBytes);
+    if (!packetDoc.isNull() && packetDoc.isObject()) {
+        QJsonObject packetObj = packetDoc.object();
+        if (packetObj.contains("sender")) sender = packetObj.value("sender").toString();
+        if (packetObj.contains("target")) target = packetObj.value("target").toString();
+        if (packetObj.contains("content")) textContent = packetObj.value("content").toString();
+        else if (packetObj.contains("text")) textContent = packetObj.value("text").toString();
+        if (packetObj.contains("type")) type = packetObj.value("type").toString();
+        if (packetObj.contains("mediaUrl")) mediaUrl = packetObj.value("mediaUrl").toString();
+        if (packetObj.contains("fileName")) fileName = packetObj.value("fileName").toString();
+        if (packetObj.contains("fileSize")) fileSize = packetObj.value("fileSize").toInteger();
+        if (packetObj.contains("duration")) duration = static_cast<int>(packetObj.value("duration").toInteger());
+        if (packetObj.contains("waveform")) waveform = packetObj.value("waveform").toArray().toVariantList();
+        if (packetObj.contains("messageId")) messageUuid = packetObj.value("messageId").toString();
+        if (packetObj.contains("mediaType")) mediaCategory = packetObj.value("mediaType").toString();
+        if (packetObj.contains("timestamp") && packetObj.value("timestamp").toInteger() > 0) {
+            timestamp = packetObj.value("timestamp").toInteger();
+        }
+    }
+
+    qDebug() << "[RelayService] Decrypted packet from:" << sender << "type:" << type;
+
+    if (type == "friend_request" || type == "friend_accept" || type == "friend_reject") {
+        Domain::Message friendMsg;
+        friendMsg.serverId = msgId;
+        friendMsg.id = messageUuid;
+        friendMsg.senderId = sender;
+        friendMsg.type = type;
+        friendMsg.text = textContent;
+        friendMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+        friendMsg.conversationId = "dms:" + sender.toLower();
+
+        qDebug() << "[RelayService] Emitting incomingFriendPacket for:" << sender << "type:" << type;
+        emit incomingFriendPacket(friendMsg);
+        acknowledgeMessage(msgId);
+        return;
+    }
+
+    Domain::Message domainMsg;
+    domainMsg.serverId = msgId;
+    domainMsg.id = messageUuid;
+    domainMsg.senderId = sender;
+    domainMsg.type = type;
+    domainMsg.text = textContent;
+    domainMsg.mediaUrl = mediaUrl;
+    domainMsg.fileName = fileName;
+    domainMsg.fileSize = fileSize;
+    domainMsg.duration = duration;
+    domainMsg.errorText = mediaCategory;
+    
+    QJsonArray waveArray;
+    for (const QVariant &v : waveform) waveArray.append(v.toInt());
+    if (!waveArray.isEmpty()) {
+        domainMsg.waveform = QJsonDocument(waveArray).toJson(QJsonDocument::Compact);
+    }
+    
+    domainMsg.status = (type == "media_request") ? Domain::MessageStatus::Pending : Domain::MessageStatus::Seen;
+    domainMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+    
+    domainMsg.conversationId = "dms:" + domainMsg.senderId.toLower();
+
+    emit incomingDomainMessageReceived(domainMsg);
+    emit incomingDomainMessagesReceived({domainMsg});
+    acknowledgeMessage(msgId);
 }
 
 void RelayService::acknowledgeMessage(qint64 messageId) {

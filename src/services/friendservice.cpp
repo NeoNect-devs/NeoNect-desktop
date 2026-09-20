@@ -14,7 +14,7 @@ FriendService::FriendService(std::shared_ptr<Transport::IHttpTransport> transpor
     : QObject(parent), m_transport(std::move(transport)), m_storage(std::move(storage))
 {
     m_heartbeatTimer = new QTimer(this);
-    m_heartbeatTimer->setInterval(12000);
+    m_heartbeatTimer->setInterval(6000);
     connect(m_heartbeatTimer, &QTimer::timeout, this, &FriendService::checkFriendsStatus);
 
     m_cachedFriends = m_storage->friends();
@@ -54,27 +54,34 @@ void FriendService::checkFriendsStatus() {
     }
 
     for (const QString &friendUser : friendList) {
-        QString u = friendUser.trimmed();
-        if (u.isEmpty()) continue;
-
-        QMap<QString, QString> params;
-        params.insert("u", u);
-
-        m_transport->get(Constants::EP_PRESENCE, params, this, [this, u](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-            Q_UNUSED(errStr);
-            if (error == QNetworkReply::NoError && statusCode == 200) {
-                auto doc = QJsonDocument::fromJson(data);
-                if (!doc.isNull() && doc.object().contains("online")) {
-                    bool isOnline = doc.object().value("online").toBool();
-                    if (isOnline) {
-                        updateLastSeen(u);
-                    } else {
-                        emit friendStatusUpdated(u, "offline");
-                    }
-                }
-            }
-        });
+        checkUserStatus(friendUser);
     }
+}
+
+void FriendService::checkUserStatus(const QString &username) {
+    QString u = username.trimmed().toLower();
+    if (u.isEmpty()) return;
+
+    QMap<QString, QString> params;
+    params.insert("u", u);
+
+    m_transport->get(Constants::EP_PRESENCE, params, this, [this, u](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+        Q_UNUSED(errStr);
+        if (error == QNetworkReply::NoError && statusCode == 200) {
+            auto doc = QJsonDocument::fromJson(data);
+            if (!doc.isNull() && doc.object().contains("online")) {
+                bool isOnline = doc.object().value("online").toBool();
+                if (isOnline) {
+                    updateLastSeen(u);
+                } else {
+                    emit friendStatusUpdated(u, "offline");
+                }
+                return;
+            }
+        }
+        // If query failed or returned invalid response, reflect offline status
+        emit friendStatusUpdated(u, "offline");
+    });
 }
 
 void FriendService::addFriend(const QString &username) {
@@ -346,11 +353,19 @@ void FriendService::removeFriend(const QString &username) {
 }
 
 void FriendService::startHeartbeat() {
-    if (!m_heartbeatTimer->isActive()) m_heartbeatTimer->start();
+    if (!m_heartbeatTimer->isActive()) {
+        m_heartbeatTimer->start();
+    }
+    checkFriendsStatus();
 }
 
 void FriendService::stopHeartbeat() {
-    if (m_heartbeatTimer->isActive()) m_heartbeatTimer->stop();
+    if (m_heartbeatTimer->isActive()) {
+        m_heartbeatTimer->stop();
+    }
+    for (const QString &f : m_cachedFriends) {
+        emit friendStatusUpdated(f.trimmed().toLower(), "offline");
+    }
 }
 
 } // namespace Services

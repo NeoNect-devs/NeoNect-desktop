@@ -120,6 +120,14 @@ Rectangle {
             sidebarRoot.friendStatusMap[username.toLowerCase()] = status;
             sidebarRoot.syncDmModel();
         }
+        function onIsConnectedChanged() {
+            if (!NetworkManager.isConnected) {
+                for (var key in sidebarRoot.friendStatusMap) {
+                    sidebarRoot.friendStatusMap[key] = "offline";
+                }
+                sidebarRoot.syncDmModel();
+            }
+        }
     }
 
     Component.onCompleted: syncDmModel()

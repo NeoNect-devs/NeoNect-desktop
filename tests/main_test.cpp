@@ -144,7 +144,11 @@ int main(int argc, char *argv[]) {
         int r13 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testPhase10ABackendProtocolCompliance");
         std::cout << "    Result: " << (r13 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13);
+        std::cout << "--> Testing testConnectivityAndOnlinePresence..." << std::endl;
+        int r14 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testConnectivityAndOnlinePresence" << "-v2");
+        std::cout << "    Result: " << (r14 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14);
     }
 
     {

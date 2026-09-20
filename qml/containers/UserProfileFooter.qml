@@ -17,7 +17,8 @@ Rectangle {
     topLeftRadius: 12; topRightRadius: 12
     border.color: "#232523"; border.width: 1
 
-    property string userStatus: (NetworkManager && NetworkManager.token && NetworkManager.token !== "") ? "online" : "offline"
+    property string customStatusPreference: "online"
+    property string userStatus: (NetworkManager && NetworkManager.token && NetworkManager.token !== "" && NetworkManager.isConnected) ? customStatusPreference : "offline"
 
     function getStatusColor(st) {
         switch(st) {
@@ -156,7 +157,7 @@ Rectangle {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
-                                        root.userStatus = modelData.key;
+                                        root.customStatusPreference = modelData.key;
                                         statusPopup.close();
                                     }
                                 }

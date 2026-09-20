@@ -123,6 +123,18 @@ void NetworkManager::setupServiceSignals() {
 
     connect(m_relayService.get(), &NeoNect::Services::RelayService::deviceRegistrationRequested, this, &NetworkManager::autoRegisterDevice);
 
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::serverConnected, this, [this]() {
+        emit isConnectedChanged();
+        m_friendService->checkFriendsStatus();
+    });
+
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::serverDisconnected, this, [this]() {
+        emit isConnectedChanged();
+        for (const QString &f : m_friendService->friends()) {
+            emit friendStatusUpdated(f.trimmed().toLower(), "offline");
+        }
+    });
+
     // Friend Service Connections
     connect(m_friendService.get(), &NeoNect::Services::FriendService::friendsListChanged, this, [this](const QStringList&) {
         emit friendsChanged();
@@ -159,6 +171,10 @@ QString NetworkManager::token() const {
 
 QString NetworkManager::currentUsername() const {
     return m_sessionToken.isEmpty() ? QString() : m_storage->username();
+}
+
+bool NetworkManager::isConnected() const {
+    return m_relayService ? m_relayService->isConnected() : false;
 }
 
 QStringList NetworkManager::friends() const {
@@ -274,6 +290,7 @@ void NetworkManager::logoutUser() {
     m_authService->logoutUser();
     emit tokenChanged();
     emit currentUsernameChanged();
+    emit isConnectedChanged();
 }
 
 void NetworkManager::registerDevice(const QString &deviceId, const QString &publicKey) {
@@ -325,4 +342,8 @@ void NetworkManager::removeFriend(const QString &username) {
 
 void NetworkManager::checkFriendsStatus() {
     m_friendService->checkFriendsStatus();
+}
+
+void NetworkManager::checkUserStatus(const QString &username) {
+    m_friendService->checkUserStatus(username);
 }

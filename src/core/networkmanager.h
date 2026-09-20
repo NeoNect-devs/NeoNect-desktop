@@ -20,6 +20,7 @@ class NetworkManager : public QObject {
     Q_PROPERTY(QString token READ token NOTIFY tokenChanged)
     Q_PROPERTY(QString currentUsername READ currentUsername NOTIFY currentUsernameChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
+    Q_PROPERTY(bool isConnected READ isConnected NOTIFY isConnectedChanged)
     Q_PROPERTY(QStringList friends READ friends NOTIFY friendsChanged)
     Q_PROPERTY(QStringList pendingRequests READ pendingRequests NOTIFY pendingRequestsChanged)
     Q_PROPERTY(QVariantList bookmarks READ bookmarks NOTIFY bookmarksChanged)
@@ -41,6 +42,7 @@ public:
     QString token() const;
     QString currentUsername() const;
     bool isLoading() const { return m_isLoading; }
+    bool isConnected() const;
     QStringList friends() const;
     QStringList pendingRequests() const;
     QVariantList bookmarks() const;
@@ -75,12 +77,14 @@ public:
     Q_INVOKABLE void rejectFriend(const QString &username);
     Q_INVOKABLE void removeFriend(const QString &username);
     Q_INVOKABLE void checkFriendsStatus();
+    Q_INVOKABLE void checkUserStatus(const QString &username);
 
 signals:
     void serverUrlChanged();
     void tokenChanged();
     void currentUsernameChanged();
     void isLoadingChanged();
+    void isConnectedChanged();
     void friendsChanged();
     void pendingRequestsChanged();
     void bookmarksChanged();

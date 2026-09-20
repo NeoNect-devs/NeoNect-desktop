@@ -4,6 +4,7 @@
 #include <memory>
 #include <unordered_set>
 #include "../transport/ihttptransport.h"
+#include "../transport/websocketclient.h"
 #include "../storage/isettingsrepository.h"
 #include "../crypto/icryptoservice.h"
 #include "../domain/message.h"
@@ -23,6 +24,7 @@ public:
     void startPolling();
     void stopPolling();
     bool isPolling() const;
+    bool isConnected() const;
 
     void pollPendingMessages();
     void acknowledgeMessage(qint64 messageId);
@@ -39,15 +41,22 @@ signals:
     void sessionUnauthorized(const QString &message);
     void deviceRegistrationRequested();
 
+    void serverConnected();
+    void serverDisconnected();
+
 private:
     void handle401Error();
+    void processIncomingRelayItem(qint64 msgId, const QString &base64Cipher);
+    void onWebSocketMessageReceived(const QString &text);
 
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
     std::shared_ptr<Crypto::ICryptoService> m_cryptoService;
+    std::unique_ptr<Transport::WebSocketClient> m_wsClient;
     QTimer *m_pollTimer;
     int m_retry401Count{0};
     bool m_isPollingActive{false};
+    bool m_isWsConnected{false};
     std::unordered_set<qint64> m_processedMessageIds;
 };
 

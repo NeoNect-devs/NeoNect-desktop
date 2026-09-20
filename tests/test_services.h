@@ -30,4 +30,5 @@ private slots:
     void testCallbackCannotReachDestroyedService();
     void testRequestCancellationOnServiceDestruction();
     void testPhase10ABackendProtocolCompliance();
+    void testConnectivityAndOnlinePresence();
 };
