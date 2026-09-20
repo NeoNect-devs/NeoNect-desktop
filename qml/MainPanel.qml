@@ -100,11 +100,13 @@ Item {
     function switchChannel() {
         root.isOtherTyping = false;
         peerTypingTimeoutTimer.stop();
-        if (root.selectedServer === "dms" && root.activeChannel === "friends") {
+        if (root.selectedServer === "dms" && (root.activeChannel === "friends" || !root.activeChannel)) {
             return;
         }
 
-        var key = selectedServer + ":" + activeChannel;
+        var chan = root.activeChannel ? root.activeChannel.trim() : "";
+        if (!chan) return;
+        var key = root.selectedServer + ":" + chan;
         nativeMessageModel.setActiveConversation(key);
         MessageService.loadConversation(key);
     }
@@ -116,7 +118,12 @@ Item {
     }
 
     function sendMessagePayload(itemObj) {
-        var key = root.selectedServer + ":" + root.activeChannel;
+        var chan = root.activeChannel ? root.activeChannel.trim() : "";
+        if (!chan || chan === "friends") {
+            console.warn("[MainPanel] Aborting sendMessage: activeChannel is invalid or friends:", chan);
+            return;
+        }
+        var key = root.selectedServer + ":" + chan;
         if (root.selectedServer === "dms") {
             MessageService.sendTyping(key, false);
         }
@@ -186,7 +193,7 @@ Item {
 
         ChatView {
             id: chatView
-            visible: !(root.selectedServer === "dms" && root.activeChannel === "friends")
+            visible: !(root.selectedServer === "dms" && root.activeChannel === "friends") && root.activeChannel !== ""
             Layout.fillWidth: true
             Layout.fillHeight: true
             selectedServer: root.selectedServer

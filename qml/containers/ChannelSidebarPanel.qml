@@ -299,22 +299,28 @@ Rectangle {
             }
 
             delegate: ChannelListItem {
-                channelName: model.name
+                id: dmDelegateItem
+                channelName: (typeof model.name !== "undefined" && model.name) ? model.name : ""
                 isDM: model.isDM
                 canClose: model.isDM
                 userStatus: model.userStatus
                 unreadBadge: model.unreadBadge || 0
-                isSelected: sidebarRoot.activeChannel === model.name
+                isSelected: sidebarRoot.activeChannel === dmDelegateItem.channelName
                 onClicked: {
+                    var targetChan = dmDelegateItem.channelName;
+                    if (!targetChan) return;
                     if (model.isDM) {
-                        NetworkManager.markConversationAsRead(model.name);
+                        NetworkManager.markConversationAsRead(targetChan);
                     }
-                    sidebarRoot.activeChannel = model.name;
-                    sidebarRoot.channelSelected(model.name);
-                    sidebarRoot.channelChanged(model.name);
+                    sidebarRoot.activeChannel = targetChan;
+                    sidebarRoot.channelSelected(targetChan);
+                    sidebarRoot.channelChanged(targetChan);
                 }
                 onCloseClicked: {
-                    sidebarRoot.closeDirectMessage(model.name);
+                    var targetChan = dmDelegateItem.channelName;
+                    if (targetChan) {
+                        sidebarRoot.closeDirectMessage(targetChan);
+                    }
                 }
             }
         }

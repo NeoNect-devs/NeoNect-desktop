@@ -128,7 +128,7 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     }
 
     if (token.isEmpty() || targetUser.isEmpty()) {
-        qDebug() << "[RelayService] sendDomainMessage failed: token.isEmpty()=" << token.isEmpty() << "targetUser=" << targetUser;
+        qDebug() << "[RelayService] sendDomainMessage failed: token.isEmpty()=" << token.isEmpty() << "targetUser=" << targetUser << "conversationId=" << msg.conversationId;
         emit secureMessageTransmitted(targetUser, false);
         emit messageTransmissionStatus(targetUser, msg.id, false, "Missing session token or recipient");
         return;

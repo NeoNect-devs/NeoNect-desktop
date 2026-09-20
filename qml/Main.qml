@@ -127,7 +127,16 @@ Window {
                                 id: channelsPanel
                                 selectedServer: root.currentSelectedServer
                                 activeChannel: root.currentActiveChannel
-                                onChannelChanged: (chan) => root.currentActiveChannel = chan
+                                onChannelSelected: function(chan) {
+                                    if (chan && chan !== "") {
+                                        root.currentActiveChannel = chan;
+                                    }
+                                }
+                                onChannelChanged: function(chan) {
+                                    if (chan && chan !== "") {
+                                        root.currentActiveChannel = chan;
+                                    }
+                                }
                                 onAddFriendRequested: mainPanel.showAddFriendModal = true
                             }
                             MainPanel {
@@ -136,12 +145,19 @@ Window {
                                 activeChannel: root.currentActiveChannel
                                 onNavigateRequested: (srv, chan) => {
                                     root.currentSelectedServer = srv;
-                                    root.currentActiveChannel = chan;
+                                    if (chan && chan !== "") {
+                                        root.currentActiveChannel = chan;
+                                        if (srv === "dms" && chan !== "friends" && chan !== "saved-messages" && typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
+                                            channelsPanel.openDirectMessage(chan);
+                                        }
+                                    }
                                 }
                                 onOpenDirectMessageRequested: (username) => {
-                                    root.currentSelectedServer = "dms";
-                                    channelsPanel.openDirectMessage(username);
-                                    root.currentActiveChannel = username.toLowerCase();
+                                    if (username && username !== "") {
+                                        root.currentSelectedServer = "dms";
+                                        channelsPanel.openDirectMessage(username);
+                                        root.currentActiveChannel = username.toLowerCase();
+                                    }
                                 }
                                 onOpenMediaModalRequested: (url, type, name) => {
                                     globalLightboxModal.open(url, type, name);

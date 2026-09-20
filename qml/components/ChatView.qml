@@ -24,7 +24,7 @@ ColumnLayout {
     signal acceptMediaRequested(string convId, string reqId)
     signal declineMediaRequested(string convId, string reqId)
 
-    visible: !(selectedServer === "dms" && activeChannel === "friends")
+    visible: !(selectedServer === "dms" && activeChannel === "friends") && activeChannel !== ""
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
