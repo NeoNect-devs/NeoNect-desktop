@@ -252,11 +252,22 @@ void ChatMessageModel::onMessageAdded(const QString &conversationId, const QVari
 void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText) {
     if (!conversationId.isEmpty() && conversationId != m_activeConversationId) return;
     
+    if (messageId.isEmpty() || messageId == "all") {
+        for (size_t i = 0; i < m_items.size(); ++i) {
+            if (m_items[i].fromMe && m_items[i].status != status) {
+                m_items[i].status = status;
+                m_items[i].errorText = errorText;
+                emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), 0), {StatusRole, ErrorTextRole});
+            }
+        }
+        return;
+    }
+
     for (size_t i = 0; i < m_items.size(); ++i) {
         if (m_items[i].id == messageId) {
             m_items[i].status = status;
             m_items[i].errorText = errorText;
-            emit dataChanged(index(i, 0), index(i, 0), {StatusRole, ErrorTextRole});
+            emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), 0), {StatusRole, ErrorTextRole});
             break;
         }
     }

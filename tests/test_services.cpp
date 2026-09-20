@@ -19,6 +19,7 @@
 #include "../src/core/networkmanager.h"
 #include <iostream>
 #include "../src/core/notificationmanager.h"
+#include "../src/core/chatmessagemodel.h"
 
 void TestServices::testAuthServiceFlow() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
@@ -1314,5 +1315,101 @@ void TestServices::testOpenConversationsUnreadCountBadge() {
     QCOMPARE(netMgr2.unreadCount("bob"), 0);
 
     storage->setOpenConversations({});
+}
+
+void TestServices::testSeenReceiptsAndUpdateCheckmark() {
+    auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
+    sharedTransport->seedUser("alice", "pass123");
+    sharedTransport->seedUser("bob", "pass123");
+
+    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
+    cryptoAlice->setMasterKey(QByteArray(32, 1));
+    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
+    cryptoBob->setMasterKey(QByteArray(32, 1));
+
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_seen");
+    storageAlice->clearSession();
+    storageAlice->setUsername("alice");
+    storageAlice->setAuthToken("mock-token-alice");
+    storageAlice->setDeviceId("mock-dev-alice");
+
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_seen");
+    storageBob->clearSession();
+    storageBob->setUsername("bob");
+    storageBob->setDeviceId("mock-dev-bob");
+    storageBob->setAuthToken("mock-token-bob");
+
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoAlice);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoBob);
+
+    auto repoAlice = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto repoBob = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+
+    auto msgAlice = std::make_shared<NeoNect::Services::MessageService>(repoAlice);
+    msgAlice->setCurrentUserId("alice");
+    auto msgBob = std::make_shared<NeoNect::Services::MessageService>(repoBob);
+    msgBob->setCurrentUserId("bob");
+
+    QObject::connect(msgAlice.get(), &NeoNect::Services::MessageService::transmitMessage,
+                     relayAlice.get(), &NeoNect::Services::RelayService::sendDomainMessage);
+    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
+                     msgAlice.get(), &NeoNect::Services::MessageService::handleIncomingMessages);
+    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
+                     msgAlice.get(), [&msgAlice](const QString &, const QString &messageId, bool success, const QString &errorMessage) {
+        msgAlice->handleMessageDeliveryStatus(messageId, success, errorMessage);
+    });
+
+    QObject::connect(msgBob.get(), &NeoNect::Services::MessageService::transmitMessage,
+                     relayBob.get(), &NeoNect::Services::RelayService::sendDomainMessage);
+    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
+                     msgBob.get(), &NeoNect::Services::MessageService::handleIncomingMessages);
+    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
+                     msgBob.get(), [&msgBob](const QString &, const QString &messageId, bool success, const QString &errorMessage) {
+        msgBob->handleMessageDeliveryStatus(messageId, success, errorMessage);
+    });
+
+    ChatMessageModel modelAlice;
+    modelAlice.setActiveConversation("dms:bob");
+    QObject::connect(msgAlice.get(), &NeoNect::Services::MessageService::messageAdded,
+                     &modelAlice, &ChatMessageModel::onMessageAdded);
+    QObject::connect(msgAlice.get(), &NeoNect::Services::MessageService::messageUpdated,
+                     &modelAlice, &ChatMessageModel::onMessageUpdated);
+
+    // 1. Alice sends a direct message to Bob
+    sharedTransport->setAuthToken("mock-token-alice");
+    msgAlice->sendMessage("dms:bob", "Hey Bob, check this out!");
+    QTest::qWait(100);
+
+    QCOMPARE(modelAlice.rowCount(), 1);
+    QCOMPARE(modelAlice.data(modelAlice.index(0, 0), ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(modelAlice.data(modelAlice.index(0, 0), ChatMessageModel::FromMeRole).toBool(), true);
+
+    // 2. Bob polls and receives the message
+    sharedTransport->setAuthToken("mock-token-bob");
+    relayBob->pollPendingMessages();
+    QTest::qWait(100);
+
+    // 3. Bob sends seen receipt (as when viewing or opening the conversation)
+    msgBob->sendSeenReceipt("dms:alice", "all");
+    QTest::qWait(100);
+
+    // 4. Alice polls and receives the read receipt
+    sharedTransport->setAuthToken("mock-token-alice");
+    relayAlice->pollPendingMessages();
+    QTest::qWait(150);
+
+    // 5. Verify Alice's message model status has updated to "seen"
+    QCOMPARE(modelAlice.data(modelAlice.index(0, 0), ChatMessageModel::StatusRole).toString(), QString("seen"));
+
+    // 6. Verify persistence in SQLite repository
+    QSignalSpy spyLoaded(msgAlice.get(), &NeoNect::Services::MessageService::conversationLoaded);
+    msgAlice->loadConversation("dms:bob");
+    QVERIFY(spyLoaded.wait(500));
+    auto loadedMsgs = spyLoaded.first().at(1).toList();
+    QCOMPARE(loadedMsgs.size(), 1);
+    QCOMPARE(loadedMsgs.at(0).toMap().value("status").toString(), QString("seen"));
+
+    storageAlice->clearSession();
+    storageBob->clearSession();
 }
 

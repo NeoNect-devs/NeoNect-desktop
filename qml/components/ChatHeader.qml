@@ -91,7 +91,7 @@ Rectangle {
                     Rectangle {
                         width: 32; height: 32
                         radius: 6
-                        visible: selectedServer !== "dms"
+                        visible: selectedServer !== "dms" && selectedServer !== ""
                         color: membersToggleMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
 
                         IconImage {
@@ -106,7 +106,7 @@ Rectangle {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: membersPanel.userToggledExpanded = !membersPanel.userToggledExpanded
+                            onClicked: headerRoot.toggleMembersPanel()
                         }
                     }
                 }

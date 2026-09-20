@@ -31,6 +31,9 @@ public:
     // Ephemeral Typing Status (Direct Messages)
     Q_INVOKABLE void sendTyping(const QString &conversationId, bool isTyping);
 
+    // Seen Receipts (Direct Messages)
+    Q_INVOKABLE void sendSeenReceipt(const QString &conversationId, const QString &messageId = "all");
+
     // Provide the current user's ID so we can derive 'fromMe' logic if needed, or pass it to UI
     void setCurrentUserId(const QString &userId);
 

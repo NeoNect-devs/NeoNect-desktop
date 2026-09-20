@@ -68,6 +68,19 @@ void MessageService::sendTyping(const QString &conversationId, bool isTyping) {
     emit transmitMessage(msg);
 }
 
+void MessageService::sendSeenReceipt(const QString &conversationId, const QString &messageId) {
+    if (conversationId.isEmpty() || !conversationId.startsWith("dms:")) return;
+    Domain::Message msg;
+    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.conversationId = conversationId;
+    msg.senderId = m_currentUserId;
+    msg.type = "message_seen";
+    msg.text = messageId.isEmpty() ? "all" : messageId;
+    msg.status = Domain::MessageStatus::Sent;
+    msg.timestamp = QDateTime::currentMSecsSinceEpoch();
+    emit transmitMessage(msg);
+}
+
 void MessageService::sendMediaRequest(const QString &conversationId, const QString &text, const QString &mediaType,
                                       const QString &mediaUrl, const QString &fileName, qint64 fileSize)
 {
@@ -183,6 +196,22 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
         if (msg.type == "typing_start" || msg.type == "typing_stop") {
             bool isTyping = (msg.type == "typing_start");
             emit peerTypingStatusChanged(msg.conversationId, msg.senderId, isTyping);
+            continue;
+        }
+
+        if (msg.type == "message_seen") {
+            QString targetId = msg.text.trimmed();
+            QString convId = msg.conversationId;
+            qDebug() << "[MessageService] Received message_seen receipt from" << msg.senderId << "for:" << targetId << "conv:" << convId;
+            if (!targetId.isEmpty() && targetId != "all") {
+                m_repository->updateMessageStatusAsync(targetId, Domain::MessageStatus::Seen, "", this, nullptr);
+            }
+            m_repository->markMessagesSeenAsync(convId, m_currentUserId, this, [this, convId, targetId](bool) {
+                if (!targetId.isEmpty() && targetId != "all") {
+                    emit messageUpdated(convId, targetId, "seen", "");
+                }
+                emit messageUpdated(convId, "all", "seen", "");
+            });
             continue;
         }
 

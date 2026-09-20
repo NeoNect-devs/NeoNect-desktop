@@ -11,11 +11,13 @@ Rectangle {
     property bool expanded: true
     property bool userToggledExpanded: true
 
+    readonly property bool isDmOrEmpty: selectedServer === "dms" || selectedServer === ""
+
     Layout.fillHeight: true
-    Layout.preferredWidth: expanded ? 180 : 0
-    width: expanded ? 180 : 0
+    Layout.preferredWidth: (!isDmOrEmpty && expanded) ? 180 : 0
+    width: (!isDmOrEmpty && expanded) ? 180 : 0
     implicitWidth: width
-    visible: width > 0
+    visible: !isDmOrEmpty && width > 0
     clip: true
     color: ThemeData.panelBackground
     border.color: Qt.darker(ThemeData.panelBackground, 1.25)

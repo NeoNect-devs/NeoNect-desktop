@@ -41,6 +41,13 @@ Item {
         function onMessageAdded(convId, message) {
             nativeMessageModel.onMessageAdded(convId, message);
             chatView.scrollToEndIfAtBottom();
+
+            var currentConvId = root.selectedServer + ":" + (root.activeChannel ? root.activeChannel.trim() : "");
+            var isMsgFromMe = message && (message.fromMe || (NetworkManager && NetworkManager.currentUsername && message.senderId && message.senderId.toLowerCase() === NetworkManager.currentUsername.toLowerCase()));
+            if (root.selectedServer === "dms" && convId === currentConvId && !isMsgFromMe) {
+                var msgId = (message && (message.id || message.messageId)) ? (message.id || message.messageId) : "all";
+                MessageService.sendSeenReceipt(convId, msgId);
+            }
         }
         function onMessageUpdated(convId, msgId, status, errorText) {
             nativeMessageModel.onMessageUpdated(convId, msgId, status, errorText);
@@ -109,6 +116,9 @@ Item {
         var key = root.selectedServer + ":" + chan;
         nativeMessageModel.setActiveConversation(key);
         MessageService.loadConversation(key);
+        if (root.selectedServer === "dms" && chan !== "saved-messages" && chan !== "friends") {
+            MessageService.sendSeenReceipt(key, "all");
+        }
     }
 
     function focusMessageInput() {

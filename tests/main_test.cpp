@@ -156,7 +156,11 @@ int main(int argc, char *argv[]) {
         int r16 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testOpenConversationsUnreadCountBadge" << "-v2");
         std::cout << "    Result: " << (r16 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16);
+        std::cout << "--> Testing testSeenReceiptsAndUpdateCheckmark..." << std::endl;
+        int r17 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testSeenReceiptsAndUpdateCheckmark" << "-v2");
+        std::cout << "    Result: " << (r17 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17);
     }
 
     {

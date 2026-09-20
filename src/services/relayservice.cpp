@@ -341,6 +341,21 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         return;
     }
 
+    if (type == "message_seen") {
+        Domain::Message seenMsg;
+        seenMsg.serverId = msgId;
+        seenMsg.id = messageUuid;
+        seenMsg.senderId = sender;
+        seenMsg.conversationId = "dms:" + sender.toLower();
+        seenMsg.type = type;
+        seenMsg.text = textContent;
+        seenMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+
+        emit incomingDomainMessagesReceived({seenMsg});
+        acknowledgeMessage(msgId);
+        return;
+    }
+
     Domain::Message domainMsg;
     domainMsg.serverId = msgId;
     domainMsg.id = messageUuid;

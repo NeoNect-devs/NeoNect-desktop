@@ -160,6 +160,30 @@ public slots:
         invokeCallback(context, callback, success);
     }
 
+    void doMarkMessagesSeen(const QString conversationId, const QString senderId, const QObject* context, IMessageRepository::SaveCallback callback) {
+        if (!m_db.isOpen()) {
+            invokeCallback(context, callback, false);
+            return;
+        }
+
+        QSqlQuery query(m_db);
+        if (!senderId.isEmpty()) {
+            query.prepare("UPDATE messages SET status = ? WHERE conversation_id = ? AND sender_id = ? AND status != ?");
+            query.addBindValue(static_cast<int>(Domain::MessageStatus::Seen));
+            query.addBindValue(conversationId);
+            query.addBindValue(senderId);
+            query.addBindValue(static_cast<int>(Domain::MessageStatus::Seen));
+        } else {
+            query.prepare("UPDATE messages SET status = ? WHERE conversation_id = ? AND status != ?");
+            query.addBindValue(static_cast<int>(Domain::MessageStatus::Seen));
+            query.addBindValue(conversationId);
+            query.addBindValue(static_cast<int>(Domain::MessageStatus::Seen));
+        }
+
+        bool success = query.exec();
+        invokeCallback(context, callback, success);
+    }
+
     void doDeleteMessage(const QString id, const QObject* context, IMessageRepository::SaveCallback callback) {
         if (!m_db.isOpen()) {
             invokeCallback(context, callback, false);
@@ -272,6 +296,12 @@ void SqlMessageRepository::saveMessagesAsync(const std::vector<Domain::Message> 
 void SqlMessageRepository::updateMessageStatusAsync(const QString &id, Domain::MessageStatus status, const QString &errorText, const QObject* context, SaveCallback callback) {
     QMetaObject::invokeMethod(m_worker, [this, id, status, errorText, context, callback]() {
         m_worker->doUpdateStatus(id, status, errorText, context, callback);
+    }, Qt::QueuedConnection);
+}
+
+void SqlMessageRepository::markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context, SaveCallback callback) {
+    QMetaObject::invokeMethod(m_worker, [this, conversationId, senderId, context, callback]() {
+        m_worker->doMarkMessagesSeen(conversationId, senderId, context, callback);
     }, Qt::QueuedConnection);
 }
 

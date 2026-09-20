@@ -33,4 +33,5 @@ private slots:
     void testConnectivityAndOnlinePresence();
     void testOpenConversationsActivityOrdering();
     void testOpenConversationsUnreadCountBadge();
+    void testSeenReceiptsAndUpdateCheckmark();
 };

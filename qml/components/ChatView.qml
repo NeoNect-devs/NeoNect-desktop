@@ -396,7 +396,8 @@ ColumnLayout {
                 id: membersPanel
                 Layout.fillHeight: true
                 selectedServer: selectedServer
-                expanded: selectedServer !== "dms" && userToggledExpanded
+                visible: selectedServer !== "dms" && selectedServer !== ""
+                expanded: selectedServer !== "dms" && selectedServer !== "" && userToggledExpanded
             }
         }
     }

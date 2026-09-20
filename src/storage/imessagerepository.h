@@ -19,6 +19,7 @@ public:
     virtual void saveMessageAsync(const Domain::Message &msg, const QObject* context, SaveCallback callback) = 0;
     virtual void saveMessagesAsync(const std::vector<Domain::Message> &msgs, const QObject* context, SaveCallback callback) = 0;
     virtual void updateMessageStatusAsync(const QString &id, Domain::MessageStatus status, const QString &errorText, const QObject* context, SaveCallback callback) = 0;
+    virtual void markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context = nullptr, SaveCallback callback = nullptr) = 0;
     virtual void deleteMessageAsync(const QString &id, const QObject* context = nullptr, SaveCallback callback = nullptr) = 0;
     virtual void getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, FetchCallback callback) = 0;
 };
