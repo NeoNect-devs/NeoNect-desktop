@@ -55,6 +55,20 @@ Rectangle {
         id: openDmListModel
     }
 
+    property var friendStatusMap: ({})
+
+    function getFriendStatus(name) {
+        if (!sidebarRoot.friendStatusMap) return "offline";
+        return sidebarRoot.friendStatusMap[name] || "offline";
+    }
+
+    function setFriendStatus(name, status) {
+        if (!sidebarRoot.friendStatusMap) {
+            sidebarRoot.friendStatusMap = ({});
+        }
+        sidebarRoot.friendStatusMap[name] = status;
+    }
+
     onActiveChannelChanged: {
         if (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel !== "friends" && sidebarRoot.activeChannel !== "saved-messages") {
             NetworkManager.markConversationAsRead(sidebarRoot.activeChannel);
@@ -96,7 +110,7 @@ Rectangle {
             var item = convs[i];
             var friendName = (item.name || "").toLowerCase();
             if (!friendName) continue;
-            var st = sidebarRoot.friendStatusMap[friendName] || "offline";
+            var st = sidebarRoot.getFriendStatus(friendName);
             var unread = (item.unreadCount !== undefined) ? item.unreadCount : 0;
             if (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel.toLowerCase() === friendName) {
                 unread = 0;
@@ -125,17 +139,19 @@ Rectangle {
             var myUsername = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
             if (myUsername !== "" && lower === myUsername) return; // Prevent self-DM from appearing on sent message
 
-            sidebarRoot.friendStatusMap[lower] = "online";
+            sidebarRoot.setFriendStatus(lower, "online");
             sidebarRoot.syncDmModel();
         }
         function onFriendStatusUpdated(username, status) {
-            sidebarRoot.friendStatusMap[username.toLowerCase()] = status;
+            sidebarRoot.setFriendStatus(username.toLowerCase(), status);
             sidebarRoot.syncDmModel();
         }
         function onIsConnectedChanged() {
             if (!NetworkManager.isConnected) {
-                for (var key in sidebarRoot.friendStatusMap) {
-                    sidebarRoot.friendStatusMap[key] = "offline";
+                if (sidebarRoot.friendStatusMap) {
+                    for (var key in sidebarRoot.friendStatusMap) {
+                        sidebarRoot.friendStatusMap[key] = "offline";
+                    }
                 }
                 sidebarRoot.syncDmModel();
             }
@@ -148,7 +164,8 @@ Rectangle {
         function onMessageAdded(convId, message) {
             if (convId && convId.startsWith("dms:")) {
                 var peer = convId.substring(4).toLowerCase();
-                var ts = (message && message.timestamp) ? (message.timestamp * 1000) : Date.now();
+                var rawTs = (message && message.timestamp) ? message.timestamp : 0;
+                var ts = rawTs > 0 ? (rawTs > 10000000000 ? rawTs : rawTs * 1000) : Date.now();
 
                 var myUsername = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
                 var sender = (message && message.sender) ? message.sender.toLowerCase() : ((message && message.senderId) ? message.senderId.toLowerCase() : "");
