@@ -1286,6 +1286,8 @@ void TestServices::testOpenConversationsUnreadCountBadge() {
     QCOMPARE(netMgr.unreadCount("alice"), 2);
     QCOMPARE(netMgr.openConversations().at(0).toMap().value("unreadCount").toInt(), 2);
 
+    QThread::msleep(10);
+
     // 3. Incoming message from Bob increments Bob's count to 1 and places Bob at the top
     netMgr.incrementUnreadCount("bob");
     QCOMPARE(netMgr.unreadCount("bob"), 1);
