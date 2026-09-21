@@ -272,6 +272,56 @@ void TestMessages::testMessageDeliveryStatusTransitions() {
     QVERIFY(!msgId.isEmpty());
 
     // Delivery confirmation arrives -> status transitions to "sent"
-    service.handleMessageDeliveryStatus(msgId, "sent", "");
+    service.handleMessageDeliveryStatus(msgId, true, "");
     QCOMPARE(model.data(idx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+}
+
+void TestMessages::testMediaTransferProgressSenderSide() {
+    QString dbPath = "test_messages_db/test8.db";
+    QFile::remove(dbPath);
+    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    Services::MessageService service(repo);
+    service.setCurrentUserId("me");
+
+    ChatMessageModel model;
+    model.setActiveConversation("dms:bob");
+
+    QObject::connect(&service, &Services::MessageService::messageAdded,
+                     &model, &ChatMessageModel::onMessageAdded);
+    QObject::connect(&service, &Services::MessageService::messageUpdated,
+                     &model, &ChatMessageModel::onMessageUpdated);
+    QObject::connect(&service, &Services::MessageService::mediaTransferProgress,
+                     &model, &ChatMessageModel::onMediaTransferProgress);
+
+    QSignalSpy spyProgress(&service, &Services::MessageService::mediaTransferProgress);
+
+    // Send an image message with 3MB file size
+    qint64 testSize = 1024 * 1024 * 3;
+    service.sendMessage("dms:bob", "Look at this photo", "image", "file:///photo.png", "photo.png", testSize, 0, {});
+
+    QCOMPARE(model.rowCount(), 1);
+    QModelIndex idx = model.index(0, 0);
+    QCOMPARE(model.data(idx, ChatMessageModel::StatusRole).toString(), QString("sending"));
+    QCOMPARE(model.data(idx, ChatMessageModel::MessageTypeRole).toString(), QString("image"));
+    QCOMPARE(model.data(idx, ChatMessageModel::FileSizeRole).toLongLong(), testSize);
+    QVERIFY(model.data(idx, ChatMessageModel::TransferProgressRole).toReal() > 0.0);
+    QString msgId = model.data(idx, ChatMessageModel::MessageIdRole).toString();
+    QVERIFY(!msgId.isEmpty());
+
+    // Delivery confirmation arrives while transfer is still active;
+    // status should remain "sending" (transfer progress must NOT be cleared prematurely!)
+    service.handleMessageDeliveryStatus(msgId, true, "");
+    QCOMPARE(model.data(idx, ChatMessageModel::StatusRole).toString(), QString("sending"));
+
+    // Wait for transfer progress timer to emit updates
+    QTest::qWait(200);
+    QVERIFY(spyProgress.count() >= 2);
+    qreal intermediateProg = model.data(idx, ChatMessageModel::TransferProgressRole).toReal();
+    QVERIFY(intermediateProg >= 0.05);
+
+    // Wait for the full transfer animation to complete (25 steps * 60ms = ~1500ms)
+    QTest::qWait(1600);
+    QCOMPARE(model.data(idx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(model.data(idx, ChatMessageModel::TransferProgressRole).toReal(), 1.0);
+    QCOMPARE(model.data(idx, ChatMessageModel::TransferBytesRole).toLongLong(), testSize);
 }

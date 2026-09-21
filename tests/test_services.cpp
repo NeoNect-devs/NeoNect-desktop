@@ -452,12 +452,12 @@ void TestServices::testTwoClientFriendRequestRejectFlow() {
 }
 
 void TestServices::testTwoClientMediaRequestApprovalFlow() {
-    // 1. Verify AudioManager dynamic formatFileSize (Kb, Mb, Gb based on size)
+    // 1. Verify AudioManager dynamic formatFileSize (KB, MB, GB based on size)
     QCOMPARE(AudioManager::formatFileSize(0), QString("0 B"));
     QCOMPARE(AudioManager::formatFileSize(512), QString("512 B"));
-    QCOMPARE(AudioManager::formatFileSize(1024 * 350), QString("350.0 Kb"));
-    QCOMPARE(AudioManager::formatFileSize(1024LL * 1024 * 12), QString("12.0 Mb"));
-    QCOMPARE(AudioManager::formatFileSize(1024LL * 1024 * 1024 * 2), QString("2.00 Gb"));
+    QCOMPARE(AudioManager::formatFileSize(1024 * 350), QString("350.0 KB"));
+    QCOMPARE(AudioManager::formatFileSize(1024LL * 1024 * 12), QString("12.0 MB"));
+    QCOMPARE(AudioManager::formatFileSize(1024LL * 1024 * 1024 * 2), QString("2.00 GB"));
 
     // 2. Setup mock transport and two clients (Alice and Bob)
     auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);

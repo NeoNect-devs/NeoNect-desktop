@@ -73,23 +73,33 @@ void AudioManager::openMediaFile(const QString &mediaUrl) {
 qint64 AudioManager::getFileSize(const QString &fileUrl) {
     if (fileUrl.isEmpty()) return 0;
     QString cleanPath = fileUrl;
-    if (cleanPath.startsWith("file:///")) {
-        cleanPath = QUrl(cleanPath).toLocalFile();
+    QUrl url(fileUrl);
+    if (url.isLocalFile()) {
+        cleanPath = url.toLocalFile();
+    } else if (cleanPath.startsWith("file:///")) {
+        cleanPath = cleanPath.mid(8);
+    } else if (cleanPath.startsWith("file://")) {
+        cleanPath = cleanPath.mid(7);
     }
+#ifdef _WIN32
+    if (cleanPath.startsWith("/") && cleanPath.length() >= 3 && cleanPath.at(2) == ':') {
+        cleanPath = cleanPath.mid(1);
+    }
+#endif
     QFileInfo fi(cleanPath);
-    return fi.exists() ? fi.size() : 0;
+    return (fi.exists() && fi.isFile()) ? fi.size() : 0;
 }
 
 QString AudioManager::formatFileSize(qint64 bytes) {
     if (bytes <= 0) return "0 B";
     if (bytes < 1024) return QString("%1 B").arg(bytes);
     if (bytes < 1024 * 1024) {
-        return QString("%1 Kb").arg(QString::number(bytes / 1024.0, 'f', 1));
+        return QString("%1 KB").arg(QString::number(bytes / 1024.0, 'f', 1));
     }
     if (bytes < 1024LL * 1024 * 1024) {
-        return QString("%1 Mb").arg(QString::number(bytes / (1024.0 * 1024.0), 'f', 1));
+        return QString("%1 MB").arg(QString::number(bytes / (1024.0 * 1024.0), 'f', 1));
     }
-    return QString("%1 Gb").arg(QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 2));
+    return QString("%1 GB").arg(QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 2));
 }
 
 void AudioManager::setVolume(qreal vol) {

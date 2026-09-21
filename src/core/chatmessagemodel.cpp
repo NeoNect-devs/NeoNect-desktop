@@ -321,23 +321,27 @@ void ChatMessageModel::clearFirstUnread() {
     }
 }
 
-void ChatMessageModel::updateTransferProgress(const QString &messageId, qreal progress, qint64 bytes) {
+void ChatMessageModel::updateTransferProgress(const QString &messageId, qreal progress, qint64 bytes, qint64 totalBytes) {
     if (messageId.isEmpty()) return;
     for (size_t i = 0; i < m_items.size(); ++i) {
         if (m_items[i].id == messageId) {
             m_items[i].transferProgress = progress;
             m_items[i].transferBytes = bytes;
+            QVector<int> roles = {TransferProgressRole, TransferBytesRole};
+            if (totalBytes > 0 && (m_items[i].fileSize <= 0 || m_items[i].fileSize != totalBytes)) {
+                m_items[i].fileSize = totalBytes;
+                roles.append(FileSizeRole);
+            }
             QModelIndex idx = index(static_cast<int>(i), 0);
-            emit dataChanged(idx, idx, {TransferProgressRole, TransferBytesRole});
+            emit dataChanged(idx, idx, roles);
             break;
         }
     }
 }
 
 void ChatMessageModel::onMediaTransferProgress(const QString &conversationId, const QString &messageId, qreal progress, qint64 bytesTransferred, qint64 totalBytes) {
-    Q_UNUSED(totalBytes);
     if (!conversationId.isEmpty() && conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
-    updateTransferProgress(messageId, progress, bytesTransferred);
+    updateTransferProgress(messageId, progress, bytesTransferred, totalBytes);
 }
 
 MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {

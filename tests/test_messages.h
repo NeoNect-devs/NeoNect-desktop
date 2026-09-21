@@ -14,4 +14,5 @@ private slots:
     void testMessageModelPopulation();
     void testTypingStatusTransmissionAndHandling();
     void testMessageDeliveryStatusTransitions();
+    void testMediaTransferProgressSenderSide();
 };

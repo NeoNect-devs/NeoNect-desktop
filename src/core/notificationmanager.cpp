@@ -112,11 +112,11 @@ void NotificationManager::setupMessageServiceHook(Services::MessageService* ms) 
             if (fileSize < 1024) {
                 sizeStr = QString("%1 B").arg(fileSize);
             } else if (fileSize < 1024 * 1024) {
-                sizeStr = QString("%1 Kb").arg(QString::number(fileSize / 1024.0, 'f', 1));
+                sizeStr = QString("%1 KB").arg(QString::number(fileSize / 1024.0, 'f', 1));
             } else if (fileSize < 1024LL * 1024 * 1024) {
-                sizeStr = QString("%1 Mb").arg(QString::number(fileSize / (1024.0 * 1024.0), 'f', 1));
+                sizeStr = QString("%1 MB").arg(QString::number(fileSize / (1024.0 * 1024.0), 'f', 1));
             } else {
-                sizeStr = QString("%1 Gb").arg(QString::number(fileSize / (1024.0 * 1024.0 * 1024.0), 'f', 2));
+                sizeStr = QString("%1 GB").arg(QString::number(fileSize / (1024.0 * 1024.0 * 1024.0), 'f', 2));
             }
             QString reqId = data.value("id").toString();
             QString body = QString("wants to send %1: %2 (%3)").arg(mediaCategory, fileName, sizeStr);

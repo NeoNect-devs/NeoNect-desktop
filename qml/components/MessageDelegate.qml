@@ -14,7 +14,7 @@ import "UIHelpers.js" as UIHelpers
     signal retryMessage(string msgId)
     signal acceptMediaRequested(string convId, string reqId)
     signal declineMediaRequested(string convId, string reqId)
-    visible: !(delegateRoot.isMediaRequest && model.status === "accepted")
+    visible: true
     width: messageListView.width - 12
     height: visible ? (messageContentColumn.implicitHeight + (model.isFirstInBlock ? 12 : 4) + (model.isFirstUnread ? 32 : 0)) : 0
 
@@ -59,11 +59,7 @@ import "UIHelpers.js" as UIHelpers
     }
 
     function formatMediaRequestSize(bytes) {
-        if (!bytes || bytes <= 0) return "0 B";
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " Kb";
-        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " Mb";
-        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " Gb";
+        return UIHelpers.formatSize(bytes);
     }
 
     // Hover background for server stream
@@ -598,8 +594,8 @@ import "UIHelpers.js" as UIHelpers
                                                                 Text {
                                                                     Layout.alignment: Qt.AlignHCenter
                                                                     property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
-                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : 1024 * 1024
-                                                                    property real effectiveBytes: (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : (currentProg * totalBytes)
+                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2500000)
+                                                                    property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
                                                                     text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
                                                                     color: ThemeData.textSecondary
                                                                     font.family: "Segoe UI"
@@ -736,8 +732,8 @@ import "UIHelpers.js" as UIHelpers
                                                             Text {
                                                                 Layout.alignment: Qt.AlignHCenter
                                                                 property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
-                                                                property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : 5 * 1024 * 1024
-                                                                property real effectiveBytes: (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : (currentProg * totalBytes)
+                                                                property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 5000000)
+                                                                property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
                                                                 text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
                                                                 color: ThemeData.textSecondary
                                                                 font.family: "Segoe UI"
@@ -830,8 +826,8 @@ import "UIHelpers.js" as UIHelpers
                                                                 Item { Layout.fillWidth: true }
                                                                 Text {
                                                                     property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
-                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : 2 * 1024 * 1024
-                                                                    property real effectiveBytes: (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : (currentProg * totalBytes)
+                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2000000)
+                                                                    property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
                                                                     text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
                                                                     color: ThemeData.accentColor
                                                                     font.family: "Segoe UI"
@@ -945,8 +941,8 @@ import "UIHelpers.js" as UIHelpers
                                                             Text {
                                                                 readonly property bool isTransferring: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
                                                                 property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
-                                                                property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : 1024 * 1024
-                                                                property real effectiveBytes: (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : (currentProg * totalBytes)
+                                                                property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2500000)
+                                                                property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
 
                                                                 text: isTransferring ? 
                                                                     ("•  " + (model.status === "downloading" ? "Downloading " : "Uploading ") + UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)") :
@@ -1165,63 +1161,114 @@ import "UIHelpers.js" as UIHelpers
                                                     }
 
                                                     // Sender Status Row (when delegateRoot.isMe)
-                                                    RowLayout {
+                                                    ColumnLayout {
                                                         visible: delegateRoot.isMe
                                                         Layout.fillWidth: true
-                                                        spacing: 8
+                                                        spacing: 6
 
-                                                        Text {
+                                                        RowLayout {
                                                             Layout.fillWidth: true
-                                                            text: {
-                                                                if (model.status === "accepted") return "✓ Request accepted — Sending media...";
-                                                                if (model.status === "declined") return "✕ Request declined by recipient";
-                                                                if (model.status === "failed") return "⚠ Transfer failed — Tap retry to re-send";
-                                                                return "⏳ Media request sent — Awaiting approval...";
+                                                            spacing: 8
+
+                                                            Text {
+                                                                Layout.fillWidth: true
+                                                                text: {
+                                                                    if (model.status === "accepted" || model.status === "sending") return "✓ Request accepted — Sending media...";
+                                                                    if (model.status === "declined") return "✕ Request declined by recipient";
+                                                                    if (model.status === "failed") return "⚠ Transfer failed — Tap retry to re-send";
+                                                                    return "⏳ Media request sent — Awaiting approval...";
+                                                                }
+                                                                color: {
+                                                                    if (model.status === "accepted" || model.status === "sending") return "#23A55A";
+                                                                    if (model.status === "declined" || model.status === "failed") return "#F23F43";
+                                                                    return "#FAA61A";
+                                                                }
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 11
+                                                                font.bold: true
+                                                                wrapMode: Text.WordWrap
                                                             }
-                                                            color: {
-                                                                if (model.status === "accepted") return "#23A55A";
-                                                                if (model.status === "declined" || model.status === "failed") return "#F23F43";
-                                                                return "#FAA61A";
+
+                                                            // Retry Button inside media request card when failed
+                                                            Rectangle {
+                                                                visible: model.status === "failed"
+                                                                Layout.preferredWidth: 68
+                                                                Layout.preferredHeight: 26
+                                                                radius: 13
+                                                                color: reqRetryMouse.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.25)
+                                                                border.color: "#E53935"
+                                                                border.width: 1
+
+                                                                RowLayout {
+                                                                    anchors.centerIn: parent
+                                                                    spacing: 4
+                                                                    IconImage {
+                                                                        source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
+                                                                        width: 11; height: 11
+                                                                        color: "#FFFFFF"
+                                                                    }
+                                                                    Text {
+                                                                        text: "Retry"
+                                                                        color: "#FFFFFF"
+                                                                        font.family: "Segoe UI"
+                                                                        font.pixelSize: 10
+                                                                        font.bold: true
+                                                                    }
+                                                                }
+
+                                                                MouseArea {
+                                                                    id: reqRetryMouse
+                                                                    anchors.fill: parent
+                                                                    hoverEnabled: true
+                                                                    cursorShape: Qt.PointingHandCursor
+                                                                    onClicked: delegateRoot.retryMessage(model.messageId)
+                                                                }
                                                             }
-                                                            font.family: "Segoe UI"
-                                                            font.pixelSize: 11
-                                                            font.bold: true
-                                                            wrapMode: Text.WordWrap
                                                         }
 
-                                                        // Retry Button inside media request card when failed
-                                                        Rectangle {
-                                                            visible: model.status === "failed"
-                                                            Layout.preferredWidth: 68
-                                                            Layout.preferredHeight: 26
-                                                            radius: 13
-                                                            color: reqRetryMouse.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.25)
-                                                            border.color: "#E53935"
-                                                            border.width: 1
+                                                        // Sender Transfer Progress when accepted or sending
+                                                        ColumnLayout {
+                                                            visible: model.status === "accepted" || model.status === "sending"
+                                                            Layout.fillWidth: true
+                                                            spacing: 4
 
                                                             RowLayout {
-                                                                anchors.centerIn: parent
-                                                                spacing: 4
-                                                                IconImage {
-                                                                    source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
-                                                                    width: 11; height: 11
-                                                                    color: "#FFFFFF"
-                                                                }
+                                                                Layout.fillWidth: true
                                                                 Text {
-                                                                    text: "Retry"
-                                                                    color: "#FFFFFF"
+                                                                    text: "Transmitting..."
+                                                                    color: ThemeData.textSecondary
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 10
+                                                                    font.bold: true
+                                                                }
+                                                                Item { Layout.fillWidth: true }
+                                                                Text {
+                                                                    property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2500000)
+                                                                    property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
+                                                                    text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
+                                                                    color: ThemeData.accentColor
                                                                     font.family: "Segoe UI"
                                                                     font.pixelSize: 10
                                                                     font.bold: true
                                                                 }
                                                             }
 
-                                                            MouseArea {
-                                                                id: reqRetryMouse
-                                                                anchors.fill: parent
-                                                                hoverEnabled: true
-                                                                cursorShape: Qt.PointingHandCursor
-                                                                onClicked: delegateRoot.retryMessage(model.messageId)
+                                                            Rectangle {
+                                                                Layout.fillWidth: true
+                                                                Layout.preferredHeight: 4
+                                                                radius: 2
+                                                                color: Qt.rgba(255, 255, 255, 0.1)
+                                                                clip: true
+
+                                                                Rectangle {
+                                                                    anchors.left: parent.left
+                                                                    anchors.top: parent.top
+                                                                    anchors.bottom: parent.bottom
+                                                                    width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                    color: ThemeData.accentColor
+                                                                    radius: 2
+                                                                }
                                                             }
                                                         }
                                                     }

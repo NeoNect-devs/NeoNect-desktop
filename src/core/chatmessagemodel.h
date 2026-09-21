@@ -83,7 +83,7 @@ public:
     Q_INVOKABLE void setFirstUnreadMessageId(const QString &messageId);
     Q_INVOKABLE void setFirstUnreadIndex(int index);
     Q_INVOKABLE void clearFirstUnread();
-    Q_INVOKABLE void updateTransferProgress(const QString &messageId, qreal progress, qint64 bytes);
+    Q_INVOKABLE void updateTransferProgress(const QString &messageId, qreal progress, qint64 bytes, qint64 totalBytes = 0);
 
     void addMessage(MessageItem &&item);
 
