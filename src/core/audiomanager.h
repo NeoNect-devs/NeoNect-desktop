@@ -56,7 +56,7 @@ public:
     Q_INVOKABLE void toggleMute();
     Q_INVOKABLE void openMediaFile(const QString &mediaUrl);
     Q_INVOKABLE qint64 getFileSize(const QString &fileUrl);
-    Q_INVOKABLE QString formatFileSize(qint64 bytes);
+    Q_INVOKABLE static QString formatFileSize(qint64 bytes);
 
     // Audio Output helper
     void playUiBeep(int freqHz, int durationMs);

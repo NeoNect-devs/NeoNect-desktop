@@ -15,10 +15,11 @@ find_package(Qt6 REQUIRED COMPONENTS Gui Qml Quick Concurrent Network Test Sql)
 # =====================================================================
 # 2. Fix Qt 6.9+ Infinite Recursion Policy Bug
 # =====================================================================
-qt_standard_project_setup(REQUIRES 6.9)
+qt_standard_project_setup(REQUIRES 6.5)
 set(CMAKE_CXX_COMPILER_PREDEFINES_COMMAND "")
 set(CMAKE_C_COMPILER_PREDEFINES_COMMAND "")
-set(CMAKE_AUTOMOC_COMPILER_PREDEFS OFF)
+set(QT_NO_AOT_COMPILATION ON CACHE BOOL "Disable QML AOT compiler" FORCE)
+set(QT_NO_CREATE_AOT_PLUGINS ON CACHE BOOL "Disable QML AOT plugins" FORCE)
 
 # =====================================================================
 # 3. OpenSSL 4.0.0 Windows Multi-Path Discovery & Target Bypass
@@ -144,6 +145,7 @@ set_target_properties(NeoNectApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
 qt_add_qml_module(NeoNectApp
     URI NeoNect
     VERSION 1.0
+    NO_CACHEGEN
     QML_FILES
         # --- Root QML Folder ---
         qml/Main.qml

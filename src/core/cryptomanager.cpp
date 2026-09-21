@@ -49,7 +49,7 @@ QString CryptoManager::getDevicePublicKey() {
 
 void CryptoManager::initializeKeyFromPassphrase(const QString &passphrase) {
     auto cryptoSvc = m_cryptoService;
-    QtConcurrent::run([cryptoSvc, passphrase]() {
+    (void)QtConcurrent::run([cryptoSvc, passphrase]() {
         cryptoSvc->deriveKeyFromPassphrase(passphrase);
     });
 }
@@ -58,7 +58,7 @@ void CryptoManager::encryptMessageAsposing(const QString &channelId, const QStri
     auto cryptoSvc = m_cryptoService;
     QByteArray plainData = plainText.toUtf8();
 
-    QtConcurrent::run([this, cryptoSvc, channelId, plainData]() {
+    (void)QtConcurrent::run([this, cryptoSvc, channelId, plainData]() {
         auto payload = cryptoSvc->encryptAesGcm(plainData);
         if (payload.success) {
             QString cipherB64 = QString::fromLatin1(payload.cipherWithTag.toBase64());

@@ -4,6 +4,10 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import NeoNect.Core 1.0
+import "components"
+import "containers"
+import "entrypage"
+import "SideSection"
 
 Window {
     id: root

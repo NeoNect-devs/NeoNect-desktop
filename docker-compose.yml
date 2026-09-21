@@ -1,0 +1,45 @@
+services:
+  client-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neonect-client-1
+    environment:
+      - PROFILE=client1
+      - RESOLUTION=1280x800x24
+      - DISPLAY=:99
+      - NOVNC_PORT=6080
+      - VNC_PORT=5900
+    ports:
+      - "6081:6080" # Web access: http://localhost:6081
+      - "5901:5900" # VNC access: localhost:5901
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - neonect-net
+    restart: unless-stopped
+
+  client-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neonect-client-2
+    environment:
+      - PROFILE=client2
+      - RESOLUTION=1280x800x24
+      - DISPLAY=:99
+      - NOVNC_PORT=6080
+      - VNC_PORT=5900
+    ports:
+      - "6082:6080" # Web access: http://localhost:6082
+      - "5902:5900" # VNC access: localhost:5902
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - neonect-net
+    restart: unless-stopped
+
+networks:
+  neonect-net:
+    name: neonect-network
+    driver: bridge
