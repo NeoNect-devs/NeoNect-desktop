@@ -37,7 +37,6 @@ void AuthService::verifyServer(const QString &address) {
     m_storage->setServerUrl(cleanUrl);
 
     m_transport->get(Constants::EP_HEALTH, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-        Q_UNUSED(errStr);
         if (error == QNetworkReply::NoError || statusCode == 200) {
             auto doc = QJsonDocument::fromJson(data);
             if (!doc.isNull() && (doc.object().value("status").toString() == "success" ||
@@ -51,7 +50,9 @@ void AuthService::verifyServer(const QString &address) {
                 return;
             }
         }
-        emit verificationResult(false, "Handshake failed: Unable to connect to host.");
+        QString detail = errStr.trimmed();
+        if (detail.isEmpty()) detail = "Unable to connect to host.";
+        emit verificationResult(false, QString("Handshake failed: %1").arg(detail));
     });
 }
 

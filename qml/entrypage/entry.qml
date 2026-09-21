@@ -306,6 +306,14 @@ Item {
                                 entryRoot.serverStatusText = "";
                             }
                         }
+
+                        onAccepted: {
+                            if (text.trim() !== "") {
+                                verifyDebounce.stop();
+                                entryRoot.serverStatusText = "🔍 Resolving node...";
+                                NetworkManager.verifyServer(text.trim());
+                            }
+                        }
                     }
 
                     // Status Badge Chip
@@ -325,6 +333,18 @@ Item {
                             color: entryRoot.isServerReady ? "#23a55a" : "#ef5350"
                             font.pointSize: ThemeData.fontSizeNormal - 3
                             anchors.centerIn: parent
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (serverInput.text.trim() !== "") {
+                                    verifyDebounce.stop();
+                                    entryRoot.serverStatusText = "🔍 Resolving node...";
+                                    NetworkManager.verifyServer(serverInput.text.trim());
+                                }
+                            }
                         }
                     }
 
@@ -1229,6 +1249,10 @@ Item {
     Component.onCompleted: {
         if (typeof root !== "undefined" && typeof root.devDeepLink === "string" && root.devDeepLink !== "") {
             entryRoot.currentScreen = root.devDeepLink;
+        }
+        if (serverInput.text.trim() !== "") {
+            entryRoot.serverStatusText = "🔍 Resolving node...";
+            verifyDebounce.restart();
         }
     }
 }
