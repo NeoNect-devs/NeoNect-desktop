@@ -14,4 +14,7 @@ private slots:
     void testRichMessageInsertion();
     void testMessageStatusAndRetry();
     void testAudioManagerRecordingAndPlayback();
+    void testAudioManagerVolumePersistence();
+    void testMediaRequestMessageItem();
+    void testMediaRequestFallbackCategoryDetection();
 };

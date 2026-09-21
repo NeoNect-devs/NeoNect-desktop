@@ -9,6 +9,7 @@ Rectangle {
     property string appState: "gateway"
     property string titleText: ""
     property bool showBackButton: false
+    property bool isBlocked: false
     signal backClicked
     signal brandClicked
     signal navigateToChat(string channel)
@@ -31,6 +32,7 @@ Rectangle {
     MouseArea {
         id: dragArea
         anchors.fill: parent
+        enabled: !root.isBlocked && (root.windowTarget ? root.windowTarget.visibility !== Window.FullScreen : true)
 
         property bool isPressed: false
         property bool nativeMoveStarted: false
@@ -41,6 +43,7 @@ Rectangle {
 
         onPressed: mouse => {
             if (mouse.button !== Qt.LeftButton) return;
+            if (root.isBlocked || (root.windowTarget && root.windowTarget.visibility === Window.FullScreen)) return;
             isPressed = true;
             nativeMoveStarted = false;
             pressLocalPos = Qt.point(mouse.x, mouse.y);

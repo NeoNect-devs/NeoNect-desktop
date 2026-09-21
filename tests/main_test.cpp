@@ -16,6 +16,8 @@ int main(int argc, char *argv[]) {
 
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QCoreApplication app(argc, argv);
+    app.setOrganizationName("NeoNect");
+    app.setApplicationName("NeoNect");
     int status = 0;
 
     std::cout << "\n==========================================" << std::endl;

@@ -59,7 +59,7 @@ public:
                                   const QString &messageType = "text", const QString &mediaUrl = "",
                                   const QString &fileName = "", qint64 fileSize = 0, int duration = 0,
                                   const QVariantList &waveform = {}, const QString &status = "sent",
-                                  const QString &id = "", qint64 timestamp = 0);
+                                  const QString &id = "", qint64 timestamp = 0, const QString &errorText = "");
     Q_INVOKABLE void insertMessageItem(const QVariantMap &itemMap);
     Q_INVOKABLE void updateMessageStatus(const QString &messageId, const QString &status, const QString &errorText = "");
     Q_INVOKABLE void removeMessage(const QString &messageId);

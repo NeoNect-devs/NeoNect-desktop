@@ -18,7 +18,7 @@ ColumnLayout {
     
     signal typingStarted()
     signal typingStopped()
-    signal openMediaModalRequested(string url, string type, string name)
+    signal openMediaModalRequested(string url, string type, string name, int startPosMs, bool isPlaying)
     signal retryMessage(string msgId)
     signal sendMessagePayload(var itemObj)
     signal acceptMediaRequested(string convId, string reqId)
@@ -98,7 +98,7 @@ ColumnLayout {
                         delegate: MessageDelegate {
                             selectedServer: chatViewRoot.selectedServer
                             activeChannel: chatViewRoot.activeChannel
-                            onOpenMediaModalRequested: function(url, type, name) { chatViewRoot.openMediaModalRequested(url, type, name); }
+                            onOpenMediaModalRequested: function(url, type, name, startPosMs, isPlaying) { chatViewRoot.openMediaModalRequested(url, type, name, startPosMs, isPlaying); }
                             onRetryMessage: function(msgId) { chatViewRoot.retryMessage(msgId); }
                             onAcceptMediaRequested: function(convId, reqId) {
                                 chatViewRoot.acceptMediaRequested(convId, reqId);

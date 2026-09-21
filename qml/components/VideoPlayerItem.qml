@@ -15,15 +15,15 @@ Rectangle {
     property int duration: 45 // seconds
     property bool fromMe: false
 
-    property real volumeLevel: 1.0
-    property bool isMuted: false
+    property real volumeLevel: (typeof AudioManager !== "undefined" && AudioManager) ? AudioManager.volume : 1.0
+    property bool isMuted: (typeof AudioManager !== "undefined" && AudioManager) ? AudioManager.isMuted : false
     property bool hasPlaybackError: false
     property string playbackErrorMsg: ""
 
     readonly property bool isPlaying: player.playbackState === MediaPlayer.PlayingState
-    readonly property bool isControlsVisible: !videoRoot.hasPlaybackError && (!videoRoot.isPlaying || videoHoverHandler.hovered)
+    readonly property bool isControlsVisible: !videoRoot.hasPlaybackError && (!videoRoot.isPlaying || videoHoverHandler.hovered || (typeof videoVolCtrl !== "undefined" && videoVolCtrl && videoVolCtrl.expanded))
 
-    signal openFullscreenRequested(string url, string name)
+    signal openFullscreenRequested(string url, string name, int startPosMs, bool isPlaying)
 
     function formatTime(secs) {
         if (!secs || isNaN(secs) || secs < 0) return "0:00";
@@ -73,7 +73,7 @@ Rectangle {
     height: calcHeight
 
     radius: 12
-    clip: true
+    clip: false
     color: "#111214"
     border.color: Qt.rgba(255, 255, 255, 0.1)
     border.width: 1
@@ -153,6 +153,7 @@ Rectangle {
         anchors.fill: parent
         z: 1
         cursorShape: Qt.PointingHandCursor
+        enabled: !videoRoot.hasPlaybackError && !(typeof videoVolCtrl !== "undefined" && videoVolCtrl && videoVolCtrl.expanded)
         onClicked: {
             videoRoot.hasPlaybackError = false;
             if (player.playbackState === MediaPlayer.PlayingState) {
@@ -207,7 +208,7 @@ Rectangle {
     // 5. Bottom Controls Bar with Advanced Volume Controller & Fullscreen Icon
     Rectangle {
         id: bottomControlsBar
-        z: 5
+        z: 20
         anchors.bottom: parent.bottom
         anchors.left: parent.left
         anchors.right: parent.right
@@ -217,6 +218,12 @@ Rectangle {
         opacity: videoRoot.isControlsVisible ? 1.0 : 0.0
 
         Behavior on opacity { NumberAnimation { duration: 150 } }
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onPressed: (mouse) => mouse.accepted = true
+        }
 
         RowLayout {
             anchors.fill: parent
@@ -293,11 +300,14 @@ Rectangle {
                 textColor: "#FFFFFF"
                 accentColor: ThemeData.accentColor
                 onVolumeChangedManually: (v) => {
-                    videoRoot.volumeLevel = v;
-                    videoRoot.isMuted = (v === 0);
+                    if (typeof AudioManager !== "undefined" && AudioManager) {
+                        AudioManager.setVolume(v);
+                    }
                 }
                 onMuteToggled: {
-                    videoRoot.isMuted = !videoRoot.isMuted;
+                    if (typeof AudioManager !== "undefined" && AudioManager) {
+                        AudioManager.toggleMute();
+                    }
                 }
             }
 
@@ -320,8 +330,10 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
+                        var curPos = player.position;
+                        var wasPlaying = videoRoot.isPlaying;
                         player.pause();
-                        videoRoot.openFullscreenRequested(videoRoot.videoUrl, videoRoot.fileName);
+                        videoRoot.openFullscreenRequested(videoRoot.videoUrl, videoRoot.fileName, curPos, wasPlaying);
                     }
                 }
             }

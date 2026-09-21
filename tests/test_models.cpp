@@ -201,3 +201,94 @@ void TestModels::testAudioManagerRecordingAndPlayback() {
     audio->pauseAudio();
     QVERIFY(!audio->isPlaying());
 }
+
+void TestModels::testAudioManagerVolumePersistence() {
+    auto *audio = new AudioManager(this);
+    QVERIFY(audio != nullptr);
+
+    // Ensure known baseline state
+    audio->setMuted(false);
+    audio->setVolume(1.0);
+
+    // 1. Basic Volume Setting and Signal Emission
+    QSignalSpy volumeSpy(audio, &AudioManager::volumeChanged);
+    QSignalSpy muteSpy(audio, &AudioManager::isMutedChanged);
+
+    audio->setVolume(0.75);
+    QVERIFY(qAbs(audio->volume() - 0.75) < 0.001);
+    QCOMPARE(volumeSpy.count(), 1);
+
+    // 2. Clamping bounds [0.0, 1.0]
+    audio->setVolume(1.5);
+    QCOMPARE(audio->volume(), 1.0);
+
+    audio->setVolume(-0.25);
+    QCOMPARE(audio->volume(), 0.0);
+
+    // 3. Mute Controls and auto-unmute on volume increase
+    audio->setMuted(true);
+    QVERIFY(audio->isMuted());
+    QVERIFY(muteSpy.count() >= 1);
+
+    audio->toggleMute();
+    QVERIFY(!audio->isMuted());
+
+    audio->setMuted(true);
+    QVERIFY(audio->isMuted());
+    audio->setVolume(0.65);
+    QVERIFY(!audio->isMuted()); // Auto-unmuted when setting non-zero volume
+    QVERIFY(qAbs(audio->volume() - 0.65) < 0.001);
+
+    // 4. Persistence verification across separate instances
+    audio->setVolume(0.42);
+    audio->setMuted(true);
+
+    auto *audio2 = new AudioManager(this);
+    QVERIFY(qAbs(audio2->volume() - 0.42) < 0.001);
+    QVERIFY(audio2->isMuted());
+
+    // Restore to default clean state
+    audio2->setVolume(1.0);
+    audio2->setMuted(false);
+}
+
+void TestModels::testMediaRequestMessageItem() {
+    ChatMessageModel model;
+    QVariantMap map;
+    map["id"] = "req-123";
+    map["type"] = "media_request";
+    map["text"] = "Vacation picture";
+    map["fileName"] = "holiday.png";
+    map["mediaUrl"] = "file:///holiday.png";
+    map["fileSize"] = 1048576LL;
+    map["errorText"] = "image";
+    map["status"] = "pending";
+    map["fromMe"] = false;
+    map["senderName"] = "Alice";
+
+    model.insertMessageItem(map);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::MessageTypeRole).toString(), QString("media_request"));
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::FileNameRole).toString(), QString("holiday.png"));
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::FileSizeRole).toLongLong(), 1048576LL);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::ErrorTextRole).toString(), QString("image"));
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::StatusRole).toString(), QString("pending"));
+}
+
+void TestModels::testMediaRequestFallbackCategoryDetection() {
+    ChatMessageModel model;
+    QVariantMap map;
+    map["id"] = "req-456";
+    map["type"] = "media_request";
+    map["fileName"] = "clip.mp4";
+    map["mediaUrl"] = "file:///clip.mp4";
+    map["status"] = "pending";
+
+    model.insertMessageItem(map);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::MessageTypeRole).toString(), QString("media_request"));
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::ErrorTextRole).toString(), QString("video"));
+}
+

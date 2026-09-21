@@ -52,8 +52,8 @@ Rectangle {
         source: musicRoot.audioUrl
         audioOutput: AudioOutput {
             id: musicAudio
-            volume: musicRoot.isMuted ? 0.0 : musicRoot.volumeLevel
-            muted: musicPlayer.playbackState !== MediaPlayer.PlayingState
+            volume: (AudioManager.isMuted || musicPlayer.playbackState !== MediaPlayer.PlayingState) ? 0.0 : AudioManager.volume
+            muted: AudioManager.isMuted || musicPlayer.playbackState !== MediaPlayer.PlayingState
         }
 
         onErrorOccurred: (error, errorString) => {
@@ -194,17 +194,20 @@ Rectangle {
                 // Advanced Volume Controller (0% to 100%)
                 VolumeController {
                     id: musicVolCtrl
-                    volume: musicRoot.volumeLevel
-                    isMuted: musicRoot.isMuted
+                    volume: AudioManager.volume
+                    isMuted: AudioManager.isMuted
                     textColor: musicRoot.fromMe ? "#FFFFFF" : ThemeData.textSecondary
                     accentColor: musicRoot.fromMe ? "#FFFFFF" : ThemeData.accentColor
                     iconSize: 12
                     onVolumeChangedManually: (v) => {
-                        musicRoot.volumeLevel = v;
-                        musicRoot.isMuted = (v === 0);
+                        if (typeof AudioManager !== "undefined" && AudioManager) {
+                            AudioManager.setVolume(v);
+                        }
                     }
                     onMuteToggled: {
-                        musicRoot.isMuted = !musicRoot.isMuted;
+                        if (typeof AudioManager !== "undefined" && AudioManager) {
+                            AudioManager.toggleMute();
+                        }
                     }
                 }
             }

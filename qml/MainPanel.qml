@@ -70,7 +70,7 @@ Item {
     }
 
     signal navigateRequested(string server, string channel)
-    signal openMediaModalRequested(string url, string type, string name)
+    signal openMediaModalRequested(string url, string type, string name, int startPosMs, bool isPlaying)
     signal openDirectMessageRequested(string username)
 
     property bool showAddFriendModal: false
@@ -138,8 +138,12 @@ Item {
             MessageService.sendTyping(key, false);
         }
         var mType = itemObj.messageType || "text";
-        if (mType === "media_request") {
-            MessageService.sendMediaRequest(key, itemObj.text || itemObj.content || "", mType, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0);
+        // Two-phase media transfer: images, videos, audio, and files require pre-approval in DMs (except saved-messages); voice, text, sticker are direct
+        var isTwoPhaseMedia = (root.selectedServer === "dms" && chan !== "saved-messages") &&
+                              (mType === "image" || mType === "video" || mType === "audio" || mType === "file" || mType === "media_request");
+        if (isTwoPhaseMedia) {
+            var mediaCat = (mType === "media_request") ? (itemObj.mediaCategory || itemObj.errorText || UIHelpers.detectMediaType(itemObj.mediaUrl, itemObj.fileName) || "file") : mType;
+            MessageService.sendMediaRequest(key, itemObj.text || itemObj.content || "", mediaCat, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0);
         } else {
             MessageService.sendMessage(key, itemObj.text || itemObj.content || "", mType, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0, itemObj.duration || 0, itemObj.waveform || []);
         }
@@ -223,7 +227,7 @@ Item {
                     MessageService.sendTyping(root.selectedServer + ":" + root.activeChannel, false);
                 }
             }
-            onOpenMediaModalRequested: function(url, type, name) { root.openMediaModalRequested(url, type, name); }
+            onOpenMediaModalRequested: function(url, type, name, startPosMs, isPlaying) { root.openMediaModalRequested(url, type, name, startPosMs, isPlaying); }
             onRetryMessage: function(msgId) { root.retryMessage(msgId); }
             onSendMessagePayload: function(itemObj) { root.sendMessagePayload(itemObj); }
             onAcceptMediaRequested: function(convId, reqId) { MessageService.acceptMediaRequest(convId, reqId); }

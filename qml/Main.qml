@@ -55,6 +55,7 @@ Window {
             windowTarget: root
             appState: root.appState
             titleText: root.activeTitleText
+            isBlocked: globalLightboxModal.active || root.visibility === Window.FullScreen
             showBackButton: (root.appState === "gateway" && viewFlowLoader.item) ? viewFlowLoader.item.showTitleBackButton : false
             anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
 
@@ -184,9 +185,9 @@ Window {
                                          }
                                      }
                                  }
-                                onOpenMediaModalRequested: (url, type, name) => {
-                                    globalLightboxModal.open(url, type, name);
-                                }
+                                 onOpenMediaModalRequested: (url, type, name, startPosMs, isPlaying) => {
+                                     globalLightboxModal.open(url, type, name, startPosMs, isPlaying);
+                                 }
                                 SplitView.fillWidth: true
                                 Layout.fillHeight: true
                             }

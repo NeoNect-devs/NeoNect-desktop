@@ -23,7 +23,7 @@ class AudioManager : public QObject {
     Q_PROPERTY(int totalDuration READ totalDuration NOTIFY playbackDurationChanged)
     Q_PROPERTY(qreal playbackSpeed READ playbackSpeed WRITE setPlaybackSpeed NOTIFY playbackSpeedChanged)
     Q_PROPERTY(qreal volume READ volume WRITE setVolume NOTIFY volumeChanged)
-    Q_PROPERTY(bool isMuted READ isMuted NOTIFY isMutedChanged)
+    Q_PROPERTY(bool isMuted READ isMuted WRITE setMuted NOTIFY isMutedChanged)
 
 public:
     explicit AudioManager(QObject *parent = nullptr);
@@ -52,6 +52,7 @@ public:
     Q_INVOKABLE void seek(const QString &messageId, qreal progress);
     Q_INVOKABLE void setPlaybackSpeed(qreal speed);
     Q_INVOKABLE void setVolume(qreal vol);
+    Q_INVOKABLE void setMuted(bool muted);
     Q_INVOKABLE void toggleMute();
     Q_INVOKABLE void openMediaFile(const QString &mediaUrl);
     Q_INVOKABLE qint64 getFileSize(const QString &fileUrl);

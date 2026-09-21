@@ -90,7 +90,7 @@ void ChatMessageModel::insertMessage(const QString &text, bool fromMe, const QSt
                                     const QString &messageType, const QString &mediaUrl,
                                     const QString &fileName, qint64 fileSize, int duration,
                                     const QVariantList &waveform, const QString &status,
-                                    const QString &id, qint64 timestamp) {
+                                    const QString &id, qint64 timestamp, const QString &errorText) {
     int newIndex = static_cast<int>(m_items.size());
     beginInsertRows(QModelIndex(), newIndex, newIndex);
 
@@ -119,7 +119,10 @@ void ChatMessageModel::insertMessage(const QString &text, bool fromMe, const QSt
     item.duration = duration;
     item.waveform = waveform;
     item.status = status.isEmpty() ? "sent" : status;
-    item.errorText = "";
+    item.errorText = errorText;
+    if (item.errorText.isEmpty() && item.messageType == "media_request") {
+        item.errorText = detectMediaType(mediaUrl, fileName, "file");
+    }
     item.timestamp = timestamp > 0 ? timestamp : QDateTime::currentSecsSinceEpoch();
     item.isFirstInBlock = isFirst;
     item.isLastInBlock = true;
@@ -145,8 +148,12 @@ void ChatMessageModel::insertMessageItem(const QVariantMap &map) {
     QString status = map.value("status", "sent").toString();
     QString id = map.contains("messageId") && !map.value("messageId").toString().isEmpty() ? map.value("messageId").toString() : map.value("id").toString();
     qint64 timestamp = map.value("timestamp", 0).toLongLong();
+    QString errorText = map.value("errorText", "").toString();
+    if (errorText.isEmpty() && messageType == "media_request") {
+        errorText = detectMediaType(mediaUrl, fileName, "file");
+    }
 
-    insertMessage(text, fromMe, senderName, senderAvatar, messageType, mediaUrl, fileName, fileSize, duration, waveform, status, id, timestamp);
+    insertMessage(text, fromMe, senderName, senderAvatar, messageType, mediaUrl, fileName, fileSize, duration, waveform, status, id, timestamp, errorText);
 }
 
 void ChatMessageModel::updateMessageStatus(const QString &messageId, const QString &status, const QString &errorText) {
@@ -241,6 +248,9 @@ MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {
     item.waveform = map.value("waveform").toList();
     item.status = map.value("status", "sent").toString();
     item.errorText = map.value("errorText").toString();
+    if (item.errorText.isEmpty() && item.messageType == "media_request") {
+        item.errorText = detectMediaType(item.mediaUrl, item.fileName, "file");
+    }
     item.timestamp = map.value("timestamp").toLongLong();
     return item;
 }

@@ -10,6 +10,7 @@
 #include <QUrl>
 #include <QDesktopServices>
 #include <QFileInfo>
+#include <QSettings>
 #include <cstring>
 
 #ifdef _WIN32
@@ -34,6 +35,13 @@ AudioManager::AudioManager(QObject *parent)
     for (int i = 0; i < 24; ++i) {
         m_liveWaveform.append(0.2);
     }
+
+    QSettings settings("NeoNect", "NeoNect");
+    m_volume = settings.value("audio/media_volume", 1.0).toDouble();
+    if (m_volume < 0.0) m_volume = 0.0;
+    if (m_volume > 1.0) m_volume = 1.0;
+    m_isMuted = settings.value("audio/media_muted", false).toBool();
+    m_volumeAtomic.store(m_isMuted ? 0.0 : m_volume);
 }
 
 AudioManager::~AudioManager() {
@@ -85,45 +93,53 @@ QString AudioManager::formatFileSize(qint64 bytes) {
 }
 
 void AudioManager::setVolume(qreal vol) {
-    vol = qBound(0.0, vol, 1.0);
-    if (qFuzzyCompare(m_volume, vol)) return;
-    m_volume = vol;
-    m_isMuted = (m_volume == 0.0);
+    qreal clamped = std::max(0.0, std::min(1.0, vol));
+    if (qFuzzyCompare(m_volume, clamped)) return;
+    m_volume = clamped;
+    if (m_volume > 0.0 && m_isMuted) {
+        m_isMuted = false;
+        emit isMutedChanged();
+    }
     m_volumeAtomic.store(m_isMuted ? 0.0 : m_volume);
 
 #ifdef _WIN32
     if (m_isMciActive) {
-        int mciVol = static_cast<int>(m_volume * 1000);
+        int mciVol = static_cast<int>((m_isMuted ? 0.0 : m_volume) * 1000);
         std::wstring volCmd = L"setaudio neonect_audio volume to " + std::to_wstring(mciVol);
         mciSendStringW(volCmd.c_str(), NULL, 0, NULL);
     }
 #endif
 
+    QSettings settings("NeoNect", "NeoNect");
+    settings.setValue("audio/media_volume", m_volume);
+    settings.setValue("audio/media_muted", m_isMuted);
+    settings.sync();
+
     emit volumeChanged();
+}
+
+void AudioManager::setMuted(bool muted) {
+    if (m_isMuted == muted) return;
+    m_isMuted = muted;
+    m_volumeAtomic.store(m_isMuted ? 0.0 : m_volume);
+
+#ifdef _WIN32
+    if (m_isMciActive) {
+        int mciVol = static_cast<int>((m_isMuted ? 0.0 : m_volume) * 1000);
+        std::wstring volCmd = L"setaudio neonect_audio volume to " + std::to_wstring(mciVol);
+        mciSendStringW(volCmd.c_str(), NULL, 0, NULL);
+    }
+#endif
+
+    QSettings settings("NeoNect", "NeoNect");
+    settings.setValue("audio/media_muted", m_isMuted);
+    settings.sync();
+
     emit isMutedChanged();
 }
 
 void AudioManager::toggleMute() {
-    if (m_isMuted) {
-        m_isMuted = false;
-        m_volume = (m_preMuteVolume > 0.0 ? m_preMuteVolume : 1.0);
-    } else {
-        m_preMuteVolume = (m_volume > 0.0 ? m_volume : 1.0);
-        m_isMuted = true;
-        m_volume = 0.0;
-    }
-    m_volumeAtomic.store(m_isMuted ? 0.0 : m_volume);
-
-#ifdef _WIN32
-    if (m_isMciActive) {
-        int mciVol = static_cast<int>(m_volume * 1000);
-        std::wstring volCmd = L"setaudio neonect_audio volume to " + std::to_wstring(mciVol);
-        mciSendStringW(volCmd.c_str(), NULL, 0, NULL);
-    }
-#endif
-
-    emit volumeChanged();
-    emit isMutedChanged();
+    setMuted(!m_isMuted);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

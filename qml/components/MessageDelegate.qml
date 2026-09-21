@@ -10,7 +10,7 @@ import "UIHelpers.js" as UIHelpers
                             id: delegateRoot
     property string selectedServer: ""
     property string activeChannel: ""
-    signal openMediaModalRequested(string url, string type, string name)
+    signal openMediaModalRequested(string url, string type, string name, int startPosMs, bool isPlaying)
     signal retryMessage(string msgId)
     signal acceptMediaRequested(string convId, string reqId)
     signal declineMediaRequested(string convId, string reqId)
@@ -396,7 +396,7 @@ import "UIHelpers.js" as UIHelpers
                                                         anchors.fill: parent
                                                         visible: chatImg.status === Image.Ready
                                                         cursorShape: Qt.PointingHandCursor
-                                                        onClicked: delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(model.mediaUrl), "image", model.fileName || "Image")
+                                                        onClicked: delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(model.mediaUrl), "image", model.fileName || "Image", 0, false)
                                                     }
                                                 }
                                             }
@@ -410,7 +410,7 @@ import "UIHelpers.js" as UIHelpers
                                                 fileSize: model.fileSize
                                                 duration: model.duration || 30
                                                 fromMe: model.fromMe
-                                                onOpenFullscreenRequested: (url, name) => delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(url), "video", name)
+                                                onOpenFullscreenRequested: (url, name, pos, playing) => delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(url), "video", name, pos, playing)
                                             }
 
                                             // 5. MUSIC AUDIO MESSAGE
@@ -545,9 +545,13 @@ import "UIHelpers.js" as UIHelpers
                                             Rectangle {
                                                 id: mediaRequestCard
                                                 visible: delegateRoot.isMediaRequest
-                                                Layout.preferredWidth: Math.min(330, bubbleBox.maxContentWidth - (delegateRoot.isDM ? 20 : 0))
-                                                implicitWidth: Layout.preferredWidth
-                                                implicitHeight: requestContentCol.implicitHeight + 20
+                                                readonly property real cardAvailableWidth: Math.max(220, bubbleBox.maxContentWidth - (delegateRoot.isDM ? 12 : 0))
+                                                readonly property real responsiveCardWidth: Math.min(380, cardAvailableWidth)
+                                                Layout.preferredWidth: responsiveCardWidth
+                                                implicitWidth: responsiveCardWidth
+                                                implicitHeight: requestContentCol.implicitHeight + 24
+                                                width: responsiveCardWidth
+                                                height: implicitHeight
                                                 radius: 12
                                                 color: delegateRoot.isMe ? "#2F3136" : "#202225"
                                                 border.color: {
@@ -557,12 +561,20 @@ import "UIHelpers.js" as UIHelpers
                                                 }
                                                 border.width: 1
 
+                                                readonly property string mediaCategory: {
+                                                    var t = (model.errorText || "").toLowerCase();
+                                                    if (!t || t === "pending" || t === "accepted" || t === "declined" || t === "sent" || t === "failed") {
+                                                        t = (UIHelpers.detectMediaType(model.mediaUrl, model.fileName) || "file").toLowerCase();
+                                                    }
+                                                    return t;
+                                                }
+
                                                 ColumnLayout {
                                                     id: requestContentCol
                                                     anchors.left: parent.left
                                                     anchors.right: parent.right
                                                     anchors.top: parent.top
-                                                    anchors.margins: 10
+                                                    anchors.margins: 12
                                                     spacing: 8
 
                                                     // Header Row: Media Icon, Filename & Type/Size Badges
@@ -571,18 +583,18 @@ import "UIHelpers.js" as UIHelpers
                                                         spacing: 10
 
                                                         Rectangle {
-                                                            Layout.preferredWidth: 38
-                                                            Layout.preferredHeight: 38
+                                                            Layout.preferredWidth: 40
+                                                            Layout.preferredHeight: 40
                                                             radius: 8
                                                             color: {
-                                                                var t = (model.errorText || "").toLowerCase();
+                                                                var t = mediaRequestCard.mediaCategory;
                                                                 if (t === "image") return Qt.rgba(88, 101, 242, 0.2);
                                                                 if (t === "video") return Qt.rgba(235, 69, 158, 0.2);
                                                                 if (t === "audio") return Qt.rgba(0, 163, 108, 0.2);
                                                                 return Qt.rgba(250, 166, 26, 0.2);
                                                             }
                                                             border.color: {
-                                                                var t = (model.errorText || "").toLowerCase();
+                                                                var t = mediaRequestCard.mediaCategory;
                                                                 if (t === "image") return "#5865F2";
                                                                 if (t === "video") return "#EB459E";
                                                                 if (t === "audio") return "#00A36C";
@@ -593,7 +605,7 @@ import "UIHelpers.js" as UIHelpers
                                                             IconImage {
                                                                 anchors.centerIn: parent
                                                                 source: {
-                                                                    var t = (model.errorText || "").toLowerCase();
+                                                                    var t = mediaRequestCard.mediaCategory;
                                                                     if (t === "image") return "qrc:/qt/qml/NeoNect/assets/icons/image.svg";
                                                                     if (t === "video") return "qrc:/qt/qml/NeoNect/assets/icons/video.svg";
                                                                     if (t === "audio") return "qrc:/qt/qml/NeoNect/assets/icons/music.svg";
@@ -606,7 +618,7 @@ import "UIHelpers.js" as UIHelpers
 
                                                         ColumnLayout {
                                                             Layout.fillWidth: true
-                                                            spacing: 2
+                                                            spacing: 3
 
                                                             Text {
                                                                 Layout.fillWidth: true
@@ -615,7 +627,7 @@ import "UIHelpers.js" as UIHelpers
                                                                 font.family: "Segoe UI"
                                                                 font.pixelSize: 13
                                                                 font.bold: true
-                                                                elide: Text.ElideRight
+                                                                elide: Text.ElideMiddle
                                                             }
 
                                                             RowLayout {
@@ -630,7 +642,7 @@ import "UIHelpers.js" as UIHelpers
                                                                     Text {
                                                                         id: catLabel
                                                                         anchors.centerIn: parent
-                                                                        text: (model.errorText || "FILE").toUpperCase()
+                                                                        text: mediaRequestCard.mediaCategory.toUpperCase()
                                                                         color: ThemeData.textSecondary
                                                                         font.family: "Segoe UI"
                                                                         font.pixelSize: 9
@@ -659,7 +671,7 @@ import "UIHelpers.js" as UIHelpers
                                                         visible: model.text !== ""
                                                         Layout.fillWidth: true
                                                         text: model.text
-                                                        color: ThemeData.textPrimary
+                                                        color: delegateRoot.isMe ? "#FFFFFF" : ThemeData.textPrimary
                                                         font.family: "Segoe UI"
                                                         font.pixelSize: 12
                                                         wrapMode: Text.Wrap
@@ -671,161 +683,172 @@ import "UIHelpers.js" as UIHelpers
                                                         color: Qt.rgba(255, 255, 255, 0.08)
                                                     }
 
-                                                    Item {
+                                                    // Sender Status Row (when delegateRoot.isMe)
+                                                    RowLayout {
+                                                        visible: delegateRoot.isMe
                                                         Layout.fillWidth: true
-                                                        Layout.preferredHeight: 28
+                                                        spacing: 8
 
-                                                        RowLayout {
-                                                            visible: delegateRoot.isMe
-                                                            anchors.fill: parent
-                                                            spacing: 6
+                                                        Text {
+                                                            Layout.fillWidth: true
+                                                            text: {
+                                                                if (model.status === "accepted") return "✓ Request accepted — Sending media...";
+                                                                if (model.status === "declined") return "✕ Request declined by recipient";
+                                                                if (model.status === "failed") return "⚠ Transfer failed — Tap retry to re-send";
+                                                                return "⏳ Media request sent — Awaiting approval...";
+                                                            }
+                                                            color: {
+                                                                if (model.status === "accepted") return "#23A55A";
+                                                                if (model.status === "declined" || model.status === "failed") return "#F23F43";
+                                                                return "#FAA61A";
+                                                            }
+                                                            font.family: "Segoe UI"
+                                                            font.pixelSize: 11
+                                                            font.bold: true
+                                                            wrapMode: Text.WordWrap
+                                                        }
 
-                                                            Text {
-                                                                Layout.fillWidth: true
-                                                                text: {
-                                                                    if (model.status === "accepted") return "✓ Request accepted — Media sent";
-                                                                    if (model.status === "declined") return "✕ Request declined by recipient";
-                                                                    if (model.status === "failed") return "⚠ Transfer failed — Tap retry to re-send";
-                                                                    return "⏳ Media request sent — Awaiting approval...";
+                                                        // Retry Button inside media request card when failed
+                                                        Rectangle {
+                                                            visible: model.status === "failed"
+                                                            Layout.preferredWidth: 68
+                                                            Layout.preferredHeight: 26
+                                                            radius: 13
+                                                            color: reqRetryMouse.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.25)
+                                                            border.color: "#E53935"
+                                                            border.width: 1
+
+                                                            RowLayout {
+                                                                anchors.centerIn: parent
+                                                                spacing: 4
+                                                                IconImage {
+                                                                    source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
+                                                                    width: 11; height: 11
+                                                                    color: "#FFFFFF"
                                                                 }
-                                                                color: {
-                                                                    if (model.status === "accepted") return "#23A55A";
-                                                                    if (model.status === "declined" || model.status === "failed") return "#F23F43";
-                                                                    return "#FAA61A";
+                                                                Text {
+                                                                    text: "Retry"
+                                                                    color: "#FFFFFF"
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 10
+                                                                    font.bold: true
                                                                 }
-                                                                font.family: "Segoe UI"
-                                                                font.pixelSize: 11
-                                                                font.bold: true
-                                                                elide: Text.ElideRight
                                                             }
 
-                                                            // Retry Button inside media request card when failed
+                                                            MouseArea {
+                                                                id: reqRetryMouse
+                                                                anchors.fill: parent
+                                                                hoverEnabled: true
+                                                                cursorShape: Qt.PointingHandCursor
+                                                                onClicked: delegateRoot.retryMessage(model.messageId)
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Recipient Action Row (when !delegateRoot.isMe)
+                                                    RowLayout {
+                                                        visible: !delegateRoot.isMe
+                                                        Layout.fillWidth: true
+                                                        spacing: 8
+
+                                                        Text {
+                                                            visible: model.status !== "accepted" && model.status !== "declined"
+                                                            Layout.fillWidth: true
+                                                            text: "Incoming transfer request"
+                                                            color: ThemeData.textSecondary
+                                                            font.family: "Segoe UI"
+                                                            font.pixelSize: 11
+                                                            font.bold: true
+                                                            elide: Text.ElideRight
+                                                        }
+
+                                                        Text {
+                                                            visible: model.status === "accepted" || model.status === "declined"
+                                                            Layout.fillWidth: true
+                                                            text: model.status === "accepted" ? "✓ Accepted — Receiving media..." : "✕ Request declined"
+                                                            color: model.status === "accepted" ? "#23A55A" : "#F23F43"
+                                                            font.family: "Segoe UI"
+                                                            font.pixelSize: 11
+                                                            font.bold: true
+                                                            wrapMode: Text.WordWrap
+                                                        }
+
+                                                        RowLayout {
+                                                            visible: model.status !== "accepted" && model.status !== "declined"
+                                                            spacing: 8
+
                                                             Rectangle {
-                                                                visible: model.status === "failed"
-                                                                width: 68; height: 24
-                                                                radius: 12
-                                                                color: reqRetryMouse.containsMouse ? "#E53935" : Qt.rgba(229, 57, 53, 0.25)
-                                                                border.color: "#E53935"
+                                                                Layout.preferredHeight: 28
+                                                                Layout.preferredWidth: 70
+                                                                radius: 14
+                                                                color: declineBtnMouse.containsMouse ? Qt.rgba(242, 63, 67, 0.3) : Qt.rgba(242, 63, 67, 0.12)
+                                                                border.color: "#F23F43"
+                                                                border.width: 1
+
+                                                                Text {
+                                                                    anchors.centerIn: parent
+                                                                    text: "Decline"
+                                                                    color: "#F23F43"
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 11
+                                                                    font.bold: true
+                                                                }
+
+                                                                MouseArea {
+                                                                    id: declineBtnMouse
+                                                                    anchors.fill: parent
+                                                                    hoverEnabled: true
+                                                                    cursorShape: Qt.PointingHandCursor
+                                                                    onClicked: {
+                                                                        var convId = delegateRoot.getConversationId();
+                                                                        if (typeof MessageService !== "undefined" && MessageService) {
+                                                                            MessageService.declineMediaRequest(convId, model.messageId);
+                                                                        } else {
+                                                                            delegateRoot.declineMediaRequested(convId, model.messageId);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            Rectangle {
+                                                                Layout.preferredHeight: 28
+                                                                Layout.preferredWidth: 80
+                                                                radius: 14
+                                                                color: acceptBtnMouse.containsMouse ? "#23A55A" : Qt.rgba(35, 165, 90, 0.25)
+                                                                border.color: "#23A55A"
                                                                 border.width: 1
 
                                                                 RowLayout {
                                                                     anchors.centerIn: parent
                                                                     spacing: 4
+
                                                                     IconImage {
-                                                                        source: "qrc:/qt/qml/NeoNect/assets/icons/refresh.svg"
-                                                                        width: 11; height: 11
-                                                                        color: "#FFFFFF"
+                                                                        source: "qrc:/qt/qml/NeoNect/assets/icons/check.svg"
+                                                                        Layout.preferredWidth: 12
+                                                                        Layout.preferredHeight: 12
+                                                                        color: acceptBtnMouse.containsMouse ? "#FFFFFF" : "#23A55A"
                                                                     }
+
                                                                     Text {
-                                                                        text: "Retry"
-                                                                        color: "#FFFFFF"
+                                                                        text: "Accept"
+                                                                        color: acceptBtnMouse.containsMouse ? "#FFFFFF" : "#23A55A"
                                                                         font.family: "Segoe UI"
-                                                                        font.pixelSize: 10
+                                                                        font.pixelSize: 11
                                                                         font.bold: true
                                                                     }
                                                                 }
 
                                                                 MouseArea {
-                                                                    id: reqRetryMouse
+                                                                    id: acceptBtnMouse
                                                                     anchors.fill: parent
                                                                     hoverEnabled: true
                                                                     cursorShape: Qt.PointingHandCursor
-                                                                    onClicked: delegateRoot.retryMessage(model.messageId)
-                                                                }
-                                                            }
-                                                        }
-
-                                                        RowLayout {
-                                                            visible: !delegateRoot.isMe
-                                                            anchors.fill: parent
-                                                            spacing: 8
-
-                                                            Text {
-                                                                visible: model.status === "accepted" || model.status === "declined"
-                                                                text: model.status === "accepted" ? "✓ Accepted — Receiving media" : "✕ Request declined"
-                                                                color: model.status === "accepted" ? "#23A55A" : "#F23F43"
-                                                                font.family: "Segoe UI"
-                                                                font.pixelSize: 11
-                                                                font.bold: true
-                                                            }
-
-                                                            RowLayout {
-                                                                visible: model.status !== "accepted" && model.status !== "declined"
-                                                                spacing: 8
-
-                                                                Rectangle {
-                                                                    Layout.preferredHeight: 26
-                                                                    Layout.preferredWidth: 72
-                                                                    radius: 13
-                                                                    color: acceptBtnMouse.containsMouse ? "#23A55A" : Qt.rgba(35, 165, 90, 0.25)
-                                                                    border.color: "#23A55A"
-                                                                    border.width: 1
-
-                                                                    RowLayout {
-                                                                        anchors.centerIn: parent
-                                                                        spacing: 4
-
-                                                                        IconImage {
-                                                                            source: "qrc:/qt/qml/NeoNect/assets/icons/check.svg"
-                                                                            Layout.preferredWidth: 12
-                                                                            Layout.preferredHeight: 12
-                                                                            color: acceptBtnMouse.containsMouse ? "#FFFFFF" : "#23A55A"
-                                                                        }
-
-                                                                        Text {
-                                                                            text: "Accept"
-                                                                            color: acceptBtnMouse.containsMouse ? "#FFFFFF" : "#23A55A"
-                                                                            font.family: "Segoe UI"
-                                                                            font.pixelSize: 11
-                                                                            font.bold: true
-                                                                        }
-                                                                    }
-
-                                                                    MouseArea {
-                                                                        id: acceptBtnMouse
-                                                                        anchors.fill: parent
-                                                                        hoverEnabled: true
-                                                                        cursorShape: Qt.PointingHandCursor
-                                                                        onClicked: {
-                                                                            var convId = delegateRoot.getConversationId();
-                                                                            if (typeof MessageService !== "undefined" && MessageService) {
-                                                                                MessageService.acceptMediaRequest(convId, model.messageId);
-                                                                            } else {
-                                                                                delegateRoot.acceptMediaRequested(convId, model.messageId);
-                                                                            }
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                Rectangle {
-                                                                    Layout.preferredHeight: 26
-                                                                    Layout.preferredWidth: 68
-                                                                    radius: 13
-                                                                    color: declineBtnMouse.containsMouse ? Qt.rgba(242, 63, 67, 0.3) : Qt.rgba(242, 63, 67, 0.12)
-                                                                    border.color: "#F23F43"
-                                                                    border.width: 1
-
-                                                                    Text {
-                                                                        anchors.centerIn: parent
-                                                                        text: "Decline"
-                                                                        color: "#F23F43"
-                                                                        font.family: "Segoe UI"
-                                                                        font.pixelSize: 11
-                                                                        font.bold: true
-                                                                    }
-
-                                                                    MouseArea {
-                                                                        id: declineBtnMouse
-                                                                        anchors.fill: parent
-                                                                        hoverEnabled: true
-                                                                        cursorShape: Qt.PointingHandCursor
-                                                                        onClicked: {
-                                                                            var convId = delegateRoot.getConversationId();
-                                                                            if (typeof MessageService !== "undefined" && MessageService) {
-                                                                                MessageService.declineMediaRequest(convId, model.messageId);
-                                                                            } else {
-                                                                                delegateRoot.declineMediaRequested(convId, model.messageId);
-                                                                            }
+                                                                    onClicked: {
+                                                                        var convId = delegateRoot.getConversationId();
+                                                                        if (typeof MessageService !== "undefined" && MessageService) {
+                                                                            MessageService.acceptMediaRequest(convId, model.messageId);
+                                                                        } else {
+                                                                            delegateRoot.acceptMediaRequested(convId, model.messageId);
                                                                         }
                                                                     }
                                                                 }

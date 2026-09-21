@@ -15,10 +15,12 @@ Rectangle {
     property string fileName: "Media"
     property real zoomScale: 1.0
 
-    property real volumeLevel: 1.0
-    property bool isMuted: false
+    property real volumeLevel: (typeof AudioManager !== "undefined" && AudioManager) ? AudioManager.volume : 1.0
+    property bool isMuted: (typeof AudioManager !== "undefined" && AudioManager) ? AudioManager.isMuted : false
     property bool hasPlaybackError: false
     property string playbackErrorMsg: ""
+    property int pendingSeekPos: 0
+    property bool resumePlayback: true
 
     readonly property bool isPlaying: lightboxPlayer.playbackState === MediaPlayer.PlayingState
     readonly property bool isWindowFullScreen: (lightboxRoot.Window.window && lightboxRoot.Window.window.visibility === Window.FullScreen)
@@ -44,7 +46,7 @@ Rectangle {
         }
     }
 
-    function open(url, type, name) {
+    function open(url, type, name, startPosMs, isPlaying) {
         lightboxRoot.mediaUrl = UIHelpers.formatMediaSource(url);
         lightboxRoot.mediaType = type || "image";
         lightboxRoot.fileName = name || "Media";
@@ -52,8 +54,20 @@ Rectangle {
         lightboxRoot.hasPlaybackError = false;
         lightboxRoot.active = true;
 
+        var seekPos = (startPosMs !== undefined && startPosMs > 0) ? startPosMs : 0;
+        var shouldPlay = (isPlaying !== undefined) ? isPlaying : true;
+        lightboxRoot.pendingSeekPos = seekPos;
+        lightboxRoot.resumePlayback = shouldPlay;
+
         if (lightboxRoot.mediaType === "video") {
-            lightboxPlayer.play();
+            if (seekPos > 0) {
+                lightboxPlayer.position = seekPos;
+            }
+            if (shouldPlay) {
+                lightboxPlayer.play();
+            } else {
+                lightboxPlayer.pause();
+            }
         }
     }
 
@@ -61,6 +75,7 @@ Rectangle {
         if (lightboxRoot.mediaType === "video") {
             lightboxPlayer.stop();
         }
+        lightboxRoot.pendingSeekPos = 0;
         var win = lightboxRoot.Window.window;
         if (win && win.visibility === Window.FullScreen) {
             win.visibility = Window.Windowed;
@@ -76,6 +91,16 @@ Rectangle {
     color: Qt.rgba(0, 0, 0, 0.96)
 
     Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
+
+    // Full backdrop mouse absorber to prevent click-through to window titlebar or background
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.AllButtons
+        hoverEnabled: true
+        onPressed: (mouse) => mouse.accepted = true
+        onReleased: (mouse) => mouse.accepted = true
+        onWheel: (wheel) => wheel.accepted = true
+    }
 
     Shortcut {
         sequence: "F11"
@@ -94,10 +119,24 @@ Rectangle {
         source: lightboxRoot.mediaType === "video" ? lightboxRoot.mediaUrl : ""
         audioOutput: AudioOutput {
             id: lightboxAudio
-            volume: (lightboxRoot.isMuted || !lightboxRoot.isPlaying) ? 0.0 : lightboxRoot.volumeLevel
-            muted: lightboxRoot.isMuted || !lightboxRoot.isPlaying
+            volume: (AudioManager.isMuted || !lightboxRoot.isPlaying) ? 0.0 : AudioManager.volume
+            muted: AudioManager.isMuted || !lightboxRoot.isPlaying
         }
         videoOutput: lightboxVideoOutput
+
+        onMediaStatusChanged: {
+            if (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia) {
+                if (lightboxRoot.pendingSeekPos > 0) {
+                    lightboxPlayer.position = lightboxRoot.pendingSeekPos;
+                    lightboxRoot.pendingSeekPos = 0;
+                }
+                if (lightboxRoot.resumePlayback) {
+                    lightboxPlayer.play();
+                } else {
+                    lightboxPlayer.pause();
+                }
+            }
+        }
 
         onErrorOccurred: (error, errorString) => {
             console.log("[MediaLightboxModal] Playback error:", errorString);
@@ -115,6 +154,12 @@ Rectangle {
         height: 56
         color: Qt.rgba(0, 0, 0, 0.7)
         z: 10
+
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.AllButtons
+            onPressed: (mouse) => mouse.accepted = true
+        }
 
         RowLayout {
             anchors.fill: parent
@@ -290,6 +335,7 @@ Rectangle {
             id: surfaceClickArea
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
+            enabled: !(typeof lbVolCtrl !== "undefined" && lbVolCtrl && lbVolCtrl.expanded)
             onClicked: {
                 if (lightboxRoot.mediaType === "video") {
                     lightboxRoot.hasPlaybackError = false;
@@ -490,18 +536,20 @@ Rectangle {
             // Advanced 0% - 100% Volume Controller
             VolumeController {
                 id: lbVolCtrl
-                volume: lightboxRoot.volumeLevel
-                isMuted: lightboxRoot.isMuted
+                volume: AudioManager.volume
+                isMuted: AudioManager.isMuted
                 textColor: "#FFFFFF"
                 accentColor: ThemeData.accentColor
                 iconSize: 18
-                alwaysExpanded: true
                 onVolumeChangedManually: (v) => {
-                    lightboxRoot.volumeLevel = v;
-                    lightboxRoot.isMuted = (v === 0);
+                    if (typeof AudioManager !== "undefined" && AudioManager) {
+                        AudioManager.setVolume(v);
+                    }
                 }
                 onMuteToggled: {
-                    lightboxRoot.isMuted = !lightboxRoot.isMuted;
+                    if (typeof AudioManager !== "undefined" && AudioManager) {
+                        AudioManager.toggleMute();
+                    }
                 }
             }
 
