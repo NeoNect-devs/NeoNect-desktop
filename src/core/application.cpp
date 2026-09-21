@@ -1,6 +1,7 @@
 #include <QStandardPaths>
 #include <QDir>
 #include <QLockFile>
+#include <vector>
 // src/core/application.cpp
 #include "application.h"
 #include "networkmanager.h"
@@ -121,11 +122,28 @@ void Application::parseCommandLine() {
     m_isMockMode = parser.isSet(mockOption);
 
     if (m_profile.isEmpty() && !m_isMockMode) {
-        static std::unique_ptr<QLockFile> s_primaryLock;
+        static std::vector<std::unique_ptr<QLockFile>> s_instanceLocks;
         QString lockPath = QDir::temp().filePath("neonect_primary_instance.lock");
-        s_primaryLock = std::make_unique<QLockFile>(lockPath);
-        if (!s_primaryLock->tryLock(50)) {
-            m_profile = QString("inst_%1").arg(QCoreApplication::applicationPid());
+        auto primaryLock = std::make_unique<QLockFile>(lockPath);
+        primaryLock->setStaleLockTime(10000);
+        if (primaryLock->tryLock(50)) {
+            s_instanceLocks.push_back(std::move(primaryLock));
+        } else {
+            bool locked = false;
+            for (int i = 2; i <= 10; ++i) {
+                QString secLockPath = QDir::temp().filePath(QString("neonect_instance_%1.lock").arg(i));
+                auto secLock = std::make_unique<QLockFile>(secLockPath);
+                secLock->setStaleLockTime(10000);
+                if (secLock->tryLock(50)) {
+                    m_profile = QString("client%1").arg(i);
+                    s_instanceLocks.push_back(std::move(secLock));
+                    locked = true;
+                    break;
+                }
+            }
+            if (!locked) {
+                m_profile = QString("inst_%1").arg(QCoreApplication::applicationPid());
+            }
             std::cout << "➔ Secondary instance detected. Running with isolated profile: "
                       << m_profile.toStdString() << std::endl;
         }

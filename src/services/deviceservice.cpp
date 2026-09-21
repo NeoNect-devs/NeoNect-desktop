@@ -17,6 +17,15 @@ DeviceService::DeviceService(std::shared_ptr<Transport::IHttpTransport> transpor
 }
 
 void DeviceService::registerDevice(const QString &deviceId, const QString &publicKey) {
+    registerDeviceInternal(deviceId, publicKey, 0);
+}
+
+void DeviceService::registerDeviceInternal(const QString &deviceId, const QString &publicKey, int attempt) {
+    if (attempt >= 3) {
+        emit deviceRegistrationResult(false, "Device registration failed: Maximum retry attempts reached.");
+        return;
+    }
+
     if (m_storage->authToken().isEmpty()) {
         emit deviceRegistrationResult(false, "Unauthorized: No authentication token.");
         return;
@@ -27,7 +36,10 @@ void DeviceService::registerDevice(const QString &deviceId, const QString &publi
         effectiveDevId = m_storage->deviceId();
         if (effectiveDevId.isEmpty()) {
             QString prof = m_storage->profile();
-            effectiveDevId = QString("neonect-dev-%1%2").arg(prof.isEmpty() ? "" : prof + "-",
+            QString user = m_storage->username().trimmed().toLower();
+            QString prefix = prof.isEmpty() ? "" : prof + "-";
+            if (!user.isEmpty()) prefix += user + "-";
+            effectiveDevId = QString("neonect-dev-%1%2").arg(prefix,
                                                             QUuid::createUuid().toString(QUuid::WithoutBraces));
             m_storage->setDeviceId(effectiveDevId);
         }
@@ -51,12 +63,89 @@ void DeviceService::registerDevice(const QString &deviceId, const QString &publi
 
     QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
 
-    m_transport->post(Constants::EP_DEVICE_REGISTER, postData, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->post(Constants::EP_DEVICE_REGISTER, postData, this, [this, effectiveDevId, effectivePubKey, attempt](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
-        bool success = (error == QNetworkReply::NoError || statusCode == 201 || statusCode == 200 || statusCode == 409);
         auto doc = QJsonDocument::fromJson(data);
-        QString msg = (statusCode == 409) ? "Device already registered" : (success ? "Device registered" : (doc.isNull() ? "Device registration failed" : doc.object().value("error").toString()));
-        emit deviceRegistrationResult(success, msg);
+        QString errVal = (!doc.isNull() && doc.isObject()) ? doc.object().value("error").toString() : QString();
+
+        // 1. Success
+        if (error == QNetworkReply::NoError || statusCode == 201 || statusCode == 200) {
+            emit deviceRegistrationResult(true, "Device registered");
+            return;
+        }
+
+        // 2. Maximum device limit reached (HTTP 400 with "maximum device limit reached")
+        if (statusCode == 400 && errVal.contains("maximum device limit reached", Qt::CaseInsensitive)) {
+            QString user = m_storage->username().trimmed().toLower();
+            if (!user.isEmpty()) {
+                QMap<QString, QString> params;
+                params["u"] = user;
+                m_transport->get(Constants::EP_RELAY_KEYS, params, this, [this, effectiveDevId, effectivePubKey, attempt](int sCode, const QByteArray &dData, QNetworkReply::NetworkError, const QString &) {
+                    if (sCode == 200) {
+                        auto devDoc = QJsonDocument::fromJson(dData);
+                        QJsonArray devArr = devDoc.object().value("devices").toArray();
+                        for (const auto &val : devArr) {
+                            if (val.toObject().value("device_id").toString() == effectiveDevId) {
+                                emit deviceRegistrationResult(true, "Device already registered");
+                                return;
+                            }
+                        }
+                        // Prune oldest device to stay within 10-device limit
+                        if (!devArr.isEmpty()) {
+                            QString oldestDevId = devArr.first().toObject().value("device_id").toString();
+                            QJsonObject revokeBody;
+                            revokeBody["device_id"] = oldestDevId;
+                            m_transport->deleteResource(Constants::EP_DEVICE, this, [this, effectiveDevId, effectivePubKey, attempt](int delCode, const QByteArray &, QNetworkReply::NetworkError, const QString &) {
+                                if (delCode == 200) {
+                                    registerDeviceInternal(effectiveDevId, effectivePubKey, attempt + 1);
+                                } else {
+                                    emit deviceRegistrationResult(false, "Device registration failed: maximum device limit reached");
+                                }
+                            }, QJsonDocument(revokeBody).toJson(QJsonDocument::Compact));
+                            return;
+                        }
+                    }
+                    emit deviceRegistrationResult(false, "Device registration failed: maximum device limit reached");
+                });
+                return;
+            }
+        }
+
+        // 3. Conflict (HTTP 409): Verify if device belongs to current user
+        if (statusCode == 409) {
+            QString user = m_storage->username().trimmed().toLower();
+            if (!user.isEmpty()) {
+                QMap<QString, QString> params;
+                params["u"] = user;
+                m_transport->get(Constants::EP_RELAY_KEYS, params, this, [this, effectiveDevId, effectivePubKey, attempt](int sCode, const QByteArray &dData, QNetworkReply::NetworkError, const QString &) {
+                    if (sCode == 200) {
+                        auto devDoc = QJsonDocument::fromJson(dData);
+                        QJsonArray devArr = devDoc.object().value("devices").toArray();
+                        for (const auto &val : devArr) {
+                            if (val.toObject().value("device_id").toString() == effectiveDevId) {
+                                emit deviceRegistrationResult(true, "Device already registered");
+                                return;
+                            }
+                        }
+                    }
+                    // Not owned by current user; generate a fresh device ID and re-register
+                    QString prof = m_storage->profile();
+                    QString u = m_storage->username().trimmed().toLower();
+                    QString prefix = prof.isEmpty() ? "" : prof + "-";
+                    if (!u.isEmpty()) prefix += u + "-";
+                    QString newDevId = QString("neonect-dev-%1%2").arg(prefix, QUuid::createUuid().toString(QUuid::WithoutBraces));
+                    m_storage->setDeviceId(newDevId);
+                    registerDeviceInternal(newDevId, effectivePubKey, attempt + 1);
+                });
+                return;
+            } else {
+                emit deviceRegistrationResult(true, "Device already registered");
+                return;
+            }
+        }
+
+        QString msg = errVal.isEmpty() ? "Device registration failed" : errVal;
+        emit deviceRegistrationResult(false, msg);
     });
 }
 

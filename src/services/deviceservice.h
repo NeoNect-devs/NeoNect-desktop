@@ -28,6 +28,8 @@ signals:
     void recipientKeysFetched(const QString &username, const QVariantList &devices);
 
 private:
+    void registerDeviceInternal(const QString &deviceId, const QString &publicKey, int attempt);
+
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
 };

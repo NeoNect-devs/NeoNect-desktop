@@ -44,6 +44,13 @@ RelayService::RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
 
     connect(m_wsClient.get(), &Transport::WebSocketClient::textMessageReceived,
             this, &RelayService::onWebSocketMessageReceived);
+
+    connect(m_wsClient.get(), &Transport::WebSocketClient::errorOccurred, this, [this](const QString &err) {
+        qWarning() << "[RelayService] WebSocket client error:" << err;
+        if (err.contains("401") || err.contains("Unauthorized", Qt::CaseInsensitive)) {
+            handle401Error();
+        }
+    });
 }
 
 void RelayService::startPolling() {
@@ -118,7 +125,10 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     QString deviceId = m_storage->deviceId().trimmed();
     if (deviceId.isEmpty()) {
         QString prof = m_storage->profile();
-        deviceId = QString("neonect-dev-%1%2").arg(prof.isEmpty() ? "" : prof + "-",
+        QString user = m_storage->username().trimmed().toLower();
+        QString prefix = prof.isEmpty() ? "" : prof + "-";
+        if (!user.isEmpty()) prefix += user + "-";
+        deviceId = QString("neonect-dev-%1%2").arg(prefix,
                                                     QUuid::createUuid().toString(QUuid::WithoutBraces));
         m_storage->setDeviceId(deviceId);
     }

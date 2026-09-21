@@ -24,7 +24,10 @@ void CryptoManager::ensureDeviceCredentials() {
     QString devId = m_settingsRepo->deviceId();
     if (devId.isEmpty()) {
         QString prof = m_settingsRepo->profile();
-        devId = QString("neonect-dev-%1%2").arg(prof.isEmpty() ? "" : prof + "-",
+        QString user = m_settingsRepo->username().trimmed().toLower();
+        QString prefix = prof.isEmpty() ? "" : prof + "-";
+        if (!user.isEmpty()) prefix += user + "-";
+        devId = QString("neonect-dev-%1%2").arg(prefix,
                                               QUuid::createUuid().toString(QUuid::WithoutBraces));
         m_settingsRepo->setDeviceId(devId);
     }
