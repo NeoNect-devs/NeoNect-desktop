@@ -4,6 +4,8 @@ import QtQuick
 Item {
     id: control
 
+    signal accepted
+
     property alias text: input.text
     property string placeholderText: ""
     property int echoMode: TextInput.Normal
@@ -88,6 +90,7 @@ Item {
         font.pointSize: (ThemeData.fontSizeNormal !== undefined) ? ThemeData.fontSizeNormal : 14
         echoMode: control.echoMode
         selectByMouse: true
+        onAccepted: control.accepted()
 
         Text {
             text: control.placeholderText
