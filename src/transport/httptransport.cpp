@@ -15,10 +15,32 @@ HttpTransport::HttpTransport(QNetworkAccessManager *nam, QObject *parent)
 
 QString HttpTransport::cleanUrl(const QString &input) {
     QString trimmed = input.trimmed();
-    if (trimmed.endsWith('/')) {
+    while (trimmed.endsWith('/')) {
         trimmed.chop(1);
     }
-    return trimmed.contains("://") ? trimmed : "https://" + trimmed;
+    if (trimmed.isEmpty()) {
+        return trimmed;
+    }
+    if (trimmed.contains("://")) {
+        return trimmed;
+    }
+    static const QStringList localPrefixes = {
+        "localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal",
+        "192.168.", "10.", "172."
+    };
+    for (const QString &prefix : localPrefixes) {
+        if (trimmed.startsWith(prefix, Qt::CaseInsensitive)) {
+            return "http://" + trimmed;
+        }
+    }
+    if (trimmed.endsWith(".local", Qt::CaseInsensitive) ||
+        trimmed.contains(":8080") ||
+        trimmed.contains(":3000") ||
+        trimmed.contains(":8000") ||
+        trimmed.contains(":80")) {
+        return "http://" + trimmed;
+    }
+    return "https://" + trimmed;
 }
 
 void HttpTransport::setBaseUrl(const QString &url) {

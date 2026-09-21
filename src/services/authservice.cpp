@@ -16,7 +16,20 @@ AuthService::AuthService(std::shared_ptr<Transport::IHttpTransport> transport,
 
 void AuthService::verifyServer(const QString &address) {
     QString cleanUrl = Transport::HttpTransport::cleanUrl(address);
-    if (!cleanUrl.startsWith("https://") && !cleanUrl.contains("localhost") && !cleanUrl.contains("127.0.0.1")) {
+    bool isAllowed = cleanUrl.startsWith("https://");
+    if (!isAllowed) {
+        static const QStringList localDevHosts = {
+            "localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal",
+            "192.168.", "10.", "172.", ".local"
+        };
+        for (const QString &host : localDevHosts) {
+            if (cleanUrl.contains(host)) {
+                isAllowed = true;
+                break;
+            }
+        }
+    }
+    if (!isAllowed) {
         emit verificationResult(false, "Insecure connection. HTTPS is strictly required.");
         return;
     }
