@@ -81,6 +81,8 @@ private:
     void handleRelayPoll(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
     void handleRelayAck(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleFriends(const QByteArray &data, Transport::HttpResponseCallback callback);
+    void handleFriendsGet(Transport::HttpResponseCallback callback);
+    void handleFriendsDelete(const QByteArray &data, Transport::HttpResponseCallback callback);
 
     mutable std::recursive_mutex m_mutex;
     QString m_baseUrl{"http://mock.neonect.local"};

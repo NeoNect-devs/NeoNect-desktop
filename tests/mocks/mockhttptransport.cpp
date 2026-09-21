@@ -254,6 +254,8 @@ QNetworkReply* MockHttpTransport::get(const QString &endpoint, const QMap<QStrin
         handleRelayKeys(queryParams, callback);
     } else if (endpoint == Constants::EP_RELAY_POLL) {
         handleRelayPoll(queryParams, callback);
+    } else if (endpoint == Constants::EP_FRIENDS) {
+        handleFriendsGet(callback);
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
@@ -308,6 +310,8 @@ QNetworkReply* MockHttpTransport::deleteResource(const QString &endpoint, const 
         handleAuthDelete(callback);
     } else if (endpoint == Constants::EP_DEVICE) {
         handleDeviceDelete(jsonData, callback);
+    } else if (endpoint == Constants::EP_FRIENDS) {
+        handleFriendsDelete(jsonData, callback);
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
@@ -744,6 +748,72 @@ void MockHttpTransport::handleFriends(const QByteArray &data, Transport::HttpRes
     QJsonObject res;
     res["status"] = "success";
     callback(201, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleFriendsGet(Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken == "unauthorized") {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    QString currentUsername;
+    if (!m_activeToken.isEmpty() && m_tokenToUser.contains(m_activeToken)) {
+        currentUsername = m_tokenToUser[m_activeToken].trimmed().toLower();
+    } else if (!m_activeToken.isEmpty()) {
+        currentUsername = m_activeToken.trimmed().toLower();
+    }
+
+    QJsonArray friendsArr;
+    for (const QString &pair : m_friendships) {
+        QStringList parts = pair.split(':');
+        if (parts.size() == 2) {
+            if (parts[0].compare(currentUsername, Qt::CaseInsensitive) == 0) {
+                friendsArr.append(parts[1]);
+            } else if (parts[1].compare(currentUsername, Qt::CaseInsensitive) == 0) {
+                friendsArr.append(parts[0]);
+            }
+        }
+    }
+
+    QJsonObject res;
+    res["friends"] = friendsArr;
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleFriendsDelete(const QByteArray &data, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken == "unauthorized") {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    QString currentUsername;
+    if (!m_activeToken.isEmpty() && m_tokenToUser.contains(m_activeToken)) {
+        currentUsername = m_tokenToUser[m_activeToken].trimmed().toLower();
+    } else if (!m_activeToken.isEmpty()) {
+        currentUsername = m_activeToken.trimmed().toLower();
+    }
+
+    auto doc = QJsonDocument::fromJson(data);
+    QString targetUsername = doc.object().value("username").toString().trimmed().toLower();
+
+    QString pairKey = (currentUsername < targetUsername)
+        ? (currentUsername + ":" + targetUsername)
+        : (targetUsername + ":" + currentUsername);
+
+    m_friendships.remove(pairKey);
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
+    QJsonObject res;
+    res["status"] = "success";
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 
 } // namespace Testing

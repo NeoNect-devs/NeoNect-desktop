@@ -34,6 +34,33 @@ void FriendService::loadFriends() {
     m_cachedPending = m_storage->pendingRequests();
     emit friendsListChanged(m_cachedFriends);
     emit pendingRequestsChanged(m_cachedPending);
+
+    bool hasAuth = (m_transport && !m_transport->authToken().trimmed().isEmpty()) ||
+                   (m_storage && !m_storage->authToken().trimmed().isEmpty());
+    if (hasAuth && m_transport) {
+        m_transport->get(Constants::EP_FRIENDS, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+            Q_UNUSED(errStr);
+            if (error == QNetworkReply::NoError && statusCode == 200) {
+                auto doc = QJsonDocument::fromJson(data);
+                if (doc.isObject() && doc.object().contains("friends")) {
+                    QJsonArray arr = doc.object().value("friends").toArray();
+                    QStringList serverFriends;
+                    for (const auto &v : arr) {
+                        QString f = v.toString().trimmed();
+                        if (!f.isEmpty() && !serverFriends.contains(f, Qt::CaseInsensitive)) {
+                            serverFriends.append(f);
+                        }
+                    }
+                    if (serverFriends != m_cachedFriends) {
+                        m_cachedFriends = serverFriends;
+                        m_storage->setFriends(m_cachedFriends);
+                        emit friendsListChanged(m_cachedFriends);
+                        checkFriendsStatus();
+                    }
+                }
+            }
+        });
+    }
 }
 
 void FriendService::updateLastSeen(const QString &username) {
@@ -349,6 +376,21 @@ void FriendService::removeFriend(const QString &username) {
     }
     m_storage->setFriends(m_cachedFriends);
     emit friendsListChanged(m_cachedFriends);
+
+    bool hasAuth = (m_transport && !m_transport->authToken().trimmed().isEmpty()) ||
+                   (m_storage && !m_storage->authToken().trimmed().isEmpty());
+    if (hasAuth && m_transport) {
+        QJsonObject payload;
+        payload["username"] = target;
+        QByteArray deleteData = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+        m_transport->deleteResource(Constants::EP_FRIENDS, this, [target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+            Q_UNUSED(data);
+            Q_UNUSED(error);
+            Q_UNUSED(errStr);
+            qDebug() << "[FriendService] removeFriend backend status:" << statusCode << "for:" << target;
+        }, deleteData);
+    }
+
     emit removeFriendResult(true, "Removed " + target, target);
 }
 
