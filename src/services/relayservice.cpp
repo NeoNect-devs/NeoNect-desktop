@@ -6,6 +6,11 @@
 #include <QDateTime>
 #include <QUuid>
 #include <QDebug>
+#include <QFile>
+#include <QFileInfo>
+#include <QUrl>
+#include <QDir>
+#include <QStandardPaths>
 
 namespace NeoNect {
 namespace Services {
@@ -165,7 +170,30 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     packet["content"] = msg.text;
     packet["text"] = msg.text;
     
-    if (!msg.mediaUrl.isEmpty()) packet["mediaUrl"] = msg.mediaUrl;
+    if (!msg.mediaUrl.isEmpty()) {
+        packet["mediaUrl"] = msg.mediaUrl;
+        if (msg.type != "media_request") {
+            QString localPath = msg.mediaUrl;
+            if (localPath.startsWith("file:///")) {
+                localPath = QUrl(localPath).toLocalFile();
+            } else if (localPath.startsWith("file://")) {
+                localPath = localPath.mid(7);
+            }
+            if (!localPath.startsWith("//") && !localPath.startsWith("\\\\") && QFile::exists(localPath)) {
+                QFileInfo fi(localPath);
+                if (fi.isFile() && fi.size() > 0 && fi.size() <= 2800000) {
+                    QFile f(localPath);
+                    if (f.open(QIODevice::ReadOnly)) {
+                        QByteArray fileBytes = f.readAll();
+                        f.close();
+                        if (!fileBytes.isEmpty()) {
+                            packet["fileData"] = QString::fromLatin1(fileBytes.toBase64());
+                        }
+                    }
+                }
+            }
+        }
+    }
     if (!msg.fileName.isEmpty()) packet["fileName"] = msg.fileName;
     if (msg.fileSize > 0) packet["fileSize"] = msg.fileSize;
     if (msg.duration > 0) packet["duration"] = msg.duration;
@@ -326,8 +354,31 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         if (packetObj.contains("waveform")) waveform = packetObj.value("waveform").toArray().toVariantList();
         if (packetObj.contains("messageId")) messageUuid = packetObj.value("messageId").toString();
         if (packetObj.contains("mediaType")) mediaCategory = packetObj.value("mediaType").toString();
-        if (packetObj.contains("timestamp") && packetObj.value("timestamp").toInteger() > 0) {
-            timestamp = packetObj.value("timestamp").toInteger();
+        if (packetObj.contains("fileData")) {
+            QByteArray rawBytes = QByteArray::fromBase64(packetObj.value("fileData").toString().toLatin1());
+            if (!rawBytes.isEmpty()) {
+                QString profile = m_storage->profile();
+                QString userDir = m_storage->username().trimmed().toLower();
+                QString mediaSub = (profile.isEmpty() ? "" : profile + "/") + (userDir.isEmpty() ? "" : userDir + "/");
+                QString mediaDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/media/" + mediaSub;
+                QDir().mkpath(mediaDir);
+
+                QString safeName = fileName.trimmed();
+                if (safeName.isEmpty()) {
+                    safeName = messageUuid + (type == "image" ? ".png" : (type == "voice" || type == "audio" ? ".wav" : ".bin"));
+                } else {
+                    safeName = QFileInfo(safeName).fileName();
+                }
+
+                QString localFilePath = mediaDir + safeName;
+                QFile outFile(localFilePath);
+                if (outFile.open(QIODevice::WriteOnly)) {
+                    outFile.write(rawBytes);
+                    outFile.close();
+                    mediaUrl = QUrl::fromLocalFile(localFilePath).toString();
+                    qDebug() << "[RelayService] Successfully saved incoming file to local storage:" << mediaUrl;
+                }
+            }
         }
     }
 

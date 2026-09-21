@@ -33,3 +33,4 @@ __pycache__/
 # Documentation
 docs/
 compile_commands.json
+test_*.txt
