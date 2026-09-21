@@ -5,6 +5,8 @@
 #include "storage/imessagerepository.h"
 #include "domain/message.h"
 
+class QTimer;
+
 namespace NeoNect {
 namespace Services {
 
@@ -12,7 +14,7 @@ class MessageService : public QObject {
     Q_OBJECT
 public:
     explicit MessageService(std::shared_ptr<Storage::IMessageRepository> repository, QObject* parent = nullptr);
-    ~MessageService() override = default;
+    ~MessageService() override;
 
     // Send a message from the local user
     Q_INVOKABLE void sendMessage(const QString &conversationId, const QString &text, const QString &type = "text", 
@@ -27,6 +29,7 @@ public:
     
     // Load a conversation (UI calls this to fetch history)
     Q_INVOKABLE void loadConversation(const QString &conversationId);
+    Q_INVOKABLE void loadMoreMessages(const QString &conversationId, qint64 beforeTimestamp, int limit = 30);
 
     // Ephemeral Typing Status (Direct Messages)
     Q_INVOKABLE void sendTyping(const QString &conversationId, bool isTyping);
@@ -36,6 +39,9 @@ public:
 
     // Retry sending a previously failed message or media
     Q_INVOKABLE void retryMessage(const QString &messageId);
+
+    // Cancel in-flight media transfer
+    Q_INVOKABLE void cancelMediaTransfer(const QString &conversationId, const QString &messageId);
 
     // Provide the current user's ID so we can derive 'fromMe' logic if needed, or pass it to UI
     void setCurrentUserId(const QString &userId);
@@ -50,9 +56,11 @@ public slots:
 signals:
     // UI (e.g. ChatMessageModel) listens to these to update itself
     void conversationLoaded(const QString &conversationId, const QVariantList &messages);
+    void moreMessagesLoaded(const QString &conversationId, const QVariantList &messages);
     void messageAdded(const QString &conversationId, const QVariantMap &message);
     void messageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText);
     void messageRemoved(const QString &conversationId, const QString &messageId);
+    void mediaTransferProgress(const QString &conversationId, const QString &messageId, qreal progress, qint64 bytesTransferred, qint64 totalBytes);
     void peerTypingStatusChanged(const QString &conversationId, const QString &senderId, bool isTyping);
     
     // Sent to RelayService to actually encrypt & transmit
@@ -64,6 +72,7 @@ private:
     QHash<QString, Domain::Message> m_outgoingMessages;
     QHash<QString, Domain::Message> m_pendingMediaRequests;
     QHash<QString, Domain::Message> m_receivedMediaRequests;
+    QHash<QString, QTimer*> m_activeTransfers;
 
     QVariantMap domainToVariantMap(const Domain::Message &msg) const;
 };

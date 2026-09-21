@@ -17,6 +17,9 @@ Item {
     property real trackHeight: 5
     property real hoverTrackHeight: 7
 
+    property real dragProgress: 0.0
+    readonly property real currentProgress: seekMouse.pressed ? dragProgress : Math.max(0.0, Math.min(1.0, isNaN(value) ? 0.0 : value))
+
     signal seekMoved(real progress)
     signal seekFinished(real progress)
 
@@ -60,7 +63,7 @@ Item {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.bottom: parent.bottom
-            width: Math.max(0, Math.min(bgTrack.width, bgTrack.width * Math.max(0.0, Math.min(1.0, seekRoot.value))))
+            width: Math.max(0, Math.min(bgTrack.width, bgTrack.width * seekRoot.currentProgress))
             radius: parent.radius
             clip: true
 
@@ -88,7 +91,7 @@ Item {
             height: width
             radius: width / 2
             anchors.verticalCenter: parent.verticalCenter
-            x: Math.max(0, Math.min(bgTrack.width - width, (bgTrack.width * Math.max(0.0, Math.min(1.0, seekRoot.value))) - (width / 2)))
+            x: Math.max(0, Math.min(bgTrack.width - width, (bgTrack.width * seekRoot.currentProgress) - (width / 2)))
             color: "#FFFFFF"
             border.color: seekRoot.gradientMid
             border.width: 2
@@ -126,7 +129,7 @@ Item {
             id: timeLabel
             anchors.centerIn: parent
             text: {
-                var hoverProgress = Math.max(0.0, Math.min(1.0, seekMouse.mouseX / bgTrack.width));
+                var hoverProgress = bgTrack.width > 0 ? Math.max(0.0, Math.min(1.0, seekMouse.mouseX / bgTrack.width)) : 0.0;
                 return seekRoot.formatTime(hoverProgress * seekRoot.duration);
             }
             color: "#FFFFFF"
@@ -146,8 +149,8 @@ Item {
 
         function updateSeek(mouseX) {
             var clampedX = Math.max(0, Math.min(bgTrack.width, mouseX));
-            var p = clampedX / bgTrack.width;
-            seekRoot.value = p;
+            var p = bgTrack.width > 0 ? (clampedX / bgTrack.width) : 0.0;
+            seekRoot.dragProgress = p;
             seekRoot.seekMoved(p);
         }
 
@@ -157,7 +160,8 @@ Item {
         }
         onReleased: (mouse) => {
             var clampedX = Math.max(0, Math.min(bgTrack.width, mouse.x));
-            var p = clampedX / bgTrack.width;
+            var p = bgTrack.width > 0 ? (clampedX / bgTrack.width) : 0.0;
+            seekRoot.dragProgress = p;
             seekRoot.seekFinished(p);
         }
     }

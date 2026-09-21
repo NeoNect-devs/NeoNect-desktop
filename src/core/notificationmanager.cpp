@@ -320,8 +320,48 @@ void NotificationManager::setScreenCorner(const QString &corner) {
 }
 
 void NotificationManager::markChannelAsRead(const QString &channel) {
-    Q_UNUSED(channel);
-    resetUnreadCount();
+    if (channel.isEmpty()) {
+        resetUnreadCount();
+        return;
+    }
+
+    QString cleanTarget = channel.trimmed();
+    if (cleanTarget.startsWith("dms:")) cleanTarget = cleanTarget.mid(4);
+    if (cleanTarget.startsWith("dm-")) cleanTarget = cleanTarget.mid(3);
+    if (cleanTarget.startsWith("#")) cleanTarget = cleanTarget.mid(1);
+
+    bool unreadChanged = false;
+    QStringList dismissedIds;
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        for (int i = m_activeNotifications.size() - 1; i >= 0; --i) {
+            auto map = m_activeNotifications.at(i).toMap();
+            QString ch = map.value("channel").toString();
+            if (ch.startsWith("dms:")) ch = ch.mid(4);
+            if (ch.startsWith("dm-")) ch = ch.mid(3);
+            if (ch.startsWith("#")) ch = ch.mid(1);
+            QString title = map.value("title").toString();
+
+            if (ch.compare(cleanTarget, Qt::CaseInsensitive) == 0 ||
+                title.compare(cleanTarget, Qt::CaseInsensitive) == 0 ||
+                channel.compare(map.value("channel").toString(), Qt::CaseInsensitive) == 0) {
+                dismissedIds.append(map.value("id").toString());
+                m_activeNotifications.removeAt(i);
+            }
+        }
+        if (m_unreadCount > m_activeNotifications.size()) {
+            m_unreadCount = m_activeNotifications.size();
+            unreadChanged = true;
+        }
+    }
+
+    for (const QString &id : dismissedIds) {
+        emit notificationDismissed(id);
+    }
+    if (unreadChanged) {
+        emit unreadCountChanged();
+    }
+    emit activeNotificationsChanged();
 }
 
 void NotificationManager::resetUnreadCount() {

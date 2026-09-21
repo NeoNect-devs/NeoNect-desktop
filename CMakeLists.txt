@@ -175,6 +175,7 @@ qt_add_qml_module(NeoNectApp
         qml/components/MediaLightboxModal.qml
         qml/components/VolumeController.qml
         qml/components/GradientSeekBar.qml
+        qml/components/ScrollToBottomButton.qml
         qml/components/ToastNotification.qml
         qml/components/FriendsHomePanel.qml
         qml/components/NotificationStackView.qml

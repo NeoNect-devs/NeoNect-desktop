@@ -15,6 +15,10 @@ ColumnLayout {
     property string typingUser: ""
     property bool isOtherTyping: false
     property QtObject messageModel: null
+    property bool isFetchingMore: false
+    property bool hasInitialPositioned: false
+    property var savedScrollPositions: ({})
+    property string currentConvKey: ""
     
     signal typingStarted()
     signal typingStopped()
@@ -25,23 +29,149 @@ ColumnLayout {
     signal declineMediaRequested(string convId, string reqId)
 
     visible: !(selectedServer === "dms" && activeChannel === "friends") && activeChannel !== ""
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            spacing: 0
+    Layout.fillWidth: true
+    Layout.fillHeight: true
+    spacing: 0
 
+    function saveCurrentScrollPosition() {
+        if (!currentConvKey) return;
+        if (messageListView.atYEnd) {
+            savedScrollPositions[currentConvKey] = "BOTTOM";
+        } else {
+            savedScrollPositions[currentConvKey] = messageListView.contentY;
+        }
+    }
 
+    function restoreScrollPosition() {
+        var key = selectedServer + ":" + activeChannel;
+        var saved = savedScrollPositions[key];
+        if (saved === undefined || saved === "BOTTOM") {
+            scrollToBottomCompletely();
+        } else if (typeof saved === "number") {
+            messageListView.contentY = saved;
+            Qt.callLater(function() {
+                if (messageListView.contentItem && messageListView.contentItem.height > messageListView.height) {
+                    messageListView.contentY = Math.max(0, Math.min(saved, messageListView.contentItem.height - messageListView.height));
+                }
+            });
+        }
+    }
 
+    function scrollToBottomCompletely() {
+        messageListView.positionViewAtEnd();
+        Qt.callLater(function() {
+            messageListView.positionViewAtEnd();
+        });
+    }
+
+    onActiveChannelChanged: {
+        saveCurrentScrollPosition();
+        if (messageModel) messageModel.clearFirstUnread();
+        currentConvKey = selectedServer + ":" + activeChannel;
+        hasInitialPositioned = false;
+        isFetchingMore = false;
+        if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+    }
+
+    onSelectedServerChanged: {
+        saveCurrentScrollPosition();
+        if (messageModel) messageModel.clearFirstUnread();
+        currentConvKey = selectedServer + ":" + activeChannel;
+        hasInitialPositioned = false;
+        isFetchingMore = false;
+        if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+    }
+
+    Connections {
+        target: messageModel
+        function onCountChanged() {
+            if (messageModel && messageModel.count > 0 && !chatViewRoot.hasInitialPositioned) {
+                chatViewRoot.hasInitialPositioned = true;
+                
+                // If opening a channel with unread messages, mark first unread for visual separator
+                if (selectedServer === "dms" && typeof NetworkManager !== "undefined" && NetworkManager) {
+                    var unread = NetworkManager.unreadCount(activeChannel);
+                    if (unread > 0) {
+                        var unreadIdx = Math.max(0, messageModel.count - unread);
+                        messageModel.setFirstUnreadIndex(unreadIdx);
+                    }
+                }
+
+                chatViewRoot.restoreScrollPosition();
+                chatViewRoot.checkAndSendSeenReceipt();
+            }
+        }
+    }
 
     Timer {
         id: scrollTimer
         interval: 50
         repeat: false
-        onTriggered: messageListView.positionViewAtEnd()
+        onTriggered: {
+            chatViewRoot.scrollToBottomCompletely();
+            chatViewRoot.checkAndSendSeenReceipt();
+        }
     }
 
+    function checkAndSendSeenReceipt() {
+        if (!messageListView.atYEnd || messageListView.moving || messageListView.dragging) return;
+        var chan = activeChannel ? activeChannel.trim() : "";
+        if (selectedServer === "dms" && chan && chan !== "saved-messages" && chan !== "friends") {
+            var key = selectedServer + ":" + chan;
+            MessageService.sendSeenReceipt(key, "all");
+        }
+        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+            if (chan) NotificationManager.markChannelAsRead(chan);
+            if (selectedServer && chan) NotificationManager.markChannelAsRead(selectedServer + ":" + chan);
+        }
+    }
+
+    function onUserScrolledToBottom() {
+        if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+        if (messageModel) messageModel.clearFirstUnread();
+        scrollToBottomCompletely();
+        checkAndSendSeenReceipt();
+    }
 
     function scrollToEndIfAtBottom() {
-        if (messageListView.atYEnd) scrollTimer.restart();
+        if (messageListView.atYEnd && !messageListView.moving && !messageListView.dragging) scrollTimer.restart();
+    }
+
+    function handleIncomingMessage(isFromMe, msgId) {
+        if (isFromMe) {
+            if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+            if (messageModel) messageModel.clearFirstUnread();
+            scrollTimer.restart();
+        } else {
+            if (messageListView.atYEnd && !messageListView.moving && !messageListView.dragging && !messageListView.flicking) {
+                if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+                scrollTimer.restart();
+            } else {
+                if (scrollToBottomBtn) {
+                    scrollToBottomBtn.unreadCount++;
+                }
+                if (messageModel) {
+                    messageModel.setFirstUnreadMessageId(msgId);
+                }
+            }
+        }
+    }
+
+    function onMoreMessagesLoaded(convId, messages) {
+        isFetchingMore = false;
+    }
+
+    function checkFetchMore() {
+        if (!messageModel || !messageModel.canFetchMore || isFetchingMore) return;
+        if (messageListView.contentY <= 80 && messageModel.count > 0) {
+            var oldest = messageModel.oldestTimestamp();
+            if (oldest > 0) {
+                isFetchingMore = true;
+                var chan = activeChannel ? activeChannel.trim() : "";
+                var convId = selectedServer + ":" + chan;
+                MessageService.loadMoreMessages(convId, oldest, 30);
+            }
+        }
     }
 
     ChatHeader {
@@ -73,6 +203,29 @@ ColumnLayout {
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
                         spacing: selectedServer === "dms" ? 6 : 2
+
+                        onMovementEnded: {
+                            chatViewRoot.saveCurrentScrollPosition();
+                            chatViewRoot.checkFetchMore();
+                            if (atYEnd) {
+                                if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+                                chatViewRoot.checkAndSendSeenReceipt();
+                            }
+                        }
+                        onContentHeightChanged: {
+                            if (!chatViewRoot.hasInitialPositioned) {
+                                positionViewAtEnd();
+                            }
+                        }
+                        onContentYChanged: {
+                            if (moving && contentY <= 80) {
+                                chatViewRoot.checkFetchMore();
+                            }
+                            if (atYEnd && !moving) {
+                                if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+                                chatViewRoot.checkAndSendSeenReceipt();
+                            }
+                        }
 
                         ScrollBar.vertical: ScrollBar {
                             id: chatScrollBar
@@ -145,6 +298,40 @@ ColumnLayout {
                                     font.pixelSize: 13
                                 }
                             }
+                        }
+                    }
+
+                    // Top Loading Indicator when fetching older messages
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.topMargin: 8
+                        width: 32; height: 32
+                        radius: 16
+                        color: "#2B2D31"
+                        border.color: Qt.rgba(255, 255, 255, 0.12)
+                        border.width: 1
+                        visible: chatViewRoot.isFetchingMore
+                        z: 90
+
+                        BusyIndicator {
+                            anchors.centerIn: parent
+                            running: chatViewRoot.isFetchingMore
+                            width: 20; height: 20
+                        }
+                    }
+
+                    // Floating Scroll-To-Bottom Button with Unread Counter Badge
+                    ScrollToBottomButton {
+                        id: scrollToBottomBtn
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.rightMargin: 16
+                        anchors.bottomMargin: 16
+                        targetListView: messageListView
+                        z: 100
+                        onClicked: {
+                            chatViewRoot.onUserScrolledToBottom();
                         }
                     }
 

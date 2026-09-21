@@ -55,12 +55,14 @@ void RelayService::startPolling() {
     if (isMock) {
         m_isWsConnected = true;
         emit serverConnected();
-    } else if (m_wsClient && !m_wsClient->isConnected()) {
+    } else if (m_wsClient) {
         QString devId = m_storage->deviceId().trimmed();
         QString token = m_storage->authToken().trimmed();
         if (!devId.isEmpty() && !token.isEmpty()) {
-            qDebug() << "[RelayService] Opening WebSocket connection for presence & delivery:" << devId;
-            m_wsClient->open(m_transport->baseUrl(), devId, token);
+            if (!m_wsClient->isConnected() || m_wsClient->deviceId() != devId || m_wsClient->token() != token) {
+                qDebug() << "[RelayService] Opening WebSocket connection for presence & delivery:" << devId;
+                m_wsClient->open(m_transport->baseUrl(), devId, token);
+            }
         }
     }
 
@@ -83,6 +85,9 @@ bool RelayService::isPolling() const {
 }
 
 bool RelayService::isConnected() const {
+    if (m_wsClient && m_wsClient->isConnected()) {
+        return true;
+    }
     if (m_isWsConnected) {
         return true;
     }

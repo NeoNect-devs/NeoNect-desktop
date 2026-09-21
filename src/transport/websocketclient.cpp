@@ -95,6 +95,8 @@ void WebSocketClient::open(const QString &serverUrl, const QString &deviceId, co
 
 void WebSocketClient::close() {
     m_shouldBeConnected = false;
+    m_deviceId.clear();
+    m_token.clear();
     if (m_reconnectTimer->isActive()) {
         m_reconnectTimer->stop();
     }

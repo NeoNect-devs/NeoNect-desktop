@@ -151,9 +151,9 @@ Rectangle {
                 Layout.fillWidth: true
                 value: musicRoot.progress
                 duration: musicPlayer.duration > 0 ? musicPlayer.duration : (musicRoot.duration * 1000)
-                gradientStart: musicRoot.fromMe ? "#FFFFFF" : "#00E5FF"
-                gradientMid: musicRoot.fromMe ? "#E0F2FE" : "#0A84FF"
-                gradientEnd: musicRoot.fromMe ? "#BAE6FD" : "#0066FF"
+                gradientStart: musicRoot.fromMe ? "#FFFFFF" : ThemeData.accentColor
+                gradientMid: musicRoot.fromMe ? "#E0F2FE" : ThemeData.accentColor
+                gradientEnd: musicRoot.fromMe ? "#BAE6FD" : ThemeData.accentHover
                 onSeekMoved: (p) => {
                     if (musicPlayer.duration > 0) {
                         musicPlayer.position = p * musicPlayer.duration;

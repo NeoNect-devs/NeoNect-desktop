@@ -72,16 +72,31 @@ Rectangle {
     }
 
     function close() {
-        if (lightboxRoot.mediaType === "video") {
-            lightboxPlayer.stop();
-        }
+        lightboxRoot.resumePlayback = false;
         lightboxRoot.pendingSeekPos = 0;
+        lightboxRoot.active = false;
+        if (lightboxRoot.mediaType === "video") {
+            lightboxPlayer.pause();
+            lightboxPlayer.stop();
+            lightboxRoot.mediaUrl = "";
+        }
         var win = lightboxRoot.Window.window;
         if (win && win.visibility === Window.FullScreen) {
             win.visibility = Window.Windowed;
         }
-        lightboxRoot.active = false;
         lightboxRoot.closeRequested();
+    }
+
+    onActiveChanged: {
+        if (!active) {
+            lightboxRoot.resumePlayback = false;
+            lightboxRoot.pendingSeekPos = 0;
+            if (lightboxPlayer.playbackState !== MediaPlayer.StoppedState) {
+                lightboxPlayer.pause();
+                lightboxPlayer.stop();
+            }
+            lightboxRoot.mediaUrl = "";
+        }
     }
 
     anchors.fill: parent
@@ -116,15 +131,16 @@ Rectangle {
 
     MediaPlayer {
         id: lightboxPlayer
-        source: lightboxRoot.mediaType === "video" ? lightboxRoot.mediaUrl : ""
+        source: (lightboxRoot.active && lightboxRoot.mediaType === "video") ? lightboxRoot.mediaUrl : ""
         audioOutput: AudioOutput {
             id: lightboxAudio
-            volume: (AudioManager.isMuted || !lightboxRoot.isPlaying) ? 0.0 : AudioManager.volume
-            muted: AudioManager.isMuted || !lightboxRoot.isPlaying
+            volume: (AudioManager.isMuted || !lightboxRoot.isPlaying || !lightboxRoot.active) ? 0.0 : AudioManager.volume
+            muted: AudioManager.isMuted || !lightboxRoot.isPlaying || !lightboxRoot.active
         }
         videoOutput: lightboxVideoOutput
 
         onMediaStatusChanged: {
+            if (!lightboxRoot.active) return;
             if (mediaStatus === MediaPlayer.LoadedMedia || mediaStatus === MediaPlayer.BufferedMedia) {
                 if (lightboxRoot.pendingSeekPos > 0) {
                     lightboxPlayer.position = lightboxRoot.pendingSeekPos;
@@ -230,28 +246,6 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: lightboxRoot.zoomScale = Math.min(3.0, lightboxRoot.zoomScale + 0.25)
-                }
-            }
-
-            // Fullscreen Window Toggle Button
-            Rectangle {
-                width: 36; height: 36
-                radius: 18
-                color: topFsMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(255, 255, 255, 0.1)
-
-                IconImage {
-                    anchors.centerIn: parent
-                    source: lightboxRoot.isWindowFullScreen ? "qrc:/qt/qml/NeoNect/assets/icons/minimize.svg" : "qrc:/qt/qml/NeoNect/assets/icons/maximize.svg"
-                    width: 16; height: 16
-                    color: "#FFFFFF"
-                }
-
-                MouseArea {
-                    id: topFsMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: lightboxRoot.toggleWindowFullScreen()
                 }
             }
 

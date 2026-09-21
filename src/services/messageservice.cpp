@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QTimer>
 #include <QDebug>
 
 namespace NeoNect {
@@ -14,6 +15,16 @@ MessageService::MessageService(std::shared_ptr<Storage::IMessageRepository> repo
 {
 }
 
+MessageService::~MessageService() {
+    for (auto timer : m_activeTransfers) {
+        if (timer) {
+            timer->stop();
+            delete timer;
+        }
+    }
+    m_activeTransfers.clear();
+}
+
 void MessageService::setCurrentUserId(const QString &userId) {
     if (m_currentUserId != userId) {
         m_outgoingMessages.clear();
@@ -21,6 +32,32 @@ void MessageService::setCurrentUserId(const QString &userId) {
         m_receivedMediaRequests.clear();
     }
     m_currentUserId = userId;
+}
+
+void MessageService::cancelMediaTransfer(const QString &conversationId, const QString &messageId) {
+    if (messageId.isEmpty()) return;
+
+    if (m_activeTransfers.contains(messageId)) {
+        QTimer* timer = m_activeTransfers.take(messageId);
+        if (timer) {
+            timer->stop();
+            timer->deleteLater();
+        }
+    }
+
+    QString convId = conversationId;
+    if (convId.isEmpty() && m_outgoingMessages.contains(messageId)) {
+        convId = m_outgoingMessages.value(messageId).conversationId;
+    }
+
+    if (m_outgoingMessages.contains(messageId)) {
+        m_outgoingMessages[messageId].status = Domain::MessageStatus::Failed;
+        m_outgoingMessages[messageId].errorText = "Transfer cancelled";
+    }
+
+    m_repository->updateMessageStatusAsync(messageId, Domain::MessageStatus::Failed, "Transfer cancelled", this, nullptr);
+    emit messageUpdated(convId, messageId, "failed", "Transfer cancelled");
+    emit mediaTransferProgress(convId, messageId, 0.0, 0, 0);
 }
 
 void MessageService::sendMessage(const QString &conversationId, const QString &text, const QString &type, 
@@ -45,7 +82,7 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
     msg.waveform = QJsonDocument(waveArray).toJson(QJsonDocument::Compact);
     
     bool isSavedMessages = (conversationId == "dms:saved-messages" || conversationId == "saved-messages");
-    msg.status = isSavedMessages ? Domain::MessageStatus::Sent : Domain::MessageStatus::Sending;
+    msg.status = (isSavedMessages && type == "text") ? Domain::MessageStatus::Sent : Domain::MessageStatus::Sending;
     msg.timestamp = QDateTime::currentMSecsSinceEpoch();
 
     m_outgoingMessages.insert(msg.id, msg);
@@ -60,12 +97,47 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
             return;
         }
 
-        if (isSavedMessages) {
-            emit messageUpdated(msg.conversationId, msg.id, "sent", "");
-            return;
+        if (!isSavedMessages) {
+            emit transmitMessage(msg);
         }
 
-        emit transmitMessage(msg);
+        if (msg.type != "text") {
+            qint64 total = msg.fileSize > 0 ? msg.fileSize : 2500000;
+            emit mediaTransferProgress(msg.conversationId, msg.id, 0.05, static_cast<qint64>(total * 0.05), total);
+
+            QTimer* timer = new QTimer(this);
+            timer->setInterval(75);
+            auto step = std::make_shared<int>(1);
+            int totalSteps = 16;
+
+            QString mId = msg.id;
+            QString cId = msg.conversationId;
+
+            m_activeTransfers.insert(mId, timer);
+
+            connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total]() {
+                (*step)++;
+                qreal prog = qMin(1.0, static_cast<qreal>(*step) / totalSteps);
+                qint64 bytes = static_cast<qint64>(prog * total);
+
+                emit mediaTransferProgress(cId, mId, prog, bytes, total);
+
+                if (prog >= 1.0) {
+                    timer->stop();
+                    m_activeTransfers.remove(mId);
+                    timer->deleteLater();
+
+                    if (m_outgoingMessages.contains(mId)) {
+                        m_outgoingMessages[mId].status = Domain::MessageStatus::Sent;
+                    }
+                    m_repository->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
+                    emit messageUpdated(cId, mId, "sent", "");
+                }
+            });
+            timer->start();
+        } else if (isSavedMessages) {
+            emit messageUpdated(msg.conversationId, msg.id, "sent", "");
+        }
     });
 }
 
@@ -188,7 +260,7 @@ void MessageService::declineMediaRequest(const QString &conversationId, const QS
 }
 
 void MessageService::loadConversation(const QString &conversationId) {
-    m_repository->getMessagesAsync(conversationId, 50, 0, this, [this, conversationId](const std::vector<Domain::Message>& messages) {
+    m_repository->getMessagesAsync(conversationId, 40, 0, this, [this, conversationId](const std::vector<Domain::Message>& messages) {
         QVariantList msgList;
         for (const auto& msg : messages) {
             // Do not load old accepted media_requests from history
@@ -199,6 +271,22 @@ void MessageService::loadConversation(const QString &conversationId) {
             msgList.append(domainToVariantMap(msg));
         }
         emit conversationLoaded(conversationId, msgList);
+    });
+}
+
+void MessageService::loadMoreMessages(const QString &conversationId, qint64 beforeTimestamp, int limit) {
+    if (conversationId.isEmpty() || beforeTimestamp <= 0) return;
+    int fetchLimit = limit > 0 ? limit : 30;
+    m_repository->getMessagesAsync(conversationId, fetchLimit, beforeTimestamp, this, [this, conversationId](const std::vector<Domain::Message>& messages) {
+        QVariantList msgList;
+        for (const auto& msg : messages) {
+            if (msg.type == "media_request" && msg.status == Domain::MessageStatus::Accepted) {
+                m_repository->deleteMessageAsync(msg.id);
+                continue;
+            }
+            msgList.append(domainToVariantMap(msg));
+        }
+        emit moreMessagesLoaded(conversationId, msgList);
     });
 }
 
@@ -275,7 +363,42 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                         emit messageUpdated(payloadMsg.conversationId, payloadMsg.id, "failed", "Local DB Error");
                         return;
                     }
+
                     emit transmitMessage(payloadMsg);
+
+                    qint64 total = payloadMsg.fileSize > 0 ? payloadMsg.fileSize : 2500000;
+                    emit mediaTransferProgress(payloadMsg.conversationId, payloadMsg.id, 0.05, static_cast<qint64>(total * 0.05), total);
+
+                    QTimer* timer = new QTimer(this);
+                    timer->setInterval(75);
+                    auto step = std::make_shared<int>(1);
+                    int totalSteps = 16;
+
+                    QString mId = payloadMsg.id;
+                    QString cId = payloadMsg.conversationId;
+
+                    m_activeTransfers.insert(mId, timer);
+
+                    connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total]() {
+                        (*step)++;
+                        qreal prog = qMin(1.0, static_cast<qreal>(*step) / totalSteps);
+                        qint64 bytes = static_cast<qint64>(prog * total);
+
+                        emit mediaTransferProgress(cId, mId, prog, bytes, total);
+
+                        if (prog >= 1.0) {
+                            timer->stop();
+                            m_activeTransfers.remove(mId);
+                            timer->deleteLater();
+
+                            if (m_outgoingMessages.contains(mId)) {
+                                m_outgoingMessages[mId].status = Domain::MessageStatus::Sent;
+                            }
+                            m_repository->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
+                            emit messageUpdated(cId, mId, "sent", "");
+                        }
+                    });
+                    timer->start();
                 });
             }
             continue;
@@ -304,6 +427,11 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
             currentMsg.errorText = "";
         }
 
+        bool isIncomingMedia = (currentMsg.type != "text" && currentMsg.type != "media_request" && currentMsg.type != "media_decline" && currentMsg.type != "media_accept" && currentMsg.type != "sticker" && !currentMsg.type.startsWith("typing_") && currentMsg.type != "seen");
+        if (isIncomingMedia) {
+            currentMsg.status = Domain::MessageStatus::Sending;
+        }
+
         msgsToSave.push_back(currentMsg);
 
         // When a message arrives from peer, clear their typing indicator
@@ -313,6 +441,39 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
         QMetaObject::invokeMethod(this, [this, msgMap, convId = currentMsg.conversationId]() {
             emit messageAdded(convId, msgMap);
         }, Qt::QueuedConnection);
+
+        if (isIncomingMedia) {
+            qint64 total = currentMsg.fileSize > 0 ? currentMsg.fileSize : 2500000;
+            emit mediaTransferProgress(currentMsg.conversationId, currentMsg.id, 0.05, static_cast<qint64>(total * 0.05), total);
+
+            QTimer* timer = new QTimer(this);
+            timer->setInterval(75);
+            auto step = std::make_shared<int>(1);
+            int totalSteps = 16;
+
+            QString mId = currentMsg.id;
+            QString cId = currentMsg.conversationId;
+
+            m_activeTransfers.insert(mId, timer);
+
+            connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total]() {
+                (*step)++;
+                qreal prog = qMin(1.0, static_cast<qreal>(*step) / totalSteps);
+                qint64 bytes = static_cast<qint64>(prog * total);
+
+                emit mediaTransferProgress(cId, mId, prog, bytes, total);
+
+                if (prog >= 1.0) {
+                    timer->stop();
+                    m_activeTransfers.remove(mId);
+                    timer->deleteLater();
+
+                    m_repository->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
+                    emit messageUpdated(cId, mId, "sent", "");
+                }
+            });
+            timer->start();
+        }
     }
     
     if (!msgsToSave.empty()) {
@@ -349,8 +510,7 @@ void MessageService::retryMessage(const QString &messageId) {
     if (messageId.isEmpty()) return;
 
     auto executeRetry = [this](Domain::Message msg) {
-        bool isSavedMessages = (msg.conversationId == "dms:saved-messages" || msg.conversationId == "saved-messages");
-        if (isSavedMessages) {
+        if (msg.conversationId == "dms:saved-messages" || msg.conversationId == "saved-messages") {
             msg.status = Domain::MessageStatus::Sent;
             msg.errorText = "";
             m_outgoingMessages.insert(msg.id, msg);
@@ -423,6 +583,14 @@ QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const
         case Domain::MessageStatus::Pending: map["status"] = "pending"; break;
         case Domain::MessageStatus::Accepted: map["status"] = "accepted"; break;
         case Domain::MessageStatus::Declined: map["status"] = "declined"; break;
+    }
+
+    if (msg.status == Domain::MessageStatus::Sending && msg.type != "text") {
+        map["transferProgress"] = 0.05;
+        map["transferBytes"] = static_cast<qint64>((msg.fileSize > 0 ? msg.fileSize : 2500000) * 0.05);
+    } else {
+        map["transferProgress"] = 1.0;
+        map["transferBytes"] = msg.fileSize;
     }
     
     map["errorText"] = msg.errorText;

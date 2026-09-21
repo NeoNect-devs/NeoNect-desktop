@@ -46,6 +46,7 @@ QVariant ChatMessageModel::data(const QModelIndex &index, int role) const {
         case SenderAvatarRole: return item.senderAvatar;
         case FirstInBlockRole: return item.isFirstInBlock;
         case LastInBlockRole: return item.isLastInBlock;
+        case FirstUnreadRole: return item.isFirstUnread;
         case MessageIdRole: return item.id;
         case MessageTypeRole: return item.messageType;
         case MediaUrlRole: return item.mediaUrl;
@@ -56,6 +57,8 @@ QVariant ChatMessageModel::data(const QModelIndex &index, int role) const {
         case StatusRole: return item.status;
         case ErrorTextRole: return item.errorText;
         case TimestampRole: return item.timestamp;
+        case TransferProgressRole: return item.transferProgress;
+        case TransferBytesRole: return item.transferBytes;
         default: return QVariant();
     }
 }
@@ -68,6 +71,7 @@ QHash<int, QByteArray> ChatMessageModel::roleNames() const {
         { SenderAvatarRole, "senderAvatar" },
         { FirstInBlockRole, "isFirstInBlock" },
         { LastInBlockRole, "isLastInBlock" },
+        { FirstUnreadRole, "isFirstUnread" },
         { MessageIdRole, "messageId" },
         { MessageTypeRole, "messageType" },
         { MediaUrlRole, "mediaUrl" },
@@ -77,7 +81,9 @@ QHash<int, QByteArray> ChatMessageModel::roleNames() const {
         { WaveformRole, "waveform" },
         { StatusRole, "status" },
         { ErrorTextRole, "errorText" },
-        { TimestampRole, "timestamp" }
+        { TimestampRole, "timestamp" },
+        { TransferProgressRole, "transferProgress" },
+        { TransferBytesRole, "transferBytes" }
     };
 }
 
@@ -129,6 +135,7 @@ void ChatMessageModel::insertMessage(const QString &text, bool fromMe, const QSt
 
     m_items.push_back(std::move(item));
     endInsertRows();
+    emit countChanged();
 }
 
 void ChatMessageModel::insertMessageItem(const QVariantMap &map) {
@@ -182,6 +189,7 @@ void ChatMessageModel::removeMessage(const QString &messageId) {
             if (!m_items.empty()) {
                 emit dataChanged(index(0, 0), index(static_cast<int>(m_items.size()) - 1, 0), {FirstInBlockRole, LastInBlockRole});
             }
+            emit countChanged();
             break;
         }
     }
@@ -216,17 +224,120 @@ void ChatMessageModel::addMessage(MessageItem &&item) {
     beginInsertRows(QModelIndex(), newIndex, newIndex);
     m_items.push_back(std::move(item));
     endInsertRows();
+    emit countChanged();
 }
 
 void ChatMessageModel::clearActiveViewportStore() {
     beginResetModel();
     m_items.clear();
+    m_canFetchMore = false;
+    m_isLoadingMore = false;
     endResetModel();
+    emit canFetchMoreChanged();
+    emit isLoadingMoreChanged();
+    emit countChanged();
 }
 
 void ChatMessageModel::setActiveConversation(const QString &conversationId) {
     m_activeConversationId = conversationId;
     clearActiveViewportStore();
+}
+
+qint64 ChatMessageModel::oldestTimestamp() const {
+    if (m_items.empty()) return 0;
+    return m_items.front().timestamp;
+}
+
+void ChatMessageModel::onMoreMessagesLoaded(const QString &conversationId, const QVariantList &messages) {
+    if (conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
+    prependMessages(conversationId, messages);
+}
+
+void ChatMessageModel::prependMessages(const QString &conversationId, const QVariantList &messages) {
+    if (conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
+    m_isLoadingMore = false;
+    emit isLoadingMoreChanged();
+
+    if (messages.isEmpty()) {
+        m_canFetchMore = false;
+        emit canFetchMoreChanged();
+        return;
+    }
+
+    m_canFetchMore = (messages.size() >= 30);
+    emit canFetchMoreChanged();
+
+    int count = static_cast<int>(messages.size());
+    beginInsertRows(QModelIndex(), 0, count - 1);
+    std::vector<MessageItem> olderItems;
+    olderItems.reserve(count);
+    for (const QVariant &msg : messages) {
+        olderItems.push_back(parseVariantMap(msg.toMap()));
+    }
+    m_items.insert(m_items.begin(), std::make_move_iterator(olderItems.begin()), std::make_move_iterator(olderItems.end()));
+    recalculateBlocks();
+    endInsertRows();
+    emit countChanged();
+}
+
+void ChatMessageModel::setFirstUnreadMessageId(const QString &messageId) {
+    if (messageId.isEmpty()) {
+        clearFirstUnread();
+        return;
+    }
+    // If a first unread marker is already set, keep it at the top of the unread batch
+    for (const auto &item : m_items) {
+        if (item.isFirstUnread) return;
+    }
+
+    for (size_t i = 0; i < m_items.size(); ++i) {
+        if (m_items[i].id == messageId) {
+            m_items[i].isFirstUnread = true;
+            QModelIndex idx = index(static_cast<int>(i), 0);
+            emit dataChanged(idx, idx, {FirstUnreadRole});
+            break;
+        }
+    }
+}
+
+void ChatMessageModel::setFirstUnreadIndex(int unreadIndex) {
+    for (size_t i = 0; i < m_items.size(); ++i) {
+        bool shouldBe = (static_cast<int>(i) == unreadIndex);
+        if (m_items[i].isFirstUnread != shouldBe) {
+            m_items[i].isFirstUnread = shouldBe;
+            QModelIndex idx = index(static_cast<int>(i), 0);
+            emit dataChanged(idx, idx, {FirstUnreadRole});
+        }
+    }
+}
+
+void ChatMessageModel::clearFirstUnread() {
+    for (size_t i = 0; i < m_items.size(); ++i) {
+        if (m_items[i].isFirstUnread) {
+            m_items[i].isFirstUnread = false;
+            QModelIndex idx = index(static_cast<int>(i), 0);
+            emit dataChanged(idx, idx, {FirstUnreadRole});
+        }
+    }
+}
+
+void ChatMessageModel::updateTransferProgress(const QString &messageId, qreal progress, qint64 bytes) {
+    if (messageId.isEmpty()) return;
+    for (size_t i = 0; i < m_items.size(); ++i) {
+        if (m_items[i].id == messageId) {
+            m_items[i].transferProgress = progress;
+            m_items[i].transferBytes = bytes;
+            QModelIndex idx = index(static_cast<int>(i), 0);
+            emit dataChanged(idx, idx, {TransferProgressRole, TransferBytesRole});
+            break;
+        }
+    }
+}
+
+void ChatMessageModel::onMediaTransferProgress(const QString &conversationId, const QString &messageId, qreal progress, qint64 bytesTransferred, qint64 totalBytes) {
+    Q_UNUSED(totalBytes);
+    if (!conversationId.isEmpty() && conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
+    updateTransferProgress(messageId, progress, bytesTransferred);
 }
 
 MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {
@@ -252,11 +363,16 @@ MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {
         item.errorText = detectMediaType(item.mediaUrl, item.fileName, "file");
     }
     item.timestamp = map.value("timestamp").toLongLong();
+    item.transferProgress = map.value("transferProgress", 0.0).toReal();
+    item.transferBytes = map.value("transferBytes", 0).toLongLong();
     return item;
 }
 
 void ChatMessageModel::onConversationLoaded(const QString &conversationId, const QVariantList &messages) {
-    if (conversationId != m_activeConversationId) return;
+    if (conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
+    
+    m_canFetchMore = (messages.size() >= 40);
+    m_isLoadingMore = false;
     
     beginResetModel();
     m_items.clear();
@@ -265,33 +381,40 @@ void ChatMessageModel::onConversationLoaded(const QString &conversationId, const
     }
     recalculateBlocks();
     endResetModel();
+
+    emit canFetchMoreChanged();
+    emit isLoadingMoreChanged();
+    emit countChanged();
 }
 
 void ChatMessageModel::onMessageAdded(const QString &conversationId, const QVariantMap &message) {
-    if (conversationId != m_activeConversationId) return;
+    if (conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
     
     QString msgId = message.value("id").toString();
     for (size_t i = 0; i < m_items.size(); ++i) {
         if (m_items[i].id == msgId) {
             m_items[i] = parseVariantMap(message);
             recalculateBlocks();
-            emit dataChanged(index(i, 0), index(i, 0));
+            emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), 0));
             return;
         }
     }
     
-    beginInsertRows(QModelIndex(), m_items.size(), m_items.size());
+    int newIndex = static_cast<int>(m_items.size());
+    beginInsertRows(QModelIndex(), newIndex, newIndex);
     m_items.push_back(parseVariantMap(message));
     recalculateBlocks();
     endInsertRows();
+    emit countChanged();
     
     if (m_items.size() > 1) {
-        emit dataChanged(index(0, 0), index(m_items.size() - 1, 0), {FirstInBlockRole, LastInBlockRole});
+        int prevIndex = static_cast<int>(m_items.size()) - 2;
+        emit dataChanged(index(prevIndex, 0), index(prevIndex, 0), {FirstInBlockRole, LastInBlockRole});
     }
 }
 
 void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText) {
-    if (!conversationId.isEmpty() && conversationId != m_activeConversationId) return;
+    if (!conversationId.isEmpty() && conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
     
     if (messageId.isEmpty() || messageId == "all") {
         for (size_t i = 0; i < m_items.size(); ++i) {
@@ -315,7 +438,7 @@ void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QSt
 }
 
 void ChatMessageModel::onMessageRemoved(const QString &conversationId, const QString &messageId) {
-    if (!conversationId.isEmpty() && conversationId != m_activeConversationId) return;
+    if (!conversationId.isEmpty() && conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
     removeMessage(messageId);
 }
 

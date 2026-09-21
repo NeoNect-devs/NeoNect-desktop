@@ -16,7 +16,7 @@ import "UIHelpers.js" as UIHelpers
     signal declineMediaRequested(string convId, string reqId)
     visible: !(delegateRoot.isMediaRequest && model.status === "accepted")
     width: messageListView.width - 12
-    height: visible ? (messageContentColumn.implicitHeight + (model.isFirstInBlock ? 12 : 4)) : 0
+    height: visible ? (messageContentColumn.implicitHeight + (model.isFirstInBlock ? 12 : 4) + (model.isFirstUnread ? 32 : 0)) : 0
 
     readonly property string effectiveType: {
         var t = (model.messageType || "").toLowerCase();
@@ -59,85 +59,146 @@ import "UIHelpers.js" as UIHelpers
     }
 
     function formatMediaRequestSize(bytes) {
-                                if (!bytes || bytes <= 0) return "0 B";
-                                if (bytes < 1024) return bytes + " B";
-                                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " Kb";
-                                if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " Mb";
-                                return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " Gb";
-                            }
+        if (!bytes || bytes <= 0) return "0 B";
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " Kb";
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " Mb";
+        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " Gb";
+    }
 
-                            // Hover background for server stream
-                            Rectangle {
-                                anchors.fill: parent
-                                visible: !delegateRoot.isDM
-                                color: itemMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.04) : "transparent"
-                            }
+    // Hover background for server stream
+    Rectangle {
+        anchors.fill: parent
+        visible: !delegateRoot.isDM
+        color: itemMouseArea.containsMouse ? Qt.rgba(255, 255, 255, 0.04) : "transparent"
+    }
 
-                            MouseArea {
-                                id: itemMouseArea
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                acceptedButtons: Qt.NoButton
-                            }
+    MouseArea {
+        id: itemMouseArea
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.NoButton
+    }
 
-                            // ─── FLOATING / STICKY AVATAR (on the left for others in DMs and all in Servers) ───
-                            Item {
-                                id: avatarContainer
-                                width: 38; height: 38
-                                visible: (!delegateRoot.isDM || !delegateRoot.isMe) && model.isFirstInBlock
-                                anchors.left: parent.left
-                                anchors.leftMargin: 16
+    // ─── NEW MESSAGES SEPARATOR BAR ───
+    Rectangle {
+        id: unreadSeparator
+        visible: model.isFirstUnread
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.topMargin: 4
+        height: 24
+        color: "transparent"
 
-                                // Floating sticky calculation: smooth reactive offset tracking scroll position within message block
-                                y: {
-                                    if (!messageListView) return 6;
-                                    var topInView = delegateRoot.y - messageListView.contentY;
-                                    if (topInView < 0) {
-                                        var maxOffset = delegateRoot.height - avatarContainer.height - 6;
-                                        return Math.max(6, Math.min(maxOffset, 6 - topInView));
-                                    }
-                                    return 6;
-                                }
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 16
+            anchors.rightMargin: 16
+            spacing: 12
 
-                                Behavior on y {
-                                    NumberAnimation { duration: 40; easing.type: Easing.OutQuad }
-                                }
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: "#F23F43"
+                opacity: 0.8
+            }
 
-                                Rectangle {
-                                    anchors.fill: parent
-                                    radius: 8
-                                    color: UIHelpers.getAvatarColor(model.senderName)
+            Rectangle {
+                Layout.preferredWidth: unreadBadgeText.implicitWidth + 16
+                Layout.preferredHeight: 18
+                radius: 9
+                color: "#F23F43"
 
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: model.senderAvatar !== "" ? model.senderAvatar : model.senderName.charAt(0).toUpperCase()
-                                        color: "#FFFFFF"
-                                        font.bold: true
-                                    }
-                                }
-                            }
+                Text {
+                    id: unreadBadgeText
+                    anchors.centerIn: parent
+                    text: "NEW MESSAGES"
+                    color: "#FFFFFF"
+                    font.family: "Segoe UI"
+                    font.pixelSize: 10
+                    font.bold: true
+                    font.letterSpacing: 0.5
+                }
+            }
 
-                            // ─── MESSAGE CONTENT COLUMN ───
-                            ColumnLayout {
-                                id: messageContentColumn
-                                anchors.top: parent.top
-                                anchors.topMargin: model.isFirstInBlock ? 6 : 2
-                                anchors.left: (!delegateRoot.isDM || !delegateRoot.isMe) ? parent.left : undefined
-                                anchors.leftMargin: (!delegateRoot.isDM || !delegateRoot.isMe) ? 66 : 0
-                                anchors.right: (delegateRoot.isDM && delegateRoot.isMe) ? parent.right : (!delegateRoot.isDM ? parent.right : undefined)
-                                anchors.rightMargin: (delegateRoot.isDM && delegateRoot.isMe) ? 16 : (!delegateRoot.isDM ? 16 : 0)
-                                width: (!delegateRoot.isDM) ? (delegateRoot.width - 82) : Math.min(delegateRoot.width - 90, bubbleRow.implicitWidth)
-                                spacing: 4
+            Rectangle {
+                Layout.fillWidth: true
+                height: 1
+                color: "#F23F43"
+                opacity: 0.8
+            }
+        }
+    }
 
-                                // Sender Name & Timestamp (Server view OR first in block)
-                                RowLayout {
-                                    visible: !delegateRoot.isDM && model.isFirstInBlock
-                                    spacing: 8
-                                    Layout.fillWidth: true
+    // ─── FLOATING / STICKY AVATAR (on the left for others in DMs and all in Servers) ───
+    Item {
+        id: avatarContainer
+        width: 38; height: 38
+        anchors.left: parent.left
+        anchors.leftMargin: 16
 
-                                    Text {
-                                        text: model.senderName
-                                        color: model.fromMe ? ThemeData.accentColor : ThemeData.textPrimary
+        readonly property real topOffset: model.isFirstUnread ? 32 : 0
+        readonly property real topInView: messageListView ? (delegateRoot.y + topOffset - messageListView.contentY) : 0
+        readonly property real bottomInView: topInView + (delegateRoot.height - topOffset)
+
+        visible: (!delegateRoot.isDM || !delegateRoot.isMe) && (
+            (model.isFirstInBlock && topInView >= 0) ||
+            (topInView < 0 && bottomInView > 0)
+        )
+
+        y: {
+            if (!messageListView) return topOffset + 6;
+            if (topInView >= 0) {
+                return topOffset + 6;
+            }
+            var targetY = topOffset + (-topInView) + 6;
+            if (model.isLastInBlock) {
+                var maxOffset = delegateRoot.height - avatarContainer.height - 6;
+                return Math.max(topOffset + 6, Math.min(maxOffset, targetY));
+            }
+            return targetY;
+        }
+
+        Behavior on y {
+            NumberAnimation { duration: 40; easing.type: Easing.OutQuad }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 8
+            color: UIHelpers.getAvatarColor(model.senderName)
+
+            Text {
+                anchors.centerIn: parent
+                text: model.senderAvatar !== "" ? model.senderAvatar : model.senderName.charAt(0).toUpperCase()
+                color: "#FFFFFF"
+                font.bold: true
+            }
+        }
+    }
+
+    // ─── MESSAGE CONTENT COLUMN ───
+    ColumnLayout {
+        id: messageContentColumn
+        anchors.top: model.isFirstUnread ? unreadSeparator.bottom : parent.top
+        anchors.topMargin: model.isFirstInBlock ? 6 : 2
+        anchors.left: (!delegateRoot.isDM || !delegateRoot.isMe) ? parent.left : undefined
+        anchors.leftMargin: (!delegateRoot.isDM || !delegateRoot.isMe) ? 66 : 0
+        anchors.right: (delegateRoot.isDM && delegateRoot.isMe) ? parent.right : (!delegateRoot.isDM ? parent.right : undefined)
+        anchors.rightMargin: (delegateRoot.isDM && delegateRoot.isMe) ? 16 : (!delegateRoot.isDM ? 16 : 0)
+        width: (!delegateRoot.isDM) ? (delegateRoot.width - 82) : Math.min(delegateRoot.width - 90, bubbleRow.implicitWidth)
+        spacing: 4
+
+        // Sender Name & Timestamp (Server view OR first in block)
+        RowLayout {
+            visible: !delegateRoot.isDM && model.isFirstInBlock
+            spacing: 8
+            Layout.fillWidth: true
+
+            Text {
+                text: model.senderName
+                color: model.fromMe ? ThemeData.accentColor : ThemeData.textPrimary
                                         font.family: "Segoe UI"
                                         font.bold: true
                                         font.pixelSize: 14
@@ -259,19 +320,26 @@ import "UIHelpers.js" as UIHelpers
                                                 }
                                             }
 
-                                            // 3. IMAGE MESSAGE (Dynamically Scaled)
+                                            // 3. IMAGE MESSAGE (Dynamically Scaled & GIF Hover Play)
                                             Item {
                                                 id: imgDelegateItem
                                                 visible: delegateRoot.isImage
 
-                                                readonly property real naturalW: (chatImg.sourceSize && chatImg.sourceSize.width > 0) ? chatImg.sourceSize.width : (chatImg.implicitWidth > 0 ? chatImg.implicitWidth : 320)
-                                                readonly property real naturalH: (chatImg.sourceSize && chatImg.sourceSize.height > 0) ? chatImg.sourceSize.height : (chatImg.implicitHeight > 0 ? chatImg.implicitHeight : 200)
+                                                readonly property bool isGif: {
+                                                    var url = (model.mediaUrl || "").toLowerCase();
+                                                    var fn = (model.fileName || "").toLowerCase();
+                                                    return url.endsWith(".gif") || fn.endsWith(".gif");
+                                                }
+                                                readonly property var activeImgObj: isGif ? chatGif : chatImg
+                                                readonly property real naturalW: (activeImgObj && activeImgObj.sourceSize && activeImgObj.sourceSize.width > 0) ? activeImgObj.sourceSize.width : (activeImgObj && activeImgObj.implicitWidth > 0 ? activeImgObj.implicitWidth : 320)
+                                                readonly property real naturalH: (activeImgObj && activeImgObj.sourceSize && activeImgObj.sourceSize.height > 0) ? activeImgObj.sourceSize.height : (activeImgObj && activeImgObj.implicitHeight > 0 ? activeImgObj.implicitHeight : 200)
                                                 readonly property real ratio: (naturalW > 0 && naturalH > 0) ? (naturalW / naturalH) : 1.6
 
+                                                readonly property real maxAllowedWidth: Math.min(420, Math.max(160, bubbleBox.maxContentWidth))
                                                 readonly property real calcWidth: {
-                                                    var maxW = 420;
+                                                    var maxW = maxAllowedWidth;
                                                     var maxH = 340;
-                                                    var minW = 160;
+                                                    var minW = Math.min(160, maxW);
                                                     var w = naturalW;
                                                     var h = naturalH;
                                                     if (w > maxW) {
@@ -301,21 +369,54 @@ import "UIHelpers.js" as UIHelpers
 
                                                     Image {
                                                         id: chatImg
+                                                        visible: delegateRoot.isImage && !imgDelegateItem.isGif
                                                         anchors.fill: parent
-                                                        source: delegateRoot.isImage ? UIHelpers.formatMediaSource(model.mediaUrl) : ""
+                                                        source: visible ? UIHelpers.formatMediaSource(model.mediaUrl) : ""
                                                         fillMode: Image.PreserveAspectFit
                                                         smooth: true
                                                         asynchronous: true
                                                     }
 
+                                                    AnimatedImage {
+                                                        id: chatGif
+                                                        visible: delegateRoot.isImage && imgDelegateItem.isGif
+                                                        anchors.fill: parent
+                                                        source: visible ? UIHelpers.formatMediaSource(model.mediaUrl) : ""
+                                                        fillMode: Image.PreserveAspectFit
+                                                        smooth: true
+                                                        asynchronous: true
+                                                        playing: imgMouseArea.containsMouse
+                                                        paused: !imgMouseArea.containsMouse
+                                                        currentFrame: !imgMouseArea.containsMouse ? 0 : currentFrame
+                                                    }
+
+                                                    // GIF Indicator Badge
+                                                    Rectangle {
+                                                        visible: imgDelegateItem.isGif && !imgMouseArea.containsMouse
+                                                        anchors.left: parent.left
+                                                        anchors.top: parent.top
+                                                        anchors.margins: 8
+                                                        width: 32; height: 20
+                                                        radius: 4
+                                                        color: Qt.rgba(0, 0, 0, 0.65)
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: "GIF"
+                                                            color: "#FFFFFF"
+                                                            font.pixelSize: 10
+                                                            font.bold: true
+                                                            font.family: "Segoe UI"
+                                                        }
+                                                    }
+
                                                     // Loading state
                                                     Rectangle {
                                                         anchors.fill: parent
-                                                        visible: chatImg.status === Image.Loading
+                                                        visible: (imgDelegateItem.isGif ? chatGif.status : chatImg.status) === Image.Loading
                                                         color: "#16171A"
                                                         BusyIndicator {
                                                             anchors.centerIn: parent
-                                                            running: chatImg.status === Image.Loading
+                                                            running: (imgDelegateItem.isGif ? chatGif.status : chatImg.status) === Image.Loading
                                                             width: 28; height: 28
                                                         }
                                                     }
@@ -323,7 +424,7 @@ import "UIHelpers.js" as UIHelpers
                                                     // Failed to load / download / upload overlay
                                                     Rectangle {
                                                         anchors.fill: parent
-                                                        visible: chatImg.status === Image.Error || (model.messageType === "image" && delegateRoot.isFailed && (!chatImg.source || chatImg.source == ""))
+                                                        visible: (imgDelegateItem.isGif ? chatGif.status : chatImg.status) === Image.Error || (model.messageType === "image" && delegateRoot.isFailed && (!imgDelegateItem.activeImgObj.source || imgDelegateItem.activeImgObj.source == ""))
                                                         color: "#1B1C20"
                                                         border.color: Qt.rgba(242, 63, 67, 0.4)
                                                         border.width: 1
@@ -383,18 +484,136 @@ import "UIHelpers.js" as UIHelpers
                                                                         if (delegateRoot.isFailed) {
                                                                             delegateRoot.retryMessage(model.messageId);
                                                                         }
-                                                                        var s = chatImg.source;
-                                                                        chatImg.source = "";
-                                                                        chatImg.source = s;
+                                                                        if (imgDelegateItem.isGif) {
+                                                                            var sg = chatGif.source;
+                                                                            chatGif.source = "";
+                                                                            chatGif.source = sg;
+                                                                        } else {
+                                                                            var s = chatImg.source;
+                                                                            chatImg.source = "";
+                                                                            chatImg.source = s;
+                                                                        }
                                                                     }
                                                                 }
                                                             }
                                                         }
                                                     }
 
-                                                    MouseArea {
+                                                    // Transferring overlay (Uploading / Downloading)
+                                                    Rectangle {
+                                                        id: imgTransferOverlay
                                                         anchors.fill: parent
-                                                        visible: chatImg.status === Image.Ready
+                                                        visible: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
+                                                        color: Qt.rgba(0, 0, 0, 0.78)
+                                                        radius: 10
+                                                        z: 5
+
+                                                        ColumnLayout {
+                                                            anchors.centerIn: parent
+                                                            spacing: 8
+
+                                                            Item {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                width: 52; height: 52
+
+                                                                Canvas {
+                                                                    id: imgProgressCanvas
+                                                                    anchors.fill: parent
+                                                                    property real progressVal: Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                    onProgressValChanged: requestPaint()
+                                                                    Component.onCompleted: requestPaint()
+
+                                                                    onPaint: {
+                                                                        var ctx = getContext("2d");
+                                                                        ctx.reset();
+                                                                        var cx = width / 2;
+                                                                        var cy = height / 2;
+                                                                        var r = width / 2 - 4;
+
+                                                                        // Background track
+                                                                        ctx.beginPath();
+                                                                        ctx.arc(cx, cy, r, 0, 2 * Math.PI, false);
+                                                                        ctx.lineWidth = 3.5;
+                                                                        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+                                                                        ctx.stroke();
+
+                                                                        // Progress arc
+                                                                        var startAngle = -Math.PI / 2;
+                                                                        var endAngle = startAngle + (2 * Math.PI * progressVal);
+                                                                        ctx.beginPath();
+                                                                        ctx.arc(cx, cy, r, startAngle, endAngle, false);
+                                                                        ctx.lineWidth = 3.5;
+                                                                        ctx.strokeStyle = ThemeData.accentColor;
+                                                                        ctx.lineCap = "round";
+                                                                        ctx.stroke();
+                                                                    }
+                                                                }
+
+                                                                // Cancel button in center
+                                                                Rectangle {
+                                                                    id: imgCancelCircle
+                                                                    anchors.centerIn: parent
+                                                                    width: 30; height: 30
+                                                                    radius: 15
+                                                                    color: imgCancelMouse.containsMouse ? "#E53935" : "rgba(0, 0, 0, 0.65)"
+                                                                    border.color: imgCancelMouse.containsMouse ? "#E53935" : "rgba(255, 255, 255, 0.35)"
+                                                                    border.width: 1
+
+                                                                    Text {
+                                                                        anchors.centerIn: parent
+                                                                        text: "✕"
+                                                                        color: "#FFFFFF"
+                                                                        font.family: "Segoe UI"
+                                                                        font.pixelSize: 11
+                                                                        font.bold: true
+                                                                    }
+
+                                                                    MouseArea {
+                                                                        id: imgCancelMouse
+                                                                        anchors.fill: parent
+                                                                        hoverEnabled: true
+                                                                        cursorShape: Qt.PointingHandCursor
+                                                                        onClicked: {
+                                                                            if (typeof MessageService !== "undefined" && MessageService) {
+                                                                                MessageService.cancelMediaTransfer(delegateRoot.getConversationId(), model.messageId);
+                                                                            }
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+
+                                                            ColumnLayout {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                spacing: 2
+
+                                                                Text {
+                                                                    Layout.alignment: Qt.AlignHCenter
+                                                                    text: model.status === "downloading" ? "Downloading..." : "Uploading..."
+                                                                    color: ThemeData.textPrimary
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 11
+                                                                    font.bold: true
+                                                                }
+
+                                                                Text {
+                                                                    Layout.alignment: Qt.AlignHCenter
+                                                                    property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : 1024 * 1024
+                                                                    property real effectiveBytes: (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : (currentProg * totalBytes)
+                                                                    text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
+                                                                    color: ThemeData.textSecondary
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 10
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    MouseArea {
+                                                        id: imgMouseArea
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        visible: ((imgDelegateItem.isGif ? chatGif.status : chatImg.status) === Image.Ready) && model.status !== "sending" && model.status !== "downloading"
                                                         cursorShape: Qt.PointingHandCursor
                                                         onClicked: delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(model.mediaUrl), "image", model.fileName || "Image", 0, false)
                                                     }
@@ -402,26 +621,243 @@ import "UIHelpers.js" as UIHelpers
                                             }
 
                                             // 4. VIDEO MESSAGE (In-App Player for supported formats)
-                                            VideoPlayerItem {
+                                            Item {
+                                                id: videoDelegateWrapper
                                                 visible: delegateRoot.isVideo && UIHelpers.isPlayableVideo(model.mediaUrl, model.fileName)
-                                                messageId: model.messageId
-                                                videoUrl: UIHelpers.formatMediaSource(model.mediaUrl)
-                                                fileName: model.fileName || "Video"
-                                                fileSize: model.fileSize
-                                                duration: model.duration || 30
-                                                fromMe: model.fromMe
-                                                onOpenFullscreenRequested: (url, name, pos, playing) => delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(url), "video", name, pos, playing)
+                                                implicitWidth: videoPlayerInstance.implicitWidth
+                                                implicitHeight: videoPlayerInstance.implicitHeight
+                                                Layout.preferredWidth: videoPlayerInstance.width
+                                                Layout.preferredHeight: videoPlayerInstance.height
+                                                width: videoPlayerInstance.width
+                                                height: videoPlayerInstance.height
+
+                                                VideoPlayerItem {
+                                                    id: videoPlayerInstance
+                                                    anchors.fill: parent
+                                                    messageId: model.messageId
+                                                    videoUrl: UIHelpers.formatMediaSource(model.mediaUrl)
+                                                    fileName: model.fileName || "Video"
+                                                    fileSize: model.fileSize
+                                                    duration: model.duration || 30
+                                                    fromMe: model.fromMe
+                                                    onOpenFullscreenRequested: (url, name, pos, playing) => delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(url), "video", name, pos, playing)
+                                                }
+
+                                                // Video Transfer Progress Overlay
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    radius: 12
+                                                    visible: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
+                                                    color: Qt.rgba(0, 0, 0, 0.82)
+                                                    z: 10
+
+                                                    ColumnLayout {
+                                                        anchors.centerIn: parent
+                                                        spacing: 8
+
+                                                        Item {
+                                                            Layout.alignment: Qt.AlignHCenter
+                                                            width: 52; height: 52
+
+                                                            Canvas {
+                                                                anchors.fill: parent
+                                                                property real progressVal: Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                onProgressValChanged: requestPaint()
+                                                                Component.onCompleted: requestPaint()
+
+                                                                onPaint: {
+                                                                    var ctx = getContext("2d");
+                                                                    ctx.reset();
+                                                                    var cx = width / 2;
+                                                                    var cy = height / 2;
+                                                                    var r = width / 2 - 4;
+
+                                                                    ctx.beginPath();
+                                                                    ctx.arc(cx, cy, r, 0, 2 * Math.PI, false);
+                                                                    ctx.lineWidth = 3.5;
+                                                                    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+                                                                    ctx.stroke();
+
+                                                                    var startAngle = -Math.PI / 2;
+                                                                    var endAngle = startAngle + (2 * Math.PI * progressVal);
+                                                                    ctx.beginPath();
+                                                                    ctx.arc(cx, cy, r, startAngle, endAngle, false);
+                                                                    ctx.lineWidth = 3.5;
+                                                                    ctx.strokeStyle = ThemeData.accentColor;
+                                                                    ctx.lineCap = "round";
+                                                                    ctx.stroke();
+                                                                }
+                                                            }
+
+                                                            Rectangle {
+                                                                anchors.centerIn: parent
+                                                                width: 30; height: 30
+                                                                radius: 15
+                                                                color: vidCancelMouse.containsMouse ? "#E53935" : "rgba(0, 0, 0, 0.65)"
+                                                                border.color: vidCancelMouse.containsMouse ? "#E53935" : "rgba(255, 255, 255, 0.35)"
+                                                                border.width: 1
+
+                                                                Text {
+                                                                    anchors.centerIn: parent
+                                                                    text: "✕"
+                                                                    color: "#FFFFFF"
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 11
+                                                                    font.bold: true
+                                                                }
+
+                                                                MouseArea {
+                                                                    id: vidCancelMouse
+                                                                    anchors.fill: parent
+                                                                    hoverEnabled: true
+                                                                    cursorShape: Qt.PointingHandCursor
+                                                                    onClicked: {
+                                                                        if (typeof MessageService !== "undefined" && MessageService) {
+                                                                            MessageService.cancelMediaTransfer(delegateRoot.getConversationId(), model.messageId);
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        ColumnLayout {
+                                                            Layout.alignment: Qt.AlignHCenter
+                                                            spacing: 2
+
+                                                            Text {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                text: model.status === "downloading" ? "Downloading Video..." : "Uploading Video..."
+                                                                color: ThemeData.textPrimary
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 11
+                                                                font.bold: true
+                                                            }
+
+                                                            Text {
+                                                                Layout.alignment: Qt.AlignHCenter
+                                                                property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : 5 * 1024 * 1024
+                                                                property real effectiveBytes: (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : (currentProg * totalBytes)
+                                                                text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
+                                                                color: ThemeData.textSecondary
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 10
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
 
                                             // 5. MUSIC AUDIO MESSAGE
-                                            AudioMusicPlayer {
+                                            Item {
+                                                id: audioDelegateWrapper
                                                 visible: delegateRoot.isAudio
-                                                messageId: model.messageId
-                                                audioUrl: UIHelpers.formatMediaSource(model.mediaUrl)
-                                                fileName: model.fileName || "Audio"
-                                                fileSize: model.fileSize
-                                                duration: model.duration || 180
-                                                fromMe: model.fromMe
+                                                implicitWidth: audioPlayerInstance.implicitWidth
+                                                implicitHeight: audioPlayerInstance.implicitHeight
+                                                Layout.preferredWidth: audioPlayerInstance.width
+                                                Layout.preferredHeight: audioPlayerInstance.height
+                                                width: audioPlayerInstance.width
+                                                height: audioPlayerInstance.height
+
+                                                AudioMusicPlayer {
+                                                    id: audioPlayerInstance
+                                                    anchors.fill: parent
+                                                    messageId: model.messageId
+                                                    audioUrl: UIHelpers.formatMediaSource(model.mediaUrl)
+                                                    fileName: model.fileName || "Audio"
+                                                    fileSize: model.fileSize
+                                                    duration: model.duration || 180
+                                                    fromMe: model.fromMe
+                                                }
+
+                                                // Audio Transfer Overlay
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    radius: 12
+                                                    visible: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
+                                                    color: Qt.rgba(0, 0, 0, 0.85)
+                                                    z: 10
+
+                                                    RowLayout {
+                                                        anchors.fill: parent
+                                                        anchors.margins: 12
+                                                        spacing: 12
+
+                                                        // Cancel button
+                                                        Rectangle {
+                                                            Layout.preferredWidth: 32
+                                                            Layout.preferredHeight: 32
+                                                            radius: 16
+                                                            color: audCancelMouse.containsMouse ? "#E53935" : Qt.rgba(255, 255, 255, 0.15)
+                                                            border.color: audCancelMouse.containsMouse ? "#E53935" : Qt.rgba(255, 255, 255, 0.3)
+                                                            border.width: 1
+
+                                                            Text {
+                                                                anchors.centerIn: parent
+                                                                text: "✕"
+                                                                color: "#FFFFFF"
+                                                                font.family: "Segoe UI"
+                                                                font.pixelSize: 12
+                                                                font.bold: true
+                                                            }
+
+                                                            MouseArea {
+                                                                id: audCancelMouse
+                                                                anchors.fill: parent
+                                                                hoverEnabled: true
+                                                                cursorShape: Qt.PointingHandCursor
+                                                                onClicked: {
+                                                                    if (typeof MessageService !== "undefined" && MessageService) {
+                                                                        MessageService.cancelMediaTransfer(delegateRoot.getConversationId(), model.messageId);
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        ColumnLayout {
+                                                            Layout.fillWidth: true
+                                                            spacing: 4
+
+                                                            RowLayout {
+                                                                Layout.fillWidth: true
+                                                                Text {
+                                                                    text: model.status === "downloading" ? "Downloading Audio..." : "Uploading Audio..."
+                                                                    color: ThemeData.textPrimary
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 12
+                                                                    font.bold: true
+                                                                }
+                                                                Item { Layout.fillWidth: true }
+                                                                Text {
+                                                                    property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : 2 * 1024 * 1024
+                                                                    property real effectiveBytes: (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : (currentProg * totalBytes)
+                                                                    text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
+                                                                    color: ThemeData.accentColor
+                                                                    font.family: "Segoe UI"
+                                                                    font.pixelSize: 10
+                                                                }
+                                                            }
+
+                                                            Rectangle {
+                                                                Layout.fillWidth: true
+                                                                Layout.preferredHeight: 3
+                                                                radius: 1.5
+                                                                color: Qt.rgba(255, 255, 255, 0.1)
+                                                                clip: true
+
+                                                                Rectangle {
+                                                                    anchors.left: parent.left
+                                                                    anchors.top: parent.top
+                                                                    anchors.bottom: parent.bottom
+                                                                    width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                    color: ThemeData.accentColor
+                                                                    radius: 1.5
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
 
                                             // 6. VOICE NOTE MESSAGE (Telegram Style)
@@ -507,34 +943,79 @@ import "UIHelpers.js" as UIHelpers
                                                             }
 
                                                             Text {
-                                                                text: "•  Click to open ↗"
-                                                                color: delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.6) : ThemeData.accentColor
+                                                                readonly property bool isTransferring: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
+                                                                property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : 1024 * 1024
+                                                                property real effectiveBytes: (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : (currentProg * totalBytes)
+
+                                                                text: isTransferring ? 
+                                                                    ("•  " + (model.status === "downloading" ? "Downloading " : "Uploading ") + UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)") :
+                                                                    "•  Click to open ↗"
+                                                                color: isTransferring ? ThemeData.accentColor : (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.6) : ThemeData.accentColor)
                                                                 font.family: "Segoe UI"
                                                                 font.pixelSize: 10
                                                             }
                                                         }
                                                     }
 
-                                                    // Open Icon
+                                                    // Open / Cancel Icon
                                                     Rectangle {
                                                         width: 28; height: 28
                                                         radius: 14
-                                                        color: fileCardMouse.containsMouse ? (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.3) : Qt.rgba(255, 255, 255, 0.15)) : "transparent"
+                                                        readonly property bool isTransferring: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
+                                                        color: isTransferring ? 
+                                                            (fileCancelMouse.containsMouse ? "#E53935" : Qt.rgba(255, 255, 255, 0.15)) : 
+                                                            (fileCardMouse.containsMouse ? (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.3) : Qt.rgba(255, 255, 255, 0.15)) : "transparent")
 
                                                         Text {
                                                             anchors.centerIn: parent
-                                                            text: "↗"
-                                                            color: delegateRoot.isMe ? "#FFFFFF" : ThemeData.textSecondary
+                                                            text: parent.isTransferring ? "✕" : "↗"
+                                                            color: delegateRoot.isMe ? "#FFFFFF" : (parent.isTransferring ? "#FFFFFF" : ThemeData.textSecondary)
                                                             font.family: "Segoe UI"
-                                                            font.pixelSize: 14
+                                                            font.pixelSize: parent.isTransferring ? 12 : 14
                                                             font.bold: true
                                                         }
+
+                                                        MouseArea {
+                                                            id: fileCancelMouse
+                                                            anchors.fill: parent
+                                                            enabled: parent.isTransferring
+                                                            hoverEnabled: true
+                                                            cursorShape: Qt.PointingHandCursor
+                                                            onClicked: {
+                                                                if (typeof MessageService !== "undefined" && MessageService) {
+                                                                    MessageService.cancelMediaTransfer(delegateRoot.getConversationId(), model.messageId);
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                // Bottom progress bar when transferring
+                                                Rectangle {
+                                                    anchors.left: parent.left
+                                                    anchors.right: parent.right
+                                                    anchors.bottom: parent.bottom
+                                                    height: 3
+                                                    radius: 1.5
+                                                    color: Qt.rgba(255, 255, 255, 0.1)
+                                                    visible: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
+                                                    clip: true
+
+                                                    Rectangle {
+                                                        anchors.left: parent.left
+                                                        anchors.top: parent.top
+                                                        anchors.bottom: parent.bottom
+                                                        width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                        color: ThemeData.accentColor
+                                                        radius: 1.5
                                                     }
                                                 }
 
                                                 MouseArea {
                                                     id: fileCardMouse
                                                     anchors.fill: parent
+                                                    enabled: model.status !== "sending" && model.status !== "downloading"
                                                     hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
                                                     onClicked: AudioManager.openMediaFile(model.mediaUrl)
@@ -934,13 +1415,13 @@ import "UIHelpers.js" as UIHelpers
                                                             anchors.verticalCenter: parent.verticalCenter
                                                             source: "qrc:/qt/qml/NeoNect/assets/icons/check-check.svg"
                                                             width: 13; height: 13
-                                                            color: "#00E5FF"
+                                                            color: ThemeData.accentColor
                                                         }
 
                                                         Text {
                                                             anchors.verticalCenter: parent.verticalCenter
                                                             text: "Seen"
-                                                            color: "#00E5FF"
+                                                            color: ThemeData.accentColor
                                                             font.family: "Segoe UI"
                                                             font.pixelSize: 9
                                                             font.bold: true

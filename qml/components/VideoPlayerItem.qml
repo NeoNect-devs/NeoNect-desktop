@@ -107,6 +107,18 @@ Rectangle {
         }
     }
 
+    Component.onDestruction: {
+        if (player.playbackState !== MediaPlayer.StoppedState) {
+            player.stop();
+        }
+    }
+
+    onVisibleChanged: {
+        if (!visible && player.playbackState === MediaPlayer.PlayingState) {
+            player.pause();
+        }
+    }
+
     onVideoUrlChanged: {
         if (videoRoot.videoUrl && videoRoot.videoUrl !== "") {
             player.pause();

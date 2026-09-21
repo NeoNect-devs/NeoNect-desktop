@@ -31,6 +31,8 @@ public:
 
     bool isConnected() const { return m_state == WebSocketState::Connected; }
     WebSocketState state() const { return m_state; }
+    QString deviceId() const { return m_deviceId; }
+    QString token() const { return m_token; }
 
     void sendTextMessage(const QString &text);
     void sendPing(const QByteArray &data = QByteArray());

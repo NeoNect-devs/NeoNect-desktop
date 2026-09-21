@@ -109,6 +109,8 @@ void NetworkManager::setupServiceSignals() {
             emit openConversationsChanged();
 
             m_friendService->loadFriends();
+            m_friendService->startHeartbeat();
+            m_friendService->checkFriendsStatus();
             autoRegisterDevice();
             m_authService->fetchUserProfile();
         } else {

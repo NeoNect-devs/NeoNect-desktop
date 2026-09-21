@@ -38,19 +38,25 @@ Item {
         function onConversationLoaded(convId, messages) {
             nativeMessageModel.onConversationLoaded(convId, messages);
         }
+        function onMoreMessagesLoaded(convId, messages) {
+            nativeMessageModel.onMoreMessagesLoaded(convId, messages);
+            chatView.onMoreMessagesLoaded(convId, messages);
+        }
         function onMessageAdded(convId, message) {
             nativeMessageModel.onMessageAdded(convId, message);
-            chatView.scrollToEndIfAtBottom();
 
             var currentConvId = root.selectedServer + ":" + (root.activeChannel ? root.activeChannel.trim() : "");
-            var isMsgFromMe = message && (message.fromMe || (NetworkManager && NetworkManager.currentUsername && message.senderId && message.senderId.toLowerCase() === NetworkManager.currentUsername.toLowerCase()));
-            if (root.selectedServer === "dms" && convId === currentConvId && !isMsgFromMe) {
+            if (convId === currentConvId) {
+                var isMsgFromMe = message && (message.fromMe || (NetworkManager && NetworkManager.currentUsername && message.senderId && message.senderId.toLowerCase() === NetworkManager.currentUsername.toLowerCase()));
                 var msgId = (message && (message.id || message.messageId)) ? (message.id || message.messageId) : "all";
-                MessageService.sendSeenReceipt(convId, msgId);
+                chatView.handleIncomingMessage(isMsgFromMe, msgId);
             }
         }
         function onMessageUpdated(convId, msgId, status, errorText) {
             nativeMessageModel.onMessageUpdated(convId, msgId, status, errorText);
+        }
+        function onMediaTransferProgress(convId, msgId, progress, bytesTransferred, totalBytes) {
+            nativeMessageModel.onMediaTransferProgress(convId, msgId, progress, bytesTransferred, totalBytes);
         }
         function onMessageRemoved(convId, msgId) {
             nativeMessageModel.onMessageRemoved(convId, msgId);
@@ -92,9 +98,6 @@ Item {
         }
     }
 
-
-    
-
     Timer {
         id: peerTypingTimeoutTimer
         interval: 4500
@@ -116,8 +119,9 @@ Item {
         var key = root.selectedServer + ":" + chan;
         nativeMessageModel.setActiveConversation(key);
         MessageService.loadConversation(key);
-        if (root.selectedServer === "dms" && chan !== "saved-messages" && chan !== "friends") {
-            MessageService.sendSeenReceipt(key, "all");
+        if (typeof NotificationManager !== "undefined" && NotificationManager) {
+            NotificationManager.markChannelAsRead(chan);
+            NotificationManager.markChannelAsRead(key);
         }
     }
 
@@ -138,10 +142,8 @@ Item {
             MessageService.sendTyping(key, false);
         }
         var mType = itemObj.messageType || "text";
-        // Two-phase media transfer: images, videos, audio, and files require pre-approval in DMs (except saved-messages); voice, text, sticker are direct
-        var isTwoPhaseMedia = (root.selectedServer === "dms" && chan !== "saved-messages") &&
-                              (mType === "image" || mType === "video" || mType === "audio" || mType === "file" || mType === "media_request");
-        if (isTwoPhaseMedia) {
+        var isTwoPhaseMedia = (mType === "image" || mType === "video" || mType === "audio" || mType === "file" || mType === "media_request");
+        if (isTwoPhaseMedia && root.selectedServer === "dms" && chan !== "saved-messages") {
             var mediaCat = (mType === "media_request") ? (itemObj.mediaCategory || itemObj.errorText || UIHelpers.detectMediaType(itemObj.mediaUrl, itemObj.fileName) || "file") : mType;
             MessageService.sendMediaRequest(key, itemObj.text || itemObj.content || "", mediaCat, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0);
         } else {
