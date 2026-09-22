@@ -224,6 +224,7 @@ Rectangle {
 
                 // Tab: Blocked
                 Rectangle {
+                    visible: false
                     height: 28
                     radius: 4
                     color: root.activeTab === "blocked" ? Qt.rgba(255, 255, 255, 0.1) : (blockedMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.05) : "transparent")

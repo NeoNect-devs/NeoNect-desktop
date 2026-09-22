@@ -5,7 +5,8 @@ import QtQuick.Controls
 
 Item {
     id: sidebarRoot
-    width: 60
+    width: 0
+    visible: false
 
     property string selectedServer: "dms"
     property string activeChannel: "friends"

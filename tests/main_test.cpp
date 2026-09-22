@@ -170,7 +170,11 @@ int main(int argc, char *argv[]) {
         int r19 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRetryMessageFlow" << "-o" << "test_retry.txt,txt");
         std::cout << "    Result: " << (r19 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19);
+        std::cout << "--> Testing testFunctionalOnlineIdleDndInvisibleStates..." << std::endl;
+        int r20 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testFunctionalOnlineIdleDndInvisibleStates");
+        std::cout << "    Result: " << (r20 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20);
     }
 
     {

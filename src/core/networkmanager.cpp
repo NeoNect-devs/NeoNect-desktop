@@ -6,6 +6,7 @@
 #include "../crypto/cryptoservice.h"
 #include <QDebug>
 #include <QDateTime>
+#include <QTimer>
 #include <algorithm>
 
 NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
@@ -21,6 +22,14 @@ NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTranspor
       m_authService(std::move(authService)), m_deviceService(std::move(deviceService)),
       m_relayService(std::move(relayService)), m_friendService(std::move(friendService))
 {
+    m_idleTimer = new QTimer(this);
+    m_idleTimer->setSingleShot(true);
+    m_idleTimer->setInterval(m_idleTimeoutMs);
+    connect(m_idleTimer, &QTimer::timeout, this, &NetworkManager::onIdleTimeout);
+    if (m_userStatusPreference == "online") {
+        m_idleTimer->start(m_idleTimeoutMs);
+    }
+
     if (m_storage) {
         QVariantList raw = m_storage->openConversations();
         QString myUser = m_storage->username().trimmed().toLower();
@@ -166,11 +175,13 @@ void NetworkManager::setupServiceSignals() {
 
     connect(m_relayService.get(), &NeoNect::Services::RelayService::serverConnected, this, [this]() {
         emit isConnectedChanged();
+        emit effectiveStatusChanged();
         m_friendService->checkFriendsStatus();
     });
 
     connect(m_relayService.get(), &NeoNect::Services::RelayService::serverDisconnected, this, [this]() {
         emit isConnectedChanged();
+        emit effectiveStatusChanged();
         for (const QString &f : m_friendService->friends()) {
             emit friendStatusUpdated(f.trimmed().toLower(), "offline");
         }
@@ -337,10 +348,12 @@ void NetworkManager::logoutUser() {
     m_authService->logoutUser();
     m_friendService->loadFriends();
     m_openConversations.clear();
+    m_isAutoIdle = false;
     emit openConversationsChanged();
     emit tokenChanged();
     emit currentUsernameChanged();
     emit isConnectedChanged();
+    emit effectiveStatusChanged();
 }
 
 void NetworkManager::registerDevice(const QString &deviceId, const QString &publicKey) {
@@ -557,3 +570,79 @@ void NetworkManager::incrementUnreadCount(const QString &username) {
     }
     emit openConversationsChanged();
 }
+
+QString NetworkManager::effectiveStatus() const {
+    if (!isConnected() || token().isEmpty()) {
+        return "offline";
+    }
+    if (m_userStatusPreference == "offline") {
+        return "offline";
+    }
+    if (m_userStatusPreference == "dnd") {
+        return "dnd";
+    }
+    if (m_userStatusPreference == "afk" || m_userStatusPreference == "idle") {
+        return "afk";
+    }
+    if (m_userStatusPreference == "online") {
+        return m_isAutoIdle ? "afk" : "online";
+    }
+    return m_userStatusPreference;
+}
+
+void NetworkManager::setUserStatus(const QString &status) {
+    QString st = status.trimmed().toLower();
+    if (st == "idle") st = "afk";
+    if (st != "online" && st != "afk" && st != "dnd" && st != "offline") {
+        st = "online";
+    }
+
+    if (m_userStatusPreference != st) {
+        m_userStatusPreference = st;
+        m_isAutoIdle = false;
+
+        emit userStatusChanged();
+        emit effectiveStatusChanged();
+        emit isIdleChanged();
+        emit isInvisibleChanged(isInvisible());
+        emit isDndChanged(isDnd());
+
+        if (st == "online" && m_idleTimer) {
+            m_idleTimer->start(m_idleTimeoutMs);
+        } else if (m_idleTimer) {
+            m_idleTimer->stop();
+        }
+    }
+}
+
+void NetworkManager::reportActivity() {
+    if (m_userStatusPreference == "online") {
+        if (m_isAutoIdle) {
+            m_isAutoIdle = false;
+            emit isIdleChanged();
+            emit effectiveStatusChanged();
+        }
+        if (m_idleTimer) {
+            m_idleTimer->start(m_idleTimeoutMs);
+        }
+    }
+}
+
+void NetworkManager::setIdleTimeout(int timeoutMs) {
+    m_idleTimeoutMs = timeoutMs > 0 ? timeoutMs : 120000;
+    if (m_idleTimer) {
+        m_idleTimer->setInterval(m_idleTimeoutMs);
+        if (m_userStatusPreference == "online" && !m_isAutoIdle) {
+            m_idleTimer->start(m_idleTimeoutMs);
+        }
+    }
+}
+
+void NetworkManager::onIdleTimeout() {
+    if (m_userStatusPreference == "online" && !m_isAutoIdle) {
+        m_isAutoIdle = true;
+        emit isIdleChanged();
+        emit effectiveStatusChanged();
+    }
+}
+

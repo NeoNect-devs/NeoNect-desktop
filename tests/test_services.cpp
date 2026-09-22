@@ -1631,3 +1631,114 @@ void TestServices::testRetryMessageFlow() {
     QCOMPARE(freshSpyUpdated.last().at(2).toString(), QString("sent"));
 }
 
+void TestServices::testFunctionalOnlineIdleDndInvisibleStates() {
+    auto transport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_presence_states");
+    storage->clearSession();
+
+    auto cryptoService = std::make_shared<NeoNect::Crypto::CryptoService>();
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(transport, storage, nullptr);
+    auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(transport, storage, nullptr);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(transport, storage, cryptoService, nullptr);
+    auto friendService = std::make_shared<NeoNect::Services::FriendService>(transport, storage, nullptr);
+
+    NetworkManager netMgr(transport, storage, cryptoService, authService, deviceService, relayService, friendService);
+    QSignalSpy spyStatus(&netMgr, &NetworkManager::effectiveStatusChanged);
+    QSignalSpy spyIdle(&netMgr, &NetworkManager::isIdleChanged);
+    QSignalSpy spyDnd(&netMgr, &NetworkManager::isDndChanged);
+    QSignalSpy spyInvisible(&netMgr, &NetworkManager::isInvisibleChanged);
+    QSignalSpy spyLogin(&netMgr, &NetworkManager::loginResult);
+
+    // 1. Initial State before login: effectiveStatus is offline
+    QCOMPARE(netMgr.userStatus(), QString("online"));
+    QCOMPARE(netMgr.effectiveStatus(), QString("offline"));
+    QCOMPARE(netMgr.isIdle(), false);
+    QCOMPARE(netMgr.isInvisible(), false);
+    QCOMPARE(netMgr.isDnd(), false);
+
+    // Login and connect
+    netMgr.loginUser("alice", "password123");
+    if (spyLogin.isEmpty()) {
+        spyLogin.wait(200);
+    }
+    QVERIFY(storage->authToken() != "");
+    emit relayService->serverConnected();
+    QCOMPARE(netMgr.effectiveStatus(), QString("online"));
+
+    // 2. Idle State: set short idle timeout (60ms) and wait for auto-idle transition
+    netMgr.setIdleTimeout(60);
+    QTest::qWait(120);
+    QCOMPARE(netMgr.isIdle(), true);
+    QCOMPARE(netMgr.effectiveStatus(), QString("afk"));
+
+    // User touches mouse or keyboard -> reportActivity wakes back up to online
+    netMgr.reportActivity();
+    QCOMPARE(netMgr.isIdle(), false);
+    QCOMPARE(netMgr.effectiveStatus(), QString("online"));
+
+    // 3. Do Not Disturb (DND) state
+    NeoNect::Core::NotificationManager notifMgr;
+    QObject::connect(&netMgr, &NetworkManager::isDndChanged,
+                     &notifMgr, &NeoNect::Core::NotificationManager::setDndEnabled);
+    QSignalSpy spyNotifTriggered(&notifMgr, &NeoNect::Core::NotificationManager::notificationTriggered);
+
+    netMgr.setUserStatus("dnd");
+    QCOMPARE(netMgr.isDnd(), true);
+    QCOMPARE(netMgr.effectiveStatus(), QString("dnd"));
+    QCOMPARE(notifMgr.dndEnabled(), true);
+
+    // In DND mode: incoming notifications & sounds must be suppressed!
+    notifMgr.showNotification("bob", "Hey are you busy?", "message", "bob", "B", 5000);
+    QCOMPARE(spyNotifTriggered.count(), 0);
+    QCOMPARE(notifMgr.unreadCount(), 0);
+
+    // 4. Invisible / Offline state
+    auto msgRepo = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    NeoNect::Services::MessageService msgService(msgRepo);
+    msgService.setCurrentUserId("alice");
+    QObject::connect(&netMgr, &NetworkManager::isInvisibleChanged,
+                     &msgService, &NeoNect::Services::MessageService::setIsInvisible);
+    QSignalSpy spyTransmit(&msgService, &NeoNect::Services::MessageService::transmitMessage);
+
+    netMgr.setUserStatus("offline");
+    QCOMPARE(netMgr.isInvisible(), true);
+    QCOMPARE(netMgr.effectiveStatus(), QString("offline"));
+    QCOMPARE(msgService.isInvisible(), true);
+
+    // When invisible: seen receipts must NOT be transmitted
+    msgService.sendSeenReceipt("dms:bob", "all");
+    QCOMPARE(spyTransmit.count(), 0);
+
+    // When invisible: typing indicators must NOT be transmitted
+    msgService.sendTyping("dms:bob", true);
+    QCOMPARE(spyTransmit.count(), 0);
+
+    // When invisible: sending a regular message still transmits, but status stays invisible
+    msgService.sendMessage("dms:bob", "Hello from stealth mode");
+    if (spyTransmit.isEmpty()) {
+        spyTransmit.wait(200);
+    }
+    QVERIFY(spyTransmit.count() >= 1);
+    QCOMPARE(netMgr.isInvisible(), true);
+    QCOMPARE(netMgr.effectiveStatus(), QString("offline"));
+
+    // Activity reports must NOT wake up an invisible user
+    netMgr.reportActivity();
+    QCOMPARE(netMgr.effectiveStatus(), QString("offline"));
+    QCOMPARE(netMgr.isInvisible(), true);
+
+    // 5. Switching back to online restores normal operation
+    netMgr.setUserStatus("online");
+    QCOMPARE(netMgr.isInvisible(), false);
+    QCOMPARE(netMgr.isDnd(), false);
+    QCOMPARE(netMgr.effectiveStatus(), QString("online"));
+    QCOMPARE(msgService.isInvisible(), false);
+    QCOMPARE(notifMgr.dndEnabled(), false);
+
+    spyTransmit.clear();
+    msgService.sendSeenReceipt("dms:bob", "all");
+    QCOMPARE(spyTransmit.count(), 1);
+
+    storage->clearSession();
+}
+

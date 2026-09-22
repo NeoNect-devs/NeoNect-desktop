@@ -7,36 +7,40 @@ import "../components"
 
 Rectangle {
     id: root
-    property int sidebarOffsetWidth: 60
+    property int sidebarOffsetWidth: 0
     property int channelOffsetWidth: 240
 
-    width: sidebarOffsetWidth + channelOffsetWidth
+    width: root.sidebarOffsetWidth > 0 ? (root.sidebarOffsetWidth + root.channelOffsetWidth) : root.channelOffsetWidth
     height: 52
     z: 10
     color: "#0F1110"
     topLeftRadius: 12; topRightRadius: 12
     border.color: "#232523"; border.width: 1
 
-    property string customStatusPreference: "online"
-    property string userStatus: (NetworkManager && NetworkManager.token && NetworkManager.token !== "" && NetworkManager.isConnected) ? customStatusPreference : "offline"
+    property string customStatusPreference: (NetworkManager && NetworkManager.userStatus) ? NetworkManager.userStatus : "online"
+    property string userStatus: (NetworkManager && NetworkManager.token && NetworkManager.token !== "" && NetworkManager.isConnected) ? (NetworkManager.effectiveStatus || "offline") : "offline"
 
     function getStatusColor(st) {
         switch(st) {
             case "online": return "#23A55A"; // Emerald Green
-            case "afk": return "#FAA81A";    // Amber Yellow (AFK / Idle)
+            case "afk":
+            case "idle": return "#FAA81A";   // Amber Yellow (AFK / Idle)
             case "dnd": return "#F23F43";    // Crimson Red (Do Not Disturb)
             case "offline":
-            default: return "#80848E";       // Muted Gray (Offline)
+            case "invisible":
+            default: return "#80848E";       // Muted Gray (Offline / Invisible)
         }
     }
 
     function getStatusLabel(st) {
         switch(st) {
             case "online": return "Online";
-            case "afk": return "Idle / AFK";
+            case "afk":
+            case "idle": return "Idle / AFK";
             case "dnd": return "Do Not Disturb";
             case "offline":
-            default: return "Offline";
+            case "invisible":
+            default: return "Invisible / Offline";
         }
     }
 
@@ -45,8 +49,8 @@ Rectangle {
         spacing: 0
 
         Item {
-            width: root.sidebarOffsetWidth
-            Layout.preferredWidth: root.sidebarOffsetWidth
+            width: root.sidebarOffsetWidth > 0 ? root.sidebarOffsetWidth : 48
+            Layout.preferredWidth: root.sidebarOffsetWidth > 0 ? root.sidebarOffsetWidth : 48
             Layout.fillHeight: true
 
             Item {
@@ -128,7 +132,7 @@ Rectangle {
                                 Layout.fillWidth: true
                                 height: 30
                                 radius: 6
-                                color: optMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : (root.userStatus === modelData.key ? Qt.rgba(255, 255, 255, 0.04) : "transparent")
+                                color: optMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : (((NetworkManager && NetworkManager.userStatus) ? NetworkManager.userStatus : root.customStatusPreference) === modelData.key ? Qt.rgba(255, 255, 255, 0.04) : "transparent")
 
                                 RowLayout {
                                     anchors.fill: parent
@@ -147,7 +151,7 @@ Rectangle {
                                         color: ThemeData.textPrimary
                                         font.family: "Segoe UI"
                                         font.pixelSize: 12
-                                        font.bold: root.userStatus === modelData.key
+                                        font.bold: ((NetworkManager && NetworkManager.userStatus) ? NetworkManager.userStatus : root.customStatusPreference) === modelData.key
                                     }
                                 }
 
@@ -157,6 +161,9 @@ Rectangle {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: {
+                                        if (typeof NetworkManager !== "undefined" && NetworkManager && NetworkManager.setUserStatus) {
+                                            NetworkManager.setUserStatus(modelData.key);
+                                        }
                                         root.customStatusPreference = modelData.key;
                                         statusPopup.close();
                                     }
@@ -196,6 +203,7 @@ Rectangle {
 
 
             Row {
+                visible: false
                 spacing: 2
 
                 Rectangle {

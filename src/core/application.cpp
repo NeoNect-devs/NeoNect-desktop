@@ -237,6 +237,52 @@ void Application::initializeServices() {
             m_notificationManager->dismissBySender(username, "friend_request");
         }
     });
+
+    // Status & Presence Synchronization (Invisible / DND / Auto-Idle)
+    QObject::connect(m_networkManager.get(), &NetworkManager::isInvisibleChanged,
+                     m_messageService.get(), &Services::MessageService::setIsInvisible);
+    QObject::connect(m_networkManager.get(), &NetworkManager::isDndChanged,
+                     m_notificationManager.get(), &Core::NotificationManager::setDndEnabled);
+    m_messageService->setIsInvisible(m_networkManager->isInvisible());
+    m_notificationManager->setDndEnabled(m_networkManager->isDnd());
+
+    // Global Activity Event Filter for 2-Minute Idle Detection
+    class ActivityEventFilter : public QObject {
+    public:
+        explicit ActivityEventFilter(std::function<void()> onActivity, QObject *parent = nullptr)
+            : QObject(parent), m_onActivity(std::move(onActivity)) {}
+    protected:
+        bool eventFilter(QObject *watched, QEvent *event) override {
+            switch (event->type()) {
+                case QEvent::MouseMove:
+                case QEvent::MouseButtonPress:
+                case QEvent::MouseButtonRelease:
+                case QEvent::MouseButtonDblClick:
+                case QEvent::KeyPress:
+                case QEvent::KeyRelease:
+                case QEvent::Wheel:
+                case QEvent::TouchBegin:
+                case QEvent::TouchUpdate:
+                case QEvent::TouchEnd:
+                    if (m_onActivity) m_onActivity();
+                    break;
+                default:
+                    break;
+            }
+            return QObject::eventFilter(watched, event);
+        }
+    private:
+        std::function<void()> m_onActivity;
+    };
+
+    m_activityFilter = std::make_unique<ActivityEventFilter>([this]() {
+        if (m_networkManager) {
+            m_networkManager->reportActivity();
+        }
+    });
+    if (m_app) {
+        m_app->installEventFilter(m_activityFilter.get());
+    }
 }
 
 bool Application::loadMainUi() {

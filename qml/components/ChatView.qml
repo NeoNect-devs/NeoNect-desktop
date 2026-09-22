@@ -118,7 +118,9 @@ ColumnLayout {
         var chan = activeChannel ? activeChannel.trim() : "";
         if (selectedServer === "dms" && chan && chan !== "saved-messages" && chan !== "friends") {
             var key = selectedServer + ":" + chan;
-            MessageService.sendSeenReceipt(key, "all");
+            if (typeof NetworkManager === "undefined" || !NetworkManager || (!NetworkManager.isInvisible && NetworkManager.effectiveStatus !== "offline")) {
+                MessageService.sendSeenReceipt(key, "all");
+            }
         }
         if (typeof NotificationManager !== "undefined" && NotificationManager) {
             if (chan) NotificationManager.markChannelAsRead(chan);

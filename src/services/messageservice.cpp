@@ -175,6 +175,7 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
 }
 
 void MessageService::sendTyping(const QString &conversationId, bool isTyping) {
+    if (m_isInvisible) return;
     if (conversationId.isEmpty() || !conversationId.startsWith("dms:") || conversationId == "dms:saved-messages" || conversationId == "saved-messages") return;
     Domain::Message msg;
     msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -187,6 +188,7 @@ void MessageService::sendTyping(const QString &conversationId, bool isTyping) {
 }
 
 void MessageService::sendSeenReceipt(const QString &conversationId, const QString &messageId) {
+    if (m_isInvisible) return;
     if (conversationId.isEmpty() || !conversationId.startsWith("dms:") || conversationId == "dms:saved-messages" || conversationId == "saved-messages") return;
     Domain::Message msg;
     msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);

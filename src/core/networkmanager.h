@@ -25,6 +25,11 @@ class NetworkManager : public QObject {
     Q_PROPERTY(QStringList pendingRequests READ pendingRequests NOTIFY pendingRequestsChanged)
     Q_PROPERTY(QVariantList bookmarks READ bookmarks NOTIFY bookmarksChanged)
     Q_PROPERTY(QVariantList openConversations READ openConversations NOTIFY openConversationsChanged)
+    Q_PROPERTY(QString userStatus READ userStatus WRITE setUserStatus NOTIFY userStatusChanged)
+    Q_PROPERTY(QString effectiveStatus READ effectiveStatus NOTIFY effectiveStatusChanged)
+    Q_PROPERTY(bool isIdle READ isIdle NOTIFY isIdleChanged)
+    Q_PROPERTY(bool isInvisible READ isInvisible NOTIFY isInvisibleChanged)
+    Q_PROPERTY(bool isDnd READ isDnd NOTIFY isDndChanged)
 
 public:
     explicit NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
@@ -80,6 +85,16 @@ public:
     Q_INVOKABLE void checkFriendsStatus();
     Q_INVOKABLE void checkUserStatus(const QString &username);
 
+    // Presence & Status Management
+    QString userStatus() const { return m_userStatusPreference; }
+    QString effectiveStatus() const;
+    bool isIdle() const { return m_isAutoIdle || m_userStatusPreference == "afk" || m_userStatusPreference == "idle"; }
+    bool isInvisible() const { return m_userStatusPreference == "offline"; }
+    bool isDnd() const { return m_userStatusPreference == "dnd"; }
+    Q_INVOKABLE void setUserStatus(const QString &status);
+    Q_INVOKABLE void reportActivity();
+    Q_INVOKABLE void setIdleTimeout(int timeoutMs);
+
     // Persistent & Activity-Sorted Direct Conversations
     QVariantList openConversations() const;
     Q_INVOKABLE void openDirectConversation(const QString &username, qint64 activityTimestamp = 0);
@@ -99,6 +114,11 @@ signals:
     void pendingRequestsChanged();
     void bookmarksChanged();
     void openConversationsChanged();
+    void userStatusChanged();
+    void effectiveStatusChanged();
+    void isIdleChanged();
+    void isInvisibleChanged(bool invisible);
+    void isDndChanged(bool dnd);
 
     void verificationResult(bool success, const QString &message);
     void availabilityResult(const QString &username, bool available, const QString &error);
@@ -116,6 +136,9 @@ signals:
     void removeFriendResult(bool success, const QString &message, const QString &username);
     void friendStatusUpdated(const QString &username, const QString &status);
     void incomingRelayMessageReceived(const QString &fromUsername, const QString &target, const QString &text, qint64 timestamp);
+
+private slots:
+    void onIdleTimeout();
 
 private:
     void setIsLoading(bool loading);
@@ -137,4 +160,9 @@ private:
     QString m_pendingBookmarkUsername;
     QString m_pendingBookmarkPassword;
     QVariantList m_openConversations;
+
+    QString m_userStatusPreference{"online"};
+    bool m_isAutoIdle{false};
+    class QTimer *m_idleTimer{nullptr};
+    int m_idleTimeoutMs{120000};
 };

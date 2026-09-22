@@ -60,6 +60,7 @@ private:
     std::unique_ptr<Core::NotificationManager> m_notificationManager;
     std::unique_ptr<Services::MessageService> m_messageService;
     std::shared_ptr<Services::RelayService> m_relayService;
+    std::unique_ptr<QObject> m_activityFilter;
     
     QString m_profile;
     bool m_isMockMode{false};

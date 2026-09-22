@@ -46,6 +46,10 @@ public:
     // Provide the current user's ID so we can derive 'fromMe' logic if needed, or pass it to UI
     void setCurrentUserId(const QString &userId);
 
+    // Invisible / Stealth mode support
+    bool isInvisible() const { return m_isInvisible; }
+    void setIsInvisible(bool invisible) { m_isInvisible = invisible; }
+
 public slots:
     // Called by RelayService when a new message arrives from the network
     void handleIncomingMessage(const NeoNect::Domain::Message &msg);
@@ -73,6 +77,7 @@ private:
     QHash<QString, Domain::Message> m_pendingMediaRequests;
     QHash<QString, Domain::Message> m_receivedMediaRequests;
     QHash<QString, QTimer*> m_activeTransfers;
+    bool m_isInvisible{false};
 
     QVariantMap domainToVariantMap(const Domain::Message &msg) const;
 };

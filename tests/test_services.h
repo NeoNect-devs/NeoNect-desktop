@@ -36,4 +36,5 @@ private slots:
     void testSeenReceiptsAndUpdateCheckmark();
     void testSelfDirectMessageAndSavedMessagesFlow();
     void testRetryMessageFlow();
+    void testFunctionalOnlineIdleDndInvisibleStates();
 };

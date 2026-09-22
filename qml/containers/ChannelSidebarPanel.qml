@@ -216,7 +216,6 @@ Rectangle {
                 channelName: "Friends"
                 isSpecialNav: true
                 specialType: "friends"
-                unreadBadge: 4
                 isSelected: sidebarRoot.activeChannel === "friends"
                 onClicked: {
                     sidebarRoot.activeChannel = "friends";

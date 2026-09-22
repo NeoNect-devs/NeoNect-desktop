@@ -116,8 +116,9 @@ Window {
                 RowLayout {
                     anchors.fill: parent; spacing: 0
                     SidebarCanvas {
+                        visible: false
                         Layout.fillHeight: true
-                        Layout.preferredWidth: 60
+                        Layout.preferredWidth: 0
                         selectedServer: root.currentSelectedServer
                         activeChannel: root.currentActiveChannel
                         onServerSelected: (srv) => root.currentSelectedServer = srv
@@ -201,6 +202,7 @@ Window {
                 }
                 UserProfileFooter {
                     anchors.bottom: parent.bottom; anchors.left: parent.left
+                    sidebarOffsetWidth: 0
                     channelOffsetWidth: channelsPanel.width
                 }
             }
