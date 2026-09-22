@@ -29,13 +29,15 @@ jobs:
 
       - name: Install OpenSSL
         run: |
-          choco install openssl.light --yes --no-progress
-          if (Test-Path "C:\Program Files\OpenSSL") {
-            echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL" >> $env:GITHUB_ENV
+          choco install openssl.light --yes --no-progress --params '/InstallDir:C:\OpenSSL'
+          if (Test-Path "C:\OpenSSL") {
+            echo "OPENSSL_ROOT_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
+          } elseif (Test-Path "C:\Program Files\OpenSSL") {
+            New-Item -ItemType Junction -Path "C:\OpenSSL" -Target "C:\Program Files\OpenSSL" -Force
+            echo "OPENSSL_ROOT_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
           } elseif (Test-Path "C:\Program Files\OpenSSL-Win64") {
-            echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64" >> $env:GITHUB_ENV
-          } elseif (Test-Path "C:\OpenSSL-Win64") {
-            echo "OPENSSL_ROOT_DIR=C:\OpenSSL-Win64" >> $env:GITHUB_ENV
+            New-Item -ItemType Junction -Path "C:\OpenSSL" -Target "C:\Program Files\OpenSSL-Win64" -Force
+            echo "OPENSSL_ROOT_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
           }
 
       - name: Install Qt 6
@@ -104,7 +106,7 @@ jobs:
           version: '6.8.0'
           host: 'linux'
           target: 'desktop'
-          arch: 'gcc_64'
+          arch: 'linux_gcc_64'
 
       - name: Set Release Version Env
         run: |

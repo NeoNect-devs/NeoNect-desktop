@@ -38,13 +38,12 @@ set(QT_NO_CREATE_AOT_PLUGINS ON CACHE BOOL "Disable QML AOT plugins" FORCE)
 if(WIN32)
     set(TEST_PATHS
         "$ENV{OPENSSL_ROOT_DIR}"
-        "${OPENSSL_ROOT_DIR}"
+        "C:/OpenSSL"
         "C:/OpenSSL-Win64"
-        "C:/Program Files/OpenSSL"
-        "C:/Program Files/OpenSSL-Win64"
         "C:/PROGRA~1/OpenSSL"
         "C:/PROGRA~1/OpenSSL-Win64"
-        "C:/OpenSSL"
+        "C:/Program Files/OpenSSL"
+        "C:/Program Files/OpenSSL-Win64"
     )
 
     set(RESOLVED_OPENSSL_ROOT "")
@@ -56,14 +55,41 @@ if(WIN32)
         endif()
     endforeach()
 
+    if(RESOLVED_OPENSSL_ROOT MATCHES " ")
+        file(TO_NATIVE_PATH "${RESOLVED_OPENSSL_ROOT}" NATIVE_OPENSSL_ROOT)
+        execute_process(
+            COMMAND cmd.exe /c for %I in ("${NATIVE_OPENSSL_ROOT}") do @echo %~sI
+            OUTPUT_VARIABLE SHORT_OPENSSL_ROOT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(SHORT_OPENSSL_ROOT AND EXISTS "${SHORT_OPENSSL_ROOT}")
+            file(TO_CMAKE_PATH "${SHORT_OPENSSL_ROOT}" RESOLVED_OPENSSL_ROOT)
+            message(STATUS "➔ Converted OpenSSL path to 8.3 short format: ${RESOLVED_OPENSSL_ROOT}")
+        endif()
+    endif()
+
     if("${RESOLVED_OPENSSL_ROOT}" STREQUAL "")
         find_package(OpenSSL)
         if(NOT OPENSSL_FOUND)
             message(FATAL_ERROR "➔ OpenSSL installation folder not found!")
         endif()
     else()
-        set(OPENSSL_ROOT_DIR "${RESOLVED_OPENSSL_ROOT}")
-        set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include")
+        set(OPENSSL_ROOT_DIR "${RESOLVED_OPENSSL_ROOT}" CACHE PATH "OpenSSL Root Directory" FORCE)
+        set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "OpenSSL Include Directory" FORCE)
+
+        if(OPENSSL_INCLUDE_DIR MATCHES " ")
+            file(TO_NATIVE_PATH "${OPENSSL_INCLUDE_DIR}" NATIVE_INC)
+            execute_process(
+                COMMAND cmd.exe /c "for %I in (\"${NATIVE_INC}\") do @echo %~sI"
+                OUTPUT_VARIABLE SHORT_INC
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+            )
+            if(SHORT_INC AND EXISTS "${SHORT_INC}")
+                file(TO_CMAKE_PATH "${SHORT_INC}" OPENSSL_INCLUDE_DIR)
+            endif()
+        endif()
 
         file(GLOB_RECURSE FOUND_CRYPTO_FILES "${OPENSSL_ROOT_DIR}/*crypto*.*")
         file(GLOB_RECURSE FOUND_SSL_FILES    "${OPENSSL_ROOT_DIR}/*ssl*.*")
@@ -122,6 +148,10 @@ if(WIN32)
         @ONLY
     )
     set(APP_ICON_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/NeoNect.rc")
+    set_source_files_properties(${APP_ICON_RESOURCE} PROPERTIES
+        LANGUAGE RC
+        INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}"
+    )
 endif()
 
 qt_add_executable(NeoNectApp
