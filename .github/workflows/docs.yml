@@ -1,12 +1,6 @@
-name: Deploy Documentation to GitHub Pages
+name: Deploy Documentation to GitHub Pages (Manual)
 
 on:
-  release:
-    types: [published]
-  push:
-    tags:
-      - 'v*.*.*'
-      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -19,9 +13,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-docs:
-    name: Build Doxygen Documentation
+  build-and-deploy:
+    name: Build & Deploy Documentation Site
     runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -45,14 +42,6 @@ jobs:
         with:
           path: docs/doxygen/html
 
-  deploy-pages:
-    name: Deploy to GitHub Pages
-    needs: build-docs
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

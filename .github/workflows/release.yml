@@ -13,6 +13,12 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: 'release'
+  cancel-in-progress: false
 
 jobs:
   # =========================================================================
@@ -27,18 +33,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install OpenSSL
+      - name: Setup OpenSSL (Full Developer SDK)
         run: |
-          choco install openssl.light --yes --no-progress --params '/InstallDir:C:\OpenSSL'
-          if (Test-Path "C:\OpenSSL") {
-            echo "OPENSSL_ROOT_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
-          } elseif (Test-Path "C:\Program Files\OpenSSL") {
-            New-Item -ItemType Junction -Path "C:\OpenSSL" -Target "C:\Program Files\OpenSSL" -Force
-            echo "OPENSSL_ROOT_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
-          } elseif (Test-Path "C:\Program Files\OpenSSL-Win64") {
-            New-Item -ItemType Junction -Path "C:\OpenSSL" -Target "C:\Program Files\OpenSSL-Win64" -Force
-            echo "OPENSSL_ROOT_DIR=C:\OpenSSL" >> $env:GITHUB_ENV
+          $Candidates = @("C:\Program Files\OpenSSL-Win64", "C:\Program Files\OpenSSL", "C:\OpenSSL-Win64", "C:\OpenSSL")
+          $FoundDir = $null
+          foreach ($dir in $Candidates) {
+            if ((Test-Path "$dir\include\openssl\ssl.h") -and (Get-ChildItem -Path "$dir" -Filter "*crypto*.*" -Recurse | Where-Object { $_.Extension -in @(".lib", ".a") })) {
+              $FoundDir = $dir
+              break
+            }
           }
+          if (-not $FoundDir) {
+            Write-Host "Installing full OpenSSL dev package via Chocolatey..."
+            choco install openssl --yes --no-progress
+            foreach ($dir in $Candidates) {
+              if (Test-Path "$dir\include\openssl\ssl.h") { $FoundDir = $dir; break }
+            }
+          }
+          Write-Host "Discovered OpenSSL root at: $FoundDir"
+          if ($FoundDir -and ($FoundDir -ne "C:\OpenSSL")) {
+            if (Test-Path "C:\OpenSSL") { Remove-Item -Force -Recurse "C:\OpenSSL" }
+            New-Item -ItemType Junction -Path "C:\OpenSSL" -Target $FoundDir -Force
+            $FoundDir = "C:\OpenSSL"
+          }
+          echo "OPENSSL_ROOT_DIR=$FoundDir" >> $env:GITHUB_ENV
 
       - name: Install Qt 6
         uses: jurplel/install-qt-action@v4
@@ -181,3 +199,40 @@ jobs:
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # =========================================================================
+  # 4. DEPLOY DOCUMENTATION SITE (GITHUB PAGES)
+  # =========================================================================
+  deploy-docs:
+    name: Build & Deploy Documentation Site
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Doxygen & Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+
+      - name: Build Doxygen Documentation
+        run: |
+          doxygen Doxyfile
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Documentation Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/doxygen/html
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

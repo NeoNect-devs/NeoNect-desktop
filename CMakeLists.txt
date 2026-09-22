@@ -70,10 +70,7 @@ if(WIN32)
     endif()
 
     if("${RESOLVED_OPENSSL_ROOT}" STREQUAL "")
-        find_package(OpenSSL)
-        if(NOT OPENSSL_FOUND)
-            message(FATAL_ERROR "➔ OpenSSL installation folder not found!")
-        endif()
+        find_package(OpenSSL REQUIRED)
     else()
         set(OPENSSL_ROOT_DIR "${RESOLVED_OPENSSL_ROOT}" CACHE PATH "OpenSSL Root Directory" FORCE)
         set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "OpenSSL Include Directory" FORCE)
@@ -81,7 +78,7 @@ if(WIN32)
         if(OPENSSL_INCLUDE_DIR MATCHES " ")
             file(TO_NATIVE_PATH "${OPENSSL_INCLUDE_DIR}" NATIVE_INC)
             execute_process(
-                COMMAND cmd.exe /c "for %I in (\"${NATIVE_INC}\") do @echo %~sI"
+                COMMAND cmd.exe /c for %I in ("${NATIVE_INC}") do @echo %~sI
                 OUTPUT_VARIABLE SHORT_INC
                 OUTPUT_STRIP_TRAILING_WHITESPACE
                 ERROR_QUIET
@@ -91,12 +88,18 @@ if(WIN32)
             endif()
         endif()
 
-        file(GLOB_RECURSE FOUND_CRYPTO_FILES "${OPENSSL_ROOT_DIR}/*crypto*.*")
-        file(GLOB_RECURSE FOUND_SSL_FILES    "${OPENSSL_ROOT_DIR}/*ssl*.*")
+        file(GLOB_RECURSE FOUND_CRYPTO_FILES
+            "${OPENSSL_ROOT_DIR}/*crypto*.lib"
+            "${OPENSSL_ROOT_DIR}/*crypto*.a"
+        )
+        file(GLOB_RECURSE FOUND_SSL_FILES
+            "${OPENSSL_ROOT_DIR}/*ssl*.lib"
+            "${OPENSSL_ROOT_DIR}/*ssl*.a"
+        )
 
         set(MANUAL_CRYPTO_LIB "")
         foreach(FILE ${FOUND_CRYPTO_FILES})
-            if(NOT FILE MATCHES ".*/bin/.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
+            if(NOT FILE MATCHES ".*/bin/.*" AND NOT FILE MATCHES ".*_static.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
                 set(MANUAL_CRYPTO_LIB "${FILE}")
                 break()
             endif()
@@ -104,13 +107,39 @@ if(WIN32)
 
         set(MANUAL_SSL_LIB "")
         foreach(FILE ${FOUND_SSL_FILES})
-            if(NOT FILE MATCHES ".*/bin/.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
+            if(NOT FILE MATCHES ".*/bin/.*" AND NOT FILE MATCHES ".*_static.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
                 set(MANUAL_SSL_LIB "${FILE}")
                 break()
             endif()
         endforeach()
 
+        if(NOT MANUAL_CRYPTO_LIB)
+            find_library(MANUAL_CRYPTO_LIB
+                NAMES libcrypto crypto libcrypto-3-x64 libcrypto-4-x64
+                PATHS
+                    "${OPENSSL_ROOT_DIR}/lib/VC/x64/MD"
+                    "${OPENSSL_ROOT_DIR}/lib/VC"
+                    "${OPENSSL_ROOT_DIR}/lib"
+                    "${OPENSSL_ROOT_DIR}"
+                NO_DEFAULT_PATH
+            )
+        endif()
+
+        if(NOT MANUAL_SSL_LIB)
+            find_library(MANUAL_SSL_LIB
+                NAMES libssl ssl libssl-3-x64 libssl-4-x64
+                PATHS
+                    "${OPENSSL_ROOT_DIR}/lib/VC/x64/MD"
+                    "${OPENSSL_ROOT_DIR}/lib/VC"
+                    "${OPENSSL_ROOT_DIR}/lib"
+                    "${OPENSSL_ROOT_DIR}"
+                NO_DEFAULT_PATH
+            )
+        endif()
+
         if(MANUAL_CRYPTO_LIB AND MANUAL_SSL_LIB)
+            message(STATUS "➔ OpenSSL Crypto Lib: ${MANUAL_CRYPTO_LIB}")
+            message(STATUS "➔ OpenSSL SSL Lib: ${MANUAL_SSL_LIB}")
             if(NOT TARGET OpenSSL::Crypto)
                 add_library(OpenSSL::Crypto UNKNOWN IMPORTED)
                 set_target_properties(OpenSSL::Crypto PROPERTIES
