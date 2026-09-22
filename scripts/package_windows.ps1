@@ -67,7 +67,14 @@ if (Test-Path "README.md") {
 Write-Host "[5/6] Deploying Qt Runtime with windeployqt..." -ForegroundColor Yellow
 $WinDeployQt = Join-Path $QtDir "bin\windeployqt.exe"
 if (Test-Path $WinDeployQt) {
-    & $WinDeployQt --qmldir "$RepoRoot\qml" --release --no-translations --compiler-runtime "$StagingDir\NeoNectApp.exe"
+    try {
+        $prevEAP = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        & $WinDeployQt --qmldir "$RepoRoot\qml" --release --no-translations --compiler-runtime "$StagingDir\NeoNectApp.exe"
+        $ErrorActionPreference = $prevEAP
+    } catch {
+        Write-Warning "windeployqt notice: $_"
+    }
 } else {
     Write-Warning "windeployqt not found at $WinDeployQt. Ensure Qt environment is set."
 }
