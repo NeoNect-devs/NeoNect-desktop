@@ -1,15 +1,34 @@
-/* Custom Doxygen Modern Styling for NeoNect Desktop Documentation */
+/* =========================================================================
+   NeoNect Desktop Client - Modern Responsive Documentation Theme
+   Augmented on top of doxygen-awesome-css
+   ========================================================================= */
 
 :root {
+    /* Brand Accent Colors */
     --primary-color: #2563eb;
     --primary-dark-color: #1d4ed8;
     --primary-light-color: #60a5fa;
     --on-primary-color: #ffffff;
+
+    /* Typography & Font Stacks */
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-family-monospace: "Cascadia Code", "Fira Code", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-    --border-radius-large: 10px;
-    --border-radius-medium: 6px;
-    --border-radius-small: 4px;
+    --page-font-size: 15.5px;
+    --title-font-size: 1.6rem;
+    --code-font-size: 13.5px;
+
+    /* Responsive Layout Widths */
+    --content-maxwidth: min(1360px, 94vw);
+    --toc-width: 240px;
+
+    /* Border Radii */
+    --border-radius-large: 12px;
+    --border-radius-medium: 8px;
+    --border-radius-small: 5px;
+
+    /* Shadows & Transitions */
+    --box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    --theme-transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 html.dark-mode {
@@ -27,94 +46,374 @@ html.dark-mode {
     --blockquote-foreground: #8b949e;
     --tablehead-background: #161b22;
     --code-background: #161b22;
+    --box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 }
 
-/* Header & Logo Constraints */
+/* =========================================================================
+   1. Header, Branding & Prominent Responsive Logo
+   ========================================================================= */
+
+#top {
+    border-bottom: 1px solid var(--separator-color);
+    background: var(--header-background);
+    padding: 4px 0;
+    box-shadow: var(--box-shadow);
+}
+
+#titlearea {
+    padding: 8px 24px;
+    background: transparent;
+    border-bottom: none;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+#titlearea table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+#projectrow {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 18px;
+    width: 100%;
+}
+
 #projectlogo {
-    padding: 8px 16px 8px 12px;
-    vertical-align: middle;
+    padding: 4px 0;
+    margin: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
 }
 
+/* Prominent, enlarged branding logo with smooth micro-interaction */
 #projectlogo img {
-    max-height: 44px;
-    max-width: 140px;
+    max-height: 72px;
+    max-width: 240px;
     height: auto;
     width: auto;
     object-fit: contain;
     display: inline-block;
     vertical-align: middle;
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.1));
+    transition: transform 0.25s ease, filter 0.25s ease;
 }
 
-#titlearea {
-    border-bottom: 1px solid var(--separator-color);
-    padding: 4px 0;
+#projectlogo img:hover {
+    transform: scale(1.03);
+    filter: drop-shadow(0 4px 12px rgba(37, 99, 235, 0.25));
+}
+
+#projectalign {
+    padding: 0;
+    margin: 0;
+    flex-grow: 1;
+    min-width: 220px;
 }
 
 #projectname {
-    font-size: 135%;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-size: 1.55rem;
+    font-weight: 750;
+    letter-spacing: -0.025em;
+    color: var(--page-foreground-color);
+    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#projectnumber {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    background: rgba(37, 99, 235, 0.12);
+    border: 1px solid rgba(37, 99, 235, 0.25);
+    padding: 2px 10px;
+    border-radius: 9999px;
+    letter-spacing: 0.04em;
+    vertical-align: middle;
 }
 
 #projectbrief {
-    font-size: 88%;
+    font-size: 0.90rem;
     opacity: 0.85;
-    margin-top: 2px;
+    margin-top: 4px;
+    color: var(--page-secondary-foreground-color);
+    line-height: 1.4;
 }
 
-/* Constrain embedded images */
+/* =========================================================================
+   2. Responsive Breakpoints & Viewport Adaptations
+   ========================================================================= */
+
+/* Tablets and medium screens */
+@media screen and (max-width: 992px) {
+    #projectlogo img {
+        max-height: 60px;
+        max-width: 200px;
+    }
+    #projectname {
+        font-size: 1.35rem;
+    }
+    #projectbrief {
+        font-size: 0.85rem;
+    }
+    #titlearea {
+        padding: 8px 16px;
+    }
+}
+
+/* Mobile phones and small viewports */
+@media screen and (max-width: 640px) {
+    #projectrow {
+        gap: 12px;
+    }
+    #projectlogo img {
+        max-height: 50px;
+        max-width: 160px;
+    }
+    #projectname {
+        font-size: 1.18rem;
+    }
+    #projectbrief {
+        font-size: 0.80rem;
+    }
+    #titlearea {
+        padding: 6px 12px;
+    }
+}
+
+/* Ultra small devices */
+@media screen and (max-width: 420px) {
+    #projectlogo img {
+        max-height: 42px;
+        max-width: 130px;
+    }
+    #projectbrief {
+        display: none; /* Hide subtitle on tiny screens to preserve vertical space */
+    }
+}
+
+/* =========================================================================
+   3. Content Container & Layout Fluidity
+   ========================================================================= */
+
+.contents {
+    padding: 0 16px;
+    box-sizing: border-box;
+}
+
+@media screen and (min-width: 1024px) {
+    .contents {
+        padding: 0 32px;
+    }
+}
+
 .contents img {
     max-width: 100%;
     height: auto;
-    border-radius: 6px;
+    border-radius: var(--border-radius-medium);
 }
 
-/* Graphviz Interactive Diagram Container */
+/* =========================================================================
+   4. Responsive Tables with Horizontal Touch Scrolling
+   ========================================================================= */
+
+.contents table.markdownTable,
+.contents table.fieldtable {
+    width: 100%;
+    margin: 20px 0;
+    border-collapse: separate;
+    border-spacing: 0;
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-medium);
+    overflow: hidden;
+}
+
+.contents table.markdownTable th,
+.contents table.fieldtable th {
+    background: var(--tablehead-background);
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 0.90rem;
+    border-bottom: 2px solid var(--separator-color);
+    text-align: left;
+}
+
+.contents table.markdownTable td,
+.contents table.fieldtable td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--separator-color);
+    font-size: 0.90rem;
+    line-height: 1.5;
+}
+
+.contents table.markdownTable tr:last-child td {
+    border-bottom: none;
+}
+
+/* Wrap wide markdown tables in smooth horizontal scrolling on mobile */
+@media screen and (max-width: 860px) {
+    .contents table.markdownTable {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    .contents table.markdownTable th,
+    .contents table.markdownTable td {
+        white-space: nowrap;
+    }
+    .contents table.markdownTable td:last-child {
+        white-space: normal;
+        min-width: 220px;
+    }
+}
+
+/* Directory listing table responsiveness */
+table.directory {
+    width: 100%;
+    max-width: 100%;
+    margin: 16px 0;
+}
+
+table.directory td.entry {
+    padding: 8px 10px;
+    font-size: 0.92rem;
+}
+
+table.directory td.desc {
+    padding: 8px 12px;
+    font-size: 0.88rem;
+    color: var(--page-secondary-foreground-color);
+}
+
+/* =========================================================================
+   5. Interactive Graphviz Diagram (.dotgraph) Responsive Container
+   ========================================================================= */
+
 div.dotgraph {
     text-align: center;
-    margin: 28px 0;
+    margin: 28px auto;
     overflow-x: auto;
-    background: rgba(125, 125, 125, 0.05);
+    -webkit-overflow-scrolling: touch;
+    background: rgba(125, 125, 125, 0.04);
     border: 1px solid var(--separator-color);
     border-radius: var(--border-radius-large);
-    padding: 20px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    padding: 24px 16px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 div.dotgraph svg {
     max-width: 100%;
     height: auto;
+    display: inline-block;
+    vertical-align: middle;
 }
 
-/* Enhanced Code Blocks & Preformatted Text */
+/* =========================================================================
+   6. Member Items, Function Signatures & Code Blocks
+   ========================================================================= */
+
+.memitem {
+    border-radius: var(--border-radius-large);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    margin-bottom: 24px;
+    border: 1px solid var(--separator-color);
+    overflow: hidden;
+    background: var(--page-background-color);
+}
+
+.memproto {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 18px;
+    font-family: var(--font-family-monospace);
+    font-size: 0.88rem;
+    background: var(--odd-color);
+    border-bottom: 1px solid var(--separator-color);
+}
+
+.memdoc {
+    padding: 16px 22px;
+}
+
+/* Code fragment boxes */
 div.fragment {
     border-radius: var(--border-radius-medium);
     border: 1px solid var(--separator-color);
-    font-size: 0.9em;
+    font-size: 0.88rem;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 14px 0;
 }
 
-/* Badges for Preconditions, Postconditions, Invariants */
+/* =========================================================================
+   7. Badges for Preconditions, Postconditions & Invariants
+   ========================================================================= */
+
 dl.section.pre, dl.section.post, dl.section.invariant {
     margin: 14px 0;
-    padding: 10px 14px;
+    padding: 12px 16px;
     border-radius: var(--border-radius-medium);
     border-left: 4px solid var(--primary-color);
     background: rgba(37, 99, 235, 0.06);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
 }
 
 dl.section.pre dt, dl.section.post dt, dl.section.invariant dt {
-    font-weight: 600;
+    font-weight: 700;
     color: var(--primary-color);
     margin-bottom: 4px;
     text-transform: uppercase;
-    font-size: 0.78rem;
-    letter-spacing: 0.05em;
+    font-size: 0.76rem;
+    letter-spacing: 0.06em;
+}
+
+dl.section.warning {
+    border-left: 4px solid #eab308;
+    background: rgba(234, 179, 8, 0.07);
 }
 
 dl.section.warning dt {
     color: #eab308;
 }
 
+dl.section.note {
+    border-left: 4px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.07);
+}
+
 dl.section.note dt {
     color: #3b82f6;
+}
+
+/* =========================================================================
+   8. Sleek Custom Scrollbars
+   ========================================================================= */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(120, 120, 120, 0.28);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(120, 120, 120, 0.45);
 }

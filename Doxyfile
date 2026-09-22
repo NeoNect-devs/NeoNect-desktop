@@ -129,7 +129,6 @@ HTML_HEADER            = docs/header.html
 HTML_FOOTER            = docs/footer.html
 HTML_STYLESHEET        = 
 HTML_EXTRA_STYLESHEET  = docs/doxygen-awesome.css \
-                         docs/doxygen-awesome-sidebar-only.css \
                          docs/custom.css
 HTML_EXTRA_FILES       = docs/doxygen-awesome-darkmode-toggle.js \
                          docs/doxygen-awesome-interactive-toc.js
