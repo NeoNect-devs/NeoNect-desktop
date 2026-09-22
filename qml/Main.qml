@@ -83,7 +83,6 @@ Window {
                     }
                     if (target !== "saved-messages" && typeof NetworkManager !== "undefined" && NetworkManager) {
                         NetworkManager.openDirectConversation(target);
-                        NetworkManager.markConversationAsRead(target);
                     }
                     root.currentActiveChannel = target;
                     if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
@@ -330,7 +329,6 @@ Window {
                 }
                 if (target !== "saved-messages" && typeof NetworkManager !== "undefined" && NetworkManager) {
                     NetworkManager.openDirectConversation(target);
-                    NetworkManager.markConversationAsRead(target);
                 }
                 root.currentActiveChannel = target;
                 if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {

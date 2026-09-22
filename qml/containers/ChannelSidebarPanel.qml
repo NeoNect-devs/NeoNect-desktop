@@ -79,16 +79,10 @@ Rectangle {
     }
 
     onActiveChannelChanged: {
-        if (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel !== "friends" && sidebarRoot.activeChannel !== "saved-messages") {
-            NetworkManager.markConversationAsRead(sidebarRoot.activeChannel);
-        }
         sidebarRoot.syncDmModel();
     }
 
     onSelectedServerChanged: {
-        if (sidebarRoot.selectedServer === "dms" && sidebarRoot.activeChannel !== "friends" && sidebarRoot.activeChannel !== "saved-messages") {
-            NetworkManager.markConversationAsRead(sidebarRoot.activeChannel);
-        }
         sidebarRoot.syncDmModel();
     }
 
@@ -109,7 +103,6 @@ Rectangle {
             return;
         }
         NetworkManager.openDirectConversation(lower);
-        NetworkManager.markConversationAsRead(lower);
         sidebarRoot.activeChannel = lower;
         sidebarRoot.channelSelected(lower);
         sidebarRoot.channelChanged(lower);
@@ -334,9 +327,6 @@ Rectangle {
                 onClicked: {
                     var targetChan = dmDelegateItem.channelName;
                     if (!targetChan) return;
-                    if (model.isDM) {
-                        NetworkManager.markConversationAsRead(targetChan);
-                    }
                     sidebarRoot.activeChannel = targetChan;
                     sidebarRoot.channelSelected(targetChan);
                     sidebarRoot.channelChanged(targetChan);
