@@ -99,11 +99,18 @@ jobs:
             Copy-Item "${{ env.QT_ROOT_DIR }}\plugins\platforms\*" -Destination "build\platforms" -Force
           }
 
-          # 3. Setup environment and execute test suite
+          # 3. Setup environment and force real-time console streaming
           $env:QT_QPA_PLATFORM_PLUGIN_PATH = "${{ env.QT_ROOT_DIR }}\plugins\platforms"
           $env:QT_QPA_PLATFORM = "minimal"
+          $env:QT_ASSUME_STDERR_HAS_CONSOLE = "1"
+          $env:QT_FORCE_STDERR_LOGGING = "1"
           $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;C:\mingw64\bin;$env:PATH"
-          .\build\NeoNectTests.exe
+
+          # 4. Execute test suite with output streamed to console host
+          & .\build\NeoNectTests.exe 2>&1 | Out-Host
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Test suite failed with exit code $LASTEXITCODE"
+          }
 
       - name: Package Windows Artifacts
         run: |
