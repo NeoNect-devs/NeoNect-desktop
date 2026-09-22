@@ -165,7 +165,7 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     packet["sender"] = currentUsername;
     packet["target"] = targetUser;
     packet["messageId"] = msg.id;
-    packet["timestamp"] = msg.timestamp > 0 ? msg.timestamp : QDateTime::currentSecsSinceEpoch();
+    packet["timestamp"] = msg.timestamp > 0 ? (msg.timestamp < 100000000000LL ? msg.timestamp * 1000LL : msg.timestamp) : QDateTime::currentMSecsSinceEpoch();
     packet["type"] = msg.type;
     packet["content"] = msg.text;
     packet["text"] = msg.text;

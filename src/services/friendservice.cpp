@@ -213,7 +213,7 @@ void FriendService::addFriend(const QString &username) {
         msg.senderId = m_storage->username();
         msg.type = "friend_request";
         msg.text = "Friend request";
-        msg.timestamp = QDateTime::currentSecsSinceEpoch();
+        msg.timestamp = QDateTime::currentMSecsSinceEpoch();
 
         m_pendingFriendRequests.insert(msg.id, target);
         emit requestSendDomainMessage(msg);
@@ -362,7 +362,7 @@ void FriendService::acceptFriend(const QString &username) {
     msg.senderId = m_storage->username();
     msg.type = "friend_accept";
     msg.text = "Accepted friend request";
-    msg.timestamp = QDateTime::currentSecsSinceEpoch();
+    msg.timestamp = QDateTime::currentMSecsSinceEpoch();
 
     emit requestSendDomainMessage(msg);
     emit acceptFriendResult(true, "Accepted " + target, target);
@@ -398,7 +398,7 @@ void FriendService::rejectFriend(const QString &username) {
     msg.senderId = m_storage->username();
     msg.type = "friend_reject";
     msg.text = "Rejected friend request";
-    msg.timestamp = QDateTime::currentSecsSinceEpoch();
+    msg.timestamp = QDateTime::currentMSecsSinceEpoch();
 
     emit requestSendDomainMessage(msg);
     emit rejectFriendResult(true, "Rejected " + target, target);

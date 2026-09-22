@@ -391,6 +391,9 @@ void ChatMessageModel::onConversationLoaded(const QString &conversationId, const
     for (const QVariant &msg : messages) {
         m_items.push_back(parseVariantMap(msg.toMap()));
     }
+    std::stable_sort(m_items.begin(), m_items.end(), [](const MessageItem &a, const MessageItem &b) {
+        return a.timestamp < b.timestamp;
+    });
     recalculateBlocks();
     endResetModel();
 
@@ -412,16 +415,21 @@ void ChatMessageModel::onMessageAdded(const QString &conversationId, const QVari
         }
     }
     
-    int newIndex = static_cast<int>(m_items.size());
+    MessageItem newItem = parseVariantMap(message);
+    auto it = std::upper_bound(m_items.begin(), m_items.end(), newItem, [](const MessageItem &a, const MessageItem &b) {
+        return a.timestamp < b.timestamp;
+    });
+    int newIndex = static_cast<int>(std::distance(m_items.begin(), it));
     beginInsertRows(QModelIndex(), newIndex, newIndex);
-    m_items.push_back(parseVariantMap(message));
+    m_items.insert(it, std::move(newItem));
     recalculateBlocks();
     endInsertRows();
     emit countChanged();
     
     if (m_items.size() > 1) {
-        int prevIndex = static_cast<int>(m_items.size()) - 2;
-        emit dataChanged(index(prevIndex, 0), index(prevIndex, 0), {FirstInBlockRole, LastInBlockRole});
+        int startIdx = std::max(0, newIndex - 1);
+        int endIdx = std::min(static_cast<int>(m_items.size()) - 1, newIndex + 1);
+        emit dataChanged(index(startIdx, 0), index(endIdx, 0), {FirstInBlockRole, LastInBlockRole});
     }
 }
 
