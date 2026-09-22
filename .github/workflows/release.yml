@@ -58,13 +58,14 @@ jobs:
           }
           echo "OPENSSL_ROOT_DIR=$FoundDir" >> $env:GITHUB_ENV
 
-      - name: Install Qt 6
+      - name: Install Qt 6 & MinGW Toolchain
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.0'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw'
+          tools: 'tools_mingw qt.tools.win64_mingw1310'
 
       - name: Setup Ninja & GCC (MinGW)
         uses: seanmiddleditch/gha-setup-ninja@master
@@ -104,7 +105,7 @@ jobs:
           $env:QT_QPA_PLATFORM = "minimal"
           $env:QT_ASSUME_STDERR_HAS_CONSOLE = "1"
           $env:QT_FORCE_STDERR_LOGGING = "1"
-          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;C:\mingw64\bin;$env:PATH"
+          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;$env:PATH"
 
           # 4. Execute test suite with output streamed to console host
           & .\build\NeoNectTests.exe 2>&1 | Out-Host
