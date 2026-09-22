@@ -370,32 +370,18 @@ endif()
 # 7. Automatic DLL Deployment (Windows Only)
 # =====================================================================
 if(WIN32)
-    set(OPENSSL_BIN_DIR "${OPENSSL_ROOT_DIR}/bin")
-    set(MINGW_BIN_DIR "C:/Qt/Tools/mingw1310_64/bin")
-    find_program(WINDEPLOYQT_EXEC windeployqt HINTS "C:/Qt/6.11.2/mingw_64/bin")
-
-    if(WINDEPLOYQT_EXEC)
+    file(GLOB OPENSSL_RUNTIME_DLLS
+        "${OPENSSL_ROOT_DIR}/bin/*crypto*.dll"
+        "${OPENSSL_ROOT_DIR}/bin/*ssl*.dll"
+        "${OPENSSL_ROOT_DIR}/*crypto*.dll"
+        "${OPENSSL_ROOT_DIR}/*ssl*.dll"
+    )
+    if(OPENSSL_RUNTIME_DLLS)
         add_custom_command(TARGET NeoNectApp POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${OPENSSL_BIN_DIR}/libcrypto-4-x64.dll"
-                "${OPENSSL_BIN_DIR}/libssl-4-x64.dll"
-                "${MINGW_BIN_DIR}/libstdc++-6.dll"
-                "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
-                "${MINGW_BIN_DIR}/libwinpthread-1.dll"
+                ${OPENSSL_RUNTIME_DLLS}
                 $<TARGET_FILE_DIR:NeoNectApp>
-            COMMAND "${WINDEPLOYQT_EXEC}" --qmldir "${CMAKE_CURRENT_SOURCE_DIR}/qml" "$<TARGET_FILE:NeoNectApp>"
-            COMMENT "➔ Deploying OpenSSL, MinGW C++ runtime, and Qt DLLs via windeployqt..."
-        )
-    else()
-        add_custom_command(TARGET NeoNectApp POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${OPENSSL_BIN_DIR}/libcrypto-4-x64.dll"
-                "${OPENSSL_BIN_DIR}/libssl-4-x64.dll"
-                "${MINGW_BIN_DIR}/libstdc++-6.dll"
-                "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
-                "${MINGW_BIN_DIR}/libwinpthread-1.dll"
-                $<TARGET_FILE_DIR:NeoNectApp>
-            COMMENT "➔ Deploying OpenSSL and MinGW C++ runtime DLLs..."
+            COMMENT "➔ Copying OpenSSL runtime DLLs..."
         )
     endif()
 endif()
@@ -467,10 +453,10 @@ if(WIN32)
     target_link_libraries(NeoNectTests PRIVATE winmm dwmapi)
 endif()
 
-if(WIN32)
+if(WIN32 AND TARGET Qt6::Test)
     add_custom_command(TARGET NeoNectTests POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "C:/Qt/6.11.2/mingw_64/bin/Qt6Test.dll"
+            "$<TARGET_FILE:Qt6::Test>"
             $<TARGET_FILE_DIR:NeoNectTests>
         COMMENT "➔ Deploying Qt6Test.dll for test runner..."
     )
