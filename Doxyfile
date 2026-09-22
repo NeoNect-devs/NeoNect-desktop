@@ -91,7 +91,7 @@ WARN_NO_PARAMDOC       = NO
 WARN_AS_ERROR          = NO
 WARN_FORMAT            = "$file:$line: $text"
 
-INPUT                  = docs/mainpage.md src
+INPUT                  = docs src
 INPUT_ENCODING         = UTF-8
 FILE_PATTERNS          = *.c *.cc *.cxx *.cpp *.c++ *.h *.hh *.hxx *.hpp *.h++ *.markdown *.md
 RECURSIVE              = YES
@@ -102,7 +102,7 @@ EXCLUDE_SYMBOLS        =
 EXAMPLE_PATH           = 
 EXAMPLE_PATTERNS       = *
 EXAMPLE_RECURSIVE      = NO
-IMAGE_PATH             = assets/NeoNect assets/icons
+IMAGE_PATH             = assets/NeoNect assets/icons assets/demos
 INPUT_FILTER           = 
 FILTER_PATTERNS        = 
 FILTER_SOURCE_FILES    = NO

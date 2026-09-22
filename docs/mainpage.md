@@ -4,6 +4,24 @@ Welcome to the internal engineering documentation of the **NeoNect Desktop Clien
 
 ---
 
+## Documentation Manuals & Guides
+
+* 🚀 **@subpage getting_started "Getting Started Guide"**: Account registration, session vault setup, and initial communication workflows.
+* 📦 **@subpage installation "Installation & Platform Setup"**: Binary distributions, system dependencies, and audio driver configurations.
+* 🛠️ **@subpage building_guide "Compiling, Testing & Docs Guide"**: CMake build commands, automated test suites execution, and benchmarking.
+* 🐳 **@subpage docker_guide "Docker Deployment & Web Streaming"**: Containerized deployment with virtual display rendering (`Xvfb`) and HTML5 `noVNC` streaming.
+* 🌐 **@subpage documentation_guide "Documentation Ecosystem"**: Doxygen architecture, interactive graph viewer, and automated GitHub Pages static hosting.
+
+---
+
+## Application Showcase
+
+| Security Vault & Authentication | Real-Time E2EE Chat & Waveforms |
+| :---: | :---: |
+| ![Security Vault](demos/entry_showcase.png) | ![Real-Time Chat View](demos/chat_showcase.png) |
+
+---
+
 ## 1. System Overview & Core Philosophy
 
 The NeoNect Desktop Client is engineered under strict zero-trust principles:
@@ -15,7 +33,7 @@ The NeoNect Desktop Client is engineered under strict zero-trust principles:
 
 ## 2. Architectural Layers
 
-The client is decomposed into seven primary architectural layers, visualized in the modern interactive topology viewer below. You can zoom with the mouse wheel or toolbar, drag to pan across layers, pinch-to-zoom on touch devices, expand to fullscreen, and toggle between Light and Dark themes seamlessly:
+The client is decomposed into seven primary architectural layers, visualized in the graph below:
 
 <div class="modern-graph-card">
     <div class="graph-toolbar">
