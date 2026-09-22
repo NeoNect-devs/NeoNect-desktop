@@ -74,6 +74,7 @@ public slots:
 
         query.exec("CREATE INDEX IF NOT EXISTS idx_conversation_time ON messages(conversation_id, timestamp)");
         query.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_server_id ON messages(server_id) WHERE server_id > 0");
+        query.exec("UPDATE messages SET timestamp = timestamp * 1000 WHERE timestamp > 0 AND timestamp < 100000000000");
     }
 
     void doSaveMessage(const Domain::Message msg, const QObject* context, IMessageRepository::SaveCallback callback) {
@@ -235,16 +236,23 @@ public slots:
             return;
         }
 
+        qint64 beforeTs = beforeTimestamp;
+        if (beforeTs > 0 && beforeTs < 100000000000LL) {
+            beforeTs *= 1000LL;
+        }
+
         QSqlQuery query(m_db);
-        if (beforeTimestamp > 0) {
+        if (beforeTs > 0) {
             query.prepare("SELECT id, server_id, sender_id, type, text, media_url, file_name, file_size, duration, waveform, status, error_text, timestamp "
-                          "FROM messages WHERE LOWER(conversation_id) = LOWER(?) AND timestamp < ? ORDER BY timestamp DESC LIMIT ?");
+                          "FROM messages WHERE LOWER(conversation_id) = LOWER(?) AND (CASE WHEN timestamp < 100000000000 THEN timestamp * 1000 ELSE timestamp END) < ? "
+                          "ORDER BY (CASE WHEN timestamp < 100000000000 THEN timestamp * 1000 ELSE timestamp END) DESC LIMIT ?");
             query.addBindValue(conversationId.trimmed().toLower());
-            query.addBindValue(beforeTimestamp);
+            query.addBindValue(beforeTs);
             query.addBindValue(limit);
         } else {
             query.prepare("SELECT id, server_id, sender_id, type, text, media_url, file_name, file_size, duration, waveform, status, error_text, timestamp "
-                          "FROM messages WHERE LOWER(conversation_id) = LOWER(?) ORDER BY timestamp DESC LIMIT ?");
+                          "FROM messages WHERE LOWER(conversation_id) = LOWER(?) "
+                          "ORDER BY (CASE WHEN timestamp < 100000000000 THEN timestamp * 1000 ELSE timestamp END) DESC LIMIT ?");
             query.addBindValue(conversationId.trimmed().toLower());
             query.addBindValue(limit);
         }

@@ -63,12 +63,15 @@ ColumnLayout {
     }
 
     function scrollToBottomCompletely() {
-        messageListView.positionViewAtEnd();
+        if (!messageModel || messageModel.count === 0) return;
+        messageListView.positionViewAtIndex(messageModel.count - 1, ListView.End);
         Qt.callLater(function() {
-            messageListView.positionViewAtEnd();
+            if (messageModel && messageModel.count > 0) {
+                messageListView.positionViewAtIndex(messageModel.count - 1, ListView.End);
+            }
             Qt.callLater(function() {
-                messageListView.positionViewAtEnd();
                 if (messageModel && messageModel.count > 0) {
+                    messageListView.positionViewAtIndex(messageModel.count - 1, ListView.End);
                     chatViewRoot.hasInitialPositioned = true;
                 }
             });
