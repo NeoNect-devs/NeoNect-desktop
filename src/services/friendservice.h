@@ -37,6 +37,8 @@ public:
     void checkUserStatus(const QString &username);
     void updateLastSeen(const QString &username);
     void setPeerStatus(const QString &username, const QString &status);
+    QString getPeerStatus(const QString &username) const;
+    QVariantMap allPeerStatuses() const;
 
 public slots:
     void handleIncomingFriendPacket(const NeoNect::Domain::Message &msg);

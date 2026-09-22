@@ -46,6 +46,18 @@ public:
     QVariantList openConversations() const override;
     void setOpenConversations(const QVariantList &conversations) override;
 
+    QString displayName() const override;
+    void setDisplayName(const QString &displayName) override;
+
+    QString peerDisplayName(const QString &username) const override;
+    void setPeerDisplayName(const QString &username, const QString &displayName) override;
+
+    QString avatarUrl() const override;
+    void setAvatarUrl(const QString &url) override;
+
+    QString peerAvatarUrl(const QString &username) const override;
+    void setPeerAvatarUrl(const QString &username, const QString &url) override;
+
     void clearSession() override;
 
 private:
@@ -55,6 +67,10 @@ private:
     QString getPendingRequestsKey() const;
     QString getDeviceIdKey() const;
     QString getPublicKeyKey() const;
+    QString getDisplayNameKey() const;
+    QString getPeerDisplayNamesKey() const;
+    QString getAvatarUrlKey() const;
+    QString getPeerAvatarsKey() const;
 
     mutable std::mutex m_mutex;
     QString m_profile;
@@ -62,6 +78,8 @@ private:
     mutable QString m_cachedUsername;
     mutable QString m_cachedDeviceId;
     mutable QString m_cachedPublicKey;
+    mutable QString m_cachedDisplayName;
+    mutable QString m_cachedAvatarUrl;
 };
 
 } // namespace Storage

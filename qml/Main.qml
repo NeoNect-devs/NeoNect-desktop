@@ -21,6 +21,16 @@ Window {
     property string activeTitleText: "Server Connection"
     property string currentActiveChannel: "friends"
     property string currentSelectedServer: "dms"
+    property var pendingLightboxParams: null
+
+    function openGlobalLightbox(url, type, name, startPosMs, isPlaying) {
+        if (!globalLightboxModalLoader.active) {
+            root.pendingLightboxParams = { url: url, type: type, name: name, startPosMs: startPosMs, isPlaying: isPlaying };
+            globalLightboxModalLoader.active = true;
+        } else if (globalLightboxModalLoader.item) {
+            globalLightboxModalLoader.item.open(url, type, name, startPosMs, isPlaying);
+        }
+    }
 
     Connections {
         target: NetworkManager
@@ -59,7 +69,7 @@ Window {
             windowTarget: root
             appState: root.appState
             titleText: root.activeTitleText
-            isBlocked: globalLightboxModal.active || root.visibility === Window.FullScreen
+            isBlocked: (globalLightboxModalLoader.active && globalLightboxModalLoader.item ? globalLightboxModalLoader.item.active : false) || root.visibility === Window.FullScreen
             showBackButton: (root.appState === "gateway" && viewFlowLoader.item) ? viewFlowLoader.item.showTitleBackButton : false
             anchors.top: parent.top; anchors.left: parent.left; anchors.right: parent.right
 
@@ -70,7 +80,11 @@ Window {
             }
 
             onBrandClicked: {
-                settingsModal.open();
+                if (!settingsModalLoader.active) {
+                    settingsModalLoader.active = true;
+                } else if (settingsModalLoader.item) {
+                    settingsModalLoader.item.open();
+                }
             }
 
             onNavigateToChat: (channel) => {
@@ -194,7 +208,7 @@ Window {
                                      }
                                  }
                                  onOpenMediaModalRequested: (url, type, name, startPosMs, isPlaying) => {
-                                     globalLightboxModal.open(url, type, name, startPosMs, isPlaying);
+                                     root.openGlobalLightbox(url, type, name, startPosMs, isPlaying);
                                  }
                                 SplitView.fillWidth: true
                                 Layout.fillHeight: true
@@ -283,60 +297,126 @@ Window {
             }
         }
 
-        // Global Media Fullscreen Lightbox Modal (Covers entire application)
-        MediaLightboxModal {
-            id: globalLightboxModal
+        // Global Media Fullscreen Lightbox Modal (Loaded strictly on-demand)
+        Loader {
+            id: globalLightboxModalLoader
+            active: false
             anchors.fill: parent
             z: 999999
+            onLoaded: {
+                if (item && root.pendingLightboxParams) {
+                    var p = root.pendingLightboxParams;
+                    root.pendingLightboxParams = null;
+                    item.open(p.url, p.type, p.name, p.startPosMs, p.isPlaying);
+                }
+            }
+            sourceComponent: Component {
+                MediaLightboxModal {
+                    id: globalLightboxModal
+                    anchors.fill: parent
+                    onCloseRequested: {
+                        globalLightboxModalLoader.active = false;
+                    }
+                }
+            }
         }
 
-        // NeoNect Settings & Profile Center Modal (Launched by NeoNectBrandButton)
-        SettingsProfileModal {
-            id: settingsModal
-            onLogoutRequested: {
-                NetworkManager.logout();
-                root.appState = "gateway";
-            }
-            onSendTestNotificationRequested: {
-                if (typeof NotificationManager === "undefined" || !NotificationManager) {
-                    globalNotifStack.showNotification({
-                        title: "NeoNect System",
-                        body: "Hey! This is a test notification from NeoNect Notification System ⚡",
-                        type: "message",
-                        avatar: "N",
-                        actionText: "Reply",
-                        channel: "system",
-                        duration: 5000
-                    });
+        // NeoNect Settings & Profile Center Modal (Loaded on-demand only when brand button is clicked)
+        Loader {
+            id: settingsModalLoader
+            active: false
+            anchors.fill: parent
+            z: 99999
+            sourceComponent: Component {
+                SettingsProfileModal {
+                    onClosed: {
+                        settingsModalLoader.active = false;
+                    }
+                    onLogoutRequested: {
+                        settingsModalLoader.active = false;
+                        NetworkManager.logout();
+                        root.appState = "gateway";
+                    }
+                    onSendTestNotificationRequested: {
+                        if (typeof NotificationManager === "undefined" || !NotificationManager) {
+                            root.triggerGlobalNotification({
+                                title: "NeoNect System",
+                                body: "Hey! This is a test notification from NeoNect Notification System ⚡",
+                                type: "message",
+                                avatar: "N",
+                                actionText: "Reply",
+                                channel: "system",
+                                duration: 5000
+                            });
+                        }
+                    }
+                    Component.onCompleted: {
+                        open();
+                    }
                 }
             }
         }
     }
 
-    // Global Custom Notification System Stack (Corner of Desktop Screen)
-    NotificationStackView {
-        id: globalNotifStack
-        onActionTriggered: (notifId, action, channel) => {
-            root.showNormal();
-            root.raise();
-            root.requestActivate();
-            if (channel && channel !== "") {
-                root.currentSelectedServer = "dms";
-                var myUser = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
-                var target = channel.toLowerCase();
-                if (target === myUser || target === "saved-messages") {
-                    target = "saved-messages";
+    property var pendingNotification: null
+
+    function triggerGlobalNotification(notification) {
+        if (!notification) return;
+        if (!notifStackLoader.active) {
+            root.pendingNotification = notification;
+            notifStackLoader.active = true;
+        } else if (notifStackLoader.item) {
+            notifStackLoader.item.showNotification(notification);
+        }
+    }
+
+    Connections {
+        target: NotificationManager
+        ignoreUnknownSignals: true
+        function onNotificationTriggered(notification) {
+            root.triggerGlobalNotification(notification);
+        }
+    }
+
+    // Global Custom Notification System Stack (Corner of Desktop Screen - Loaded strictly on-demand)
+    Loader {
+        id: notifStackLoader
+        active: false
+        onLoaded: {
+            if (item && root.pendingNotification) {
+                item.showNotification(root.pendingNotification);
+                root.pendingNotification = null;
+            }
+        }
+        sourceComponent: Component {
+            NotificationStackView {
+                id: notifStackInstance
+                onAllDismissed: {
+                    notifStackLoader.active = false;
                 }
-                if (target !== "saved-messages" && typeof NetworkManager !== "undefined" && NetworkManager) {
-                    NetworkManager.openDirectConversation(target);
-                }
-                root.currentActiveChannel = target;
-                if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
-                    channelsPanel.openDirectMessage(target);
-                }
-                if (action === "reply") {
-                    if (typeof mainPanel !== "undefined" && mainPanel && mainPanel.focusMessageInput) {
-                        mainPanel.focusMessageInput();
+                onActionTriggered: (notifId, action, channel) => {
+                    root.showNormal();
+                    root.raise();
+                    root.requestActivate();
+                    if (channel && channel !== "") {
+                        root.currentSelectedServer = "dms";
+                        var myUser = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
+                        var target = channel.toLowerCase();
+                        if (target === myUser || target === "saved-messages") {
+                            target = "saved-messages";
+                        }
+                        if (target !== "saved-messages" && typeof NetworkManager !== "undefined" && NetworkManager) {
+                            NetworkManager.openDirectConversation(target);
+                        }
+                        root.currentActiveChannel = target;
+                        if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
+                            channelsPanel.openDirectMessage(target);
+                        }
+                        if (action === "reply") {
+                            if (typeof mainPanel !== "undefined" && mainPanel && mainPanel.focusMessageInput) {
+                                mainPanel.focusMessageInput();
+                            }
+                        }
                     }
                 }
             }

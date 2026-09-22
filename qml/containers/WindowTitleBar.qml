@@ -198,14 +198,14 @@ Rectangle {
                 Layout.preferredWidth: 36
                 Layout.preferredHeight: 32
                 radius: 4
-                color: notifMouse.containsMouse || notifFlyout.visible ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
+                color: notifMouse.containsMouse || (notifFlyoutLoader.active && notifFlyoutLoader.item && notifFlyoutLoader.item.visible) ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
 
                 IconImage {
                     anchors.centerIn: parent
                     width: 17
                     height: 17
                     source: "qrc:/qt/qml/NeoNect/assets/icons/bell.svg"
-                    color: notifMouse.containsMouse || notifFlyout.visible ? ThemeData.textPrimary : ThemeData.textSecondary
+                    color: notifMouse.containsMouse || (notifFlyoutLoader.active && notifFlyoutLoader.item && notifFlyoutLoader.item.visible) ? ThemeData.textPrimary : ThemeData.textSecondary
                 }
 
                 // RED DOT INDICATOR FOR UNREAD NOTIFICATIONS
@@ -238,10 +238,14 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        if (notifFlyout.visible) {
-                            notifFlyout.close();
+                        if (notifFlyoutLoader.active && notifFlyoutLoader.item && notifFlyoutLoader.item.visible) {
+                            notifFlyoutLoader.item.close();
                         } else {
-                            notifFlyout.open();
+                            if (!notifFlyoutLoader.active) {
+                                notifFlyoutLoader.active = true;
+                            } else if (notifFlyoutLoader.item) {
+                                notifFlyoutLoader.item.open();
+                            }
                             if (typeof NotificationManager !== "undefined" && NotificationManager) {
                                 NotificationManager.resetUnreadCount();
                             }
@@ -249,12 +253,28 @@ Rectangle {
                     }
                 }
 
-                NotificationCenterFlyout {
-                    id: notifFlyout
-                    x: -(width - notifCenterBtn.width)
+                // Lazy Loader for Notification Center Flyout (Loaded on-demand only when bell icon is clicked)
+                Loader {
+                    id: notifFlyoutLoader
+                    active: false
+                    x: -(360 - notifCenterBtn.width)
                     y: notifCenterBtn.height + 6
-                    onItemClicked: (channel) => {
-                        root.navigateToChat(channel);
+                    z: 99999
+                    onLoaded: {
+                        if (item) {
+                            item.open();
+                        }
+                    }
+                    sourceComponent: Component {
+                        NotificationCenterFlyout {
+                            onClosed: {
+                                notifFlyoutLoader.active = false;
+                            }
+                            onItemClicked: (channel) => {
+                                notifFlyoutLoader.active = false;
+                                root.navigateToChat(channel);
+                            }
+                        }
                     }
                 }
             }

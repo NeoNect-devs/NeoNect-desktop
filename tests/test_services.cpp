@@ -1838,3 +1838,191 @@ void TestServices::testRealtimeChatPresenceExchange() {
     storageBob->clearSession();
 }
 
+void TestServices::testDisplayNameResolutionAndSync() {
+    auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    sharedTransport->seedUser("alice", "password123");
+    sharedTransport->seedUser("bob", "password123");
+
+    auto cryptoService = std::make_shared<NeoNect::Crypto::CryptoService>();
+    cryptoService->setMasterKey(QByteArray(32, 1));
+
+    // Client Alice
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_dn");
+    storageAlice->clearSession();
+    storageAlice->setUsername("alice");
+    storageAlice->setAuthToken("mock-token-alice");
+    storageAlice->setDeviceId("mock-dev-alice");
+    storageAlice->setDisplayName("");
+    storageAlice->setPeerDisplayName("bob", "");
+    auto authAlice = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageAlice, nullptr);
+    auto deviceAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoService, nullptr);
+    auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
+    NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoService, authAlice, deviceAlice, relayAlice, friendAlice);
+
+    // Client Bob
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_dn");
+    storageBob->clearSession();
+    storageBob->setUsername("bob");
+    storageBob->setAuthToken("mock-token-bob");
+    storageBob->setDeviceId("mock-dev-bob");
+    storageBob->setDisplayName("");
+    storageBob->setPeerDisplayName("alice", "");
+    auto authBob = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageBob, nullptr);
+    auto deviceBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoService, nullptr);
+    auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
+    NetworkManager netMgrBob(sharedTransport, storageBob, cryptoService, authBob, deviceBob, relayBob, friendBob);
+
+    // Set Alice display name
+    netMgrAlice.setDisplayName("Alice in Wonderland");
+    QCOMPARE(netMgrAlice.displayName(), QString("Alice in Wonderland"));
+    QCOMPARE(netMgrAlice.getDisplayName("alice"), QString("Alice in Wonderland"));
+
+    // Set Bob display name
+    netMgrBob.setDisplayName("Bobby Tables");
+    QCOMPARE(netMgrBob.displayName(), QString("Bobby Tables"));
+    QCOMPARE(netMgrBob.getDisplayName("bob"), QString("Bobby Tables"));
+
+    // Default fallback resolution for peers with no custom display name set yet
+    QCOMPARE(netMgrBob.getDisplayName("alice"), QString("Alice"));
+    QCOMPARE(netMgrAlice.getDisplayName("bob"), QString("Bob"));
+
+    // Alice transmits a message to Bob - packet will include Alice's displayName
+    sharedTransport->setAuthToken("mock-token-alice");
+    NeoNect::Domain::Message msg1;
+    msg1.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg1.conversationId = "dms:bob";
+    msg1.type = "text";
+    msg1.text = "Hello Bob!";
+    msg1.senderId = "alice";
+    relayAlice->sendDomainMessage(msg1);
+    QTest::qWait(50);
+
+    // Bob polls relay
+    sharedTransport->setAuthToken("mock-token-bob");
+    relayBob->pollPendingMessages();
+    QTest::qWait(100);
+
+    // Bob should now know Alice's display name
+    QCOMPARE(netMgrBob.getDisplayName("alice"), QString("Alice in Wonderland"));
+
+    // Bob transmits message back to Alice
+    NeoNect::Domain::Message msg2;
+    msg2.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg2.conversationId = "dms:alice";
+    msg2.type = "text";
+    msg2.text = "Hey Alice!";
+    msg2.senderId = "bob";
+    relayBob->sendDomainMessage(msg2);
+    QTest::qWait(50);
+
+    // Alice polls relay
+    sharedTransport->setAuthToken("mock-token-alice");
+    relayAlice->pollPendingMessages();
+    QTest::qWait(100);
+
+    // Alice should now know Bob's display name
+    QCOMPARE(netMgrAlice.getDisplayName("bob"), QString("Bobby Tables"));
+
+    // Cleanup
+    storageAlice->clearSession();
+    storageBob->clearSession();
+}
+
+void TestServices::testAvatarProcessingAndPeerSync() {
+    auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    sharedTransport->seedUser("alice", "password123");
+    sharedTransport->seedUser("bob", "password123");
+
+    auto cryptoService = std::make_shared<NeoNect::Crypto::CryptoService>();
+    cryptoService->setMasterKey(QByteArray(32, 1));
+
+    // Client Alice
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_avatar");
+    storageAlice->clearSession();
+    storageAlice->setUsername("alice");
+    storageAlice->setAuthToken("mock-token-alice");
+    storageAlice->setDeviceId("mock-dev-alice");
+    storageAlice->setAvatarUrl("");
+    storageAlice->setPeerAvatarUrl("bob", "");
+    auto authAlice = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageAlice, nullptr);
+    auto deviceAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoService, nullptr);
+    auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
+    NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoService, authAlice, deviceAlice, relayAlice, friendAlice);
+
+    // Client Bob
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_avatar");
+    storageBob->clearSession();
+    storageBob->setUsername("bob");
+    storageBob->setAuthToken("mock-token-bob");
+    storageBob->setDeviceId("mock-dev-bob");
+    storageBob->setAvatarUrl("");
+    storageBob->setPeerAvatarUrl("alice", "");
+    auto authBob = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageBob, nullptr);
+    auto deviceBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoService, nullptr);
+    auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
+    NetworkManager netMgrBob(sharedTransport, storageBob, cryptoService, authBob, deviceBob, relayBob, friendBob);
+
+    // 1. Create a non-square, high-resolution test image (e.g. 1000 x 500)
+    QImage testImg(1000, 500, QImage::Format_RGB32);
+    testImg.fill(QColor("#0A84FF"));
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    QString rawImgPath = tempDir.path() + "/raw_photo.png";
+    QVERIFY(testImg.save(rawImgPath, "PNG"));
+
+    // 2. Set profile picture on Alice
+    bool setOk = netMgrAlice.setAvatar(rawImgPath);
+    QVERIFY(setOk);
+    QString aliceAvatarUrl = netMgrAlice.avatarUrl();
+    QVERIFY(!aliceAvatarUrl.isEmpty());
+
+    // 3. Verify 1:1 square crop & under 1MB compression on local file
+    QString localFile = aliceAvatarUrl;
+    if (localFile.startsWith("file:///")) localFile = QUrl(localFile).toLocalFile();
+    QVERIFY(QFile::exists(localFile));
+    QFileInfo fi(localFile);
+    QVERIFY(fi.size() > 0);
+    QVERIFY(fi.size() <= 1024 * 1024); // Strictly under 1MB
+
+    QImage processedImg(localFile);
+    QCOMPARE(processedImg.width(), processedImg.height()); // 1:1 Aspect ratio
+    QVERIFY(processedImg.width() <= 512);
+
+    // 4. Alice sends a message to Bob -> includes avatarData
+    sharedTransport->setAuthToken("mock-token-alice");
+    NeoNect::Domain::Message msg;
+    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.conversationId = "dms:bob";
+    msg.type = "text";
+    msg.text = "Hey Bob, look at my new profile picture!";
+    msg.senderId = "alice";
+    relayAlice->sendDomainMessage(msg);
+    QTest::qWait(50);
+
+    // 5. Bob polls and receives the message & avatar packet
+    sharedTransport->setAuthToken("mock-token-bob");
+    relayBob->pollPendingMessages();
+    QTest::qWait(100);
+
+    // 6. Verify Bob has cached Alice's avatar
+    QString peerAvatarUrlForAlice = netMgrBob.getAvatarUrl("alice");
+    QVERIFY(!peerAvatarUrlForAlice.isEmpty());
+    QString bobLocalFile = peerAvatarUrlForAlice;
+    if (bobLocalFile.startsWith("file:///")) bobLocalFile = QUrl(bobLocalFile).toLocalFile();
+    QVERIFY(QFile::exists(bobLocalFile));
+
+    QFileInfo bobFi(bobLocalFile);
+    QVERIFY(bobFi.size() > 0);
+    QVERIFY(bobFi.size() <= 1024 * 1024); // Under 1MB
+    QImage bobPeerImg(bobLocalFile);
+    QCOMPARE(bobPeerImg.width(), bobPeerImg.height()); // 1:1 aspect ratio
+
+    // Cleanup
+    storageAlice->clearSession();
+    storageBob->clearSession();
+}
+

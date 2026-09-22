@@ -33,6 +33,27 @@ ColumnLayout {
     Layout.fillHeight: true
     spacing: 0
 
+    Connections {
+        target: messageModel
+        ignoreUnknownSignals: true
+        function onCountChanged() {
+            if (chatViewRoot.visible && messageModel && messageModel.count > 0 && !chatViewRoot.hasInitialPositioned) {
+                messageListView.forceLayout();
+                chatViewRoot.restoreScrollPosition();
+            }
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible) {
+            currentConvKey = (selectedServer + ":" + activeChannel).toLowerCase();
+            messageListView.forceLayout();
+            if (messageModel && messageModel.count > 0) {
+                restoreScrollPosition();
+            }
+        }
+    }
+
     function saveCurrentScrollPosition() {
         if (!currentConvKey || !chatViewRoot.visible || !hasInitialPositioned || !messageModel || messageModel.count === 0) return;
         if (messageListView.atYEnd || (messageListView.contentItem && messageListView.contentItem.height <= messageListView.height)) {
@@ -56,6 +77,7 @@ ColumnLayout {
                     messageListView.contentY = Math.max(0, Math.min(saved, messageListView.contentItem.height - messageListView.height));
                 }
                 if (messageModel && messageModel.count > 0) {
+                    messageListView.forceLayout();
                     chatViewRoot.hasInitialPositioned = true;
                 }
             });
@@ -64,13 +86,16 @@ ColumnLayout {
 
     function scrollToBottomCompletely() {
         if (!messageModel || messageModel.count === 0) return;
+        messageListView.forceLayout();
         messageListView.positionViewAtIndex(messageModel.count - 1, ListView.End);
         Qt.callLater(function() {
             if (messageModel && messageModel.count > 0) {
+                messageListView.forceLayout();
                 messageListView.positionViewAtIndex(messageModel.count - 1, ListView.End);
             }
             Qt.callLater(function() {
                 if (messageModel && messageModel.count > 0) {
+                    messageListView.forceLayout();
                     messageListView.positionViewAtIndex(messageModel.count - 1, ListView.End);
                     chatViewRoot.hasInitialPositioned = true;
                 }
@@ -87,6 +112,7 @@ ColumnLayout {
                 var unreadIdx = Math.max(0, messageModel.count - unread);
                 messageModel.setFirstUnreadIndex(unreadIdx);
             }
+            messageListView.forceLayout();
             Qt.callLater(function() {
                 chatViewRoot.restoreScrollPosition(unread);
                 chatViewRoot.checkAndSendSeenReceipt();
@@ -106,6 +132,7 @@ ColumnLayout {
         hasInitialPositioned = false;
         isFetchingMore = false;
         if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+        messageListView.forceLayout();
         Qt.callLater(function() {
             chatViewRoot.restoreScrollPosition();
         });
@@ -118,37 +145,10 @@ ColumnLayout {
         hasInitialPositioned = false;
         isFetchingMore = false;
         if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+        messageListView.forceLayout();
         Qt.callLater(function() {
             chatViewRoot.restoreScrollPosition();
         });
-    }
-
-    onVisibleChanged: {
-        if (visible) {
-            hasInitialPositioned = false;
-            Qt.callLater(function() {
-                chatViewRoot.restoreScrollPosition();
-                chatViewRoot.checkAndSendSeenReceipt();
-            });
-        }
-    }
-
-    Connections {
-        target: messageModel
-        function onCountChanged() {
-            if (messageModel && messageModel.count > 0) {
-                if (!chatViewRoot.hasInitialPositioned) {
-                    var unread = (selectedServer === "dms" && typeof NetworkManager !== "undefined" && NetworkManager) ? NetworkManager.unreadCount(activeChannel) : 0;
-                    if (unread > 0) {
-                        var unreadIdx = Math.max(0, messageModel.count - unread);
-                        messageModel.setFirstUnreadIndex(unreadIdx);
-                    }
-
-                    chatViewRoot.restoreScrollPosition(unread);
-                    chatViewRoot.checkAndSendSeenReceipt();
-                }
-            }
-        }
     }
 
     Timer {
@@ -252,6 +252,8 @@ ColumnLayout {
                         model: messageModel
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
+                        reuseItems: false
+                        cacheBuffer: 100
                         spacing: selectedServer === "dms" ? 6 : 2
 
                         onMovementEnded: {
@@ -336,7 +338,7 @@ ColumnLayout {
 
                                 Text {
                                     Layout.alignment: Qt.AlignHCenter
-                                    text: selectedServer === "dms" ? ("This is the beginning of your direct message history with @" + (activeChannel.replace(/^\w/, c => c.toUpperCase()))) : ("Welcome to #" + activeChannel + "!")
+                                    text: selectedServer === "dms" ? ("This is the beginning of your direct message history with " + (typeof NetworkManager !== "undefined" && NetworkManager ? NetworkManager.getDisplayName(activeChannel) : activeChannel) + " (@" + activeChannel + ")") : ("Welcome to #" + activeChannel + "!")
                                     color: ThemeData.textPrimary
                                     font.family: "Segoe UI"
                                     font.pixelSize: 15
@@ -439,52 +441,58 @@ ColumnLayout {
                         }
                     }
 
-                    // Drag & Drop visual feedback overlay (Deep Obsidian Frosted Glass)
-                    Rectangle {
+                    // Drag & Drop visual feedback overlay (Deep Obsidian Frosted Glass - Loaded on-demand only during drag)
+                    Loader {
+                        id: dragFeedbackLoader
                         anchors.fill: parent
-                        radius: 12
-                        color: "#DD060709"
-                        border.color: "#00E5FF"
-                        border.width: 2
-                        visible: chatDropArea.containsDrag
+                        active: chatDropArea.containsDrag
                         z: 9999
-
-                        ColumnLayout {
-                            anchors.centerIn: parent
-                            spacing: 14
-
+                        sourceComponent: Component {
                             Rectangle {
-                                Layout.alignment: Qt.AlignHCenter
-                                width: 68; height: 68
-                                radius: 16
-                                color: Qt.rgba(10, 132, 255, 0.2)
+                                anchors.fill: parent
+                                radius: 12
+                                color: "#DD060709"
                                 border.color: "#00E5FF"
                                 border.width: 2
 
-                                IconImage {
+                                ColumnLayout {
                                     anchors.centerIn: parent
-                                    source: "qrc:/qt/qml/NeoNect/assets/icons/download.svg"
-                                    width: 32; height: 32
-                                    color: "#00E5FF"
-                                    rotation: 180
+                                    spacing: 14
+
+                                    Rectangle {
+                                        Layout.alignment: Qt.AlignHCenter
+                                        width: 68; height: 68
+                                        radius: 16
+                                        color: Qt.rgba(10, 132, 255, 0.2)
+                                        border.color: "#00E5FF"
+                                        border.width: 2
+
+                                        IconImage {
+                                            anchors.centerIn: parent
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/download.svg"
+                                            width: 32; height: 32
+                                            color: "#00E5FF"
+                                            rotation: 180
+                                        }
+                                    }
+
+                                    Text {
+                                        Layout.alignment: Qt.AlignHCenter
+                                        text: "Drop to Attach & Add Caption"
+                                        color: "#FFFFFF"
+                                        font.family: "Segoe UI"
+                                        font.pixelSize: 18
+                                        font.bold: true
+                                    }
+
+                                    Text {
+                                        Layout.alignment: Qt.AlignHCenter
+                                        text: "File will be staged in the message bar for optional description"
+                                        color: "#949BA4"
+                                        font.family: "Segoe UI"
+                                        font.pixelSize: 13
+                                    }
                                 }
-                            }
-
-                            Text {
-                                Layout.alignment: Qt.AlignHCenter
-                                text: "Drop to Attach & Add Caption"
-                                color: "#FFFFFF"
-                                font.family: "Segoe UI"
-                                font.pixelSize: 18
-                                font.bold: true
-                            }
-
-                            Text {
-                                Layout.alignment: Qt.AlignHCenter
-                                text: "File will be staged in the message bar for optional description"
-                                color: "#949BA4"
-                                font.family: "Segoe UI"
-                                font.pixelSize: 13
                             }
                         }
                     }
@@ -545,7 +553,7 @@ ColumnLayout {
 
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: (chatViewRoot.typingUser || (activeChannel.replace(/^\w/, c => c.toUpperCase()))) + " is typing..."
+                            text: (chatViewRoot.typingUser ? (typeof NetworkManager !== "undefined" && NetworkManager ? NetworkManager.getDisplayName(chatViewRoot.typingUser) : chatViewRoot.typingUser) : (typeof NetworkManager !== "undefined" && NetworkManager ? NetworkManager.getDisplayName(activeChannel) : activeChannel)) + " is typing..."
                             color: "#00E5FF"
                             font.family: "Segoe UI"
                             font.pixelSize: 11
@@ -559,7 +567,7 @@ ColumnLayout {
                     id: messageInput
                     Layout.fillWidth: true
                     Layout.margins: 12
-                    channelName: selectedServer === "dms" ? activeChannel.replace("dm-", "").replace(/^\w/, c => c.toUpperCase()) : activeChannel
+                    channelName: selectedServer === "dms" ? (typeof NetworkManager !== "undefined" && NetworkManager ? NetworkManager.getDisplayName(activeChannel) : activeChannel) : activeChannel
                     isDM: selectedServer === "dms"
                     onTypingStarted: chatViewRoot.typingStarted()
                     onTypingStopped: chatViewRoot.typingStopped()

@@ -282,6 +282,17 @@ void ChatMessageModel::prependMessages(const QString &conversationId, const QVar
     recalculateBlocks();
     endInsertRows();
     emit countChanged();
+
+    const size_t MAX_WINDOW_SIZE = 150;
+    if (m_items.size() > MAX_WINDOW_SIZE) {
+        int removeCount = static_cast<int>(m_items.size() - MAX_WINDOW_SIZE);
+        int removeStart = static_cast<int>(m_items.size()) - removeCount;
+        beginRemoveRows(QModelIndex(), removeStart, static_cast<int>(m_items.size()) - 1);
+        m_items.erase(m_items.begin() + removeStart, m_items.end());
+        recalculateBlocks();
+        endRemoveRows();
+        emit countChanged();
+    }
 }
 
 void ChatMessageModel::setFirstUnreadMessageId(const QString &messageId) {

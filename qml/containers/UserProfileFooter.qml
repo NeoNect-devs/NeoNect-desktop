@@ -66,10 +66,18 @@ Rectangle {
                     radius: 8
                     color: ThemeData.accentColor
 
+                    CircularImage {
+                        id: footerAvatarImg
+                        anchors.fill: parent
+                        source: (NetworkManager && NetworkManager.avatarUrl) ? NetworkManager.avatarUrl : ""
+                        cornerRadius: 8
+                    }
+
                     Text {
                         anchors.centerIn: parent
-                        text: (NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") ?
-                              NetworkManager.currentUsername.charAt(0).toUpperCase() : "A"
+                        visible: !footerAvatarImg.ready
+                        text: (NetworkManager && NetworkManager.displayName && NetworkManager.displayName !== "") ?
+                              NetworkManager.displayName.charAt(0).toUpperCase() : ((NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") ? NetworkManager.currentUsername.charAt(0).toUpperCase() : "A")
                         color: "#ffffff"
                         font.bold: true
                         font.pixelSize: 15
@@ -96,76 +104,96 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: statusPopup.open()
+                    onClicked: {
+                        if (!statusPopupLoader.active) {
+                            statusPopupLoader.active = true;
+                        } else if (statusPopupLoader.item) {
+                            statusPopupLoader.item.open();
+                        }
+                    }
                 }
 
-                // Status selection popup
-                Popup {
-                    id: statusPopup
-                    y: -160
-                    x: 6
-                    width: 175
-                    padding: 6
-                    modal: true
-                    focus: true
-                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-
-                    background: Rectangle {
-                        radius: 10
-                        color: "#111214"
-                        border.color: Qt.rgba(255, 255, 255, 0.12)
-                        border.width: 1
+                // Status selection popup (lazy loaded on click, destroyed on close)
+                Loader {
+                    id: statusPopupLoader
+                    active: false
+                    onLoaded: {
+                        if (item) item.open();
                     }
+                    sourceComponent: Component {
+                        Popup {
+                            id: statusPopup
+                            y: -160
+                            x: 6
+                            width: 175
+                            padding: 6
+                            modal: true
+                            focus: true
+                            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                            onClosed: {
+                                statusPopupLoader.active = false;
+                            }
 
-                    contentItem: ColumnLayout {
-                        spacing: 3
+                            background: Rectangle {
+                                color: "#18191C"
+                                radius: 8
+                                border.color: Qt.rgba(255, 255, 255, 0.1)
+                                border.width: 1
+                            }
 
-                        Repeater {
-                            model: [
-                                { name: "Online", key: "online", color: "#23A55A" },
-                                { name: "Idle / AFK", key: "afk", color: "#FAA81A" },
-                                { name: "Do Not Disturb", key: "dnd", color: "#F23F43" },
-                                { name: "Invisible / Offline", key: "offline", color: "#80848E" }
-                            ]
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 2
 
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 30
-                                radius: 6
-                                color: optMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : (((NetworkManager && NetworkManager.userStatus) ? NetworkManager.userStatus : root.customStatusPreference) === modelData.key ? Qt.rgba(255, 255, 255, 0.04) : "transparent")
-
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 8; anchors.rightMargin: 8
-                                    spacing: 8
+                                Repeater {
+                                    model: [
+                                        { name: "Online", key: "online", color: "#23A55A" },
+                                        { name: "Idle / Away", key: "afk", color: "#FAA81A" },
+                                        { name: "Do Not Disturb", key: "dnd", color: "#F23F43" },
+                                        { name: "Invisible", key: "offline", color: "#80848E" }
+                                    ]
 
                                     Rectangle {
-                                        width: 8; height: 8
-                                        radius: 2.5
-                                        color: modelData.color
-                                    }
-
-                                    Text {
                                         Layout.fillWidth: true
-                                        text: modelData.name
-                                        color: ThemeData.textPrimary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 12
-                                        font.bold: ((NetworkManager && NetworkManager.userStatus) ? NetworkManager.userStatus : root.customStatusPreference) === modelData.key
-                                    }
-                                }
+                                        height: 30
+                                        radius: 4
+                                        color: optMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.08) : "transparent"
 
-                                MouseArea {
-                                    id: optMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (typeof NetworkManager !== "undefined" && NetworkManager && NetworkManager.setUserStatus) {
-                                            NetworkManager.setUserStatus(modelData.key);
+                                        RowLayout {
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 8
+                                            anchors.rightMargin: 8
+                                            spacing: 8
+
+                                            Rectangle {
+                                                width: 8; height: 8
+                                                radius: 2.5
+                                                color: modelData.color
+                                            }
+
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: modelData.name
+                                                color: ThemeData.textPrimary
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: 12
+                                                font.bold: ((NetworkManager && NetworkManager.userStatus) ? NetworkManager.userStatus : root.customStatusPreference) === modelData.key
+                                            }
                                         }
-                                        root.customStatusPreference = modelData.key;
-                                        statusPopup.close();
+
+                                        MouseArea {
+                                            id: optMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (typeof NetworkManager !== "undefined" && NetworkManager && NetworkManager.setUserStatus) {
+                                                    NetworkManager.setUserStatus(modelData.key);
+                                                }
+                                                root.customStatusPreference = modelData.key;
+                                                statusPopup.close();
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -182,8 +210,8 @@ Rectangle {
             ColumnLayout {
                 Layout.fillWidth: true; spacing: 0
                 Text {
-                    text: (NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") ?
-                          NetworkManager.currentUsername : "Guest User"
+                    text: (NetworkManager && NetworkManager.displayName && NetworkManager.displayName !== "") ?
+                          NetworkManager.displayName : ((NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") ? NetworkManager.currentUsername : "Guest User")
                     color: ThemeData.textPrimary
                     font.family: "Segoe UI"
                     font.pixelSize: 13
@@ -192,7 +220,8 @@ Rectangle {
                     Layout.fillWidth: true
                 }
                 Text {
-                    text: root.getStatusLabel(root.userStatus)
+                    text: (NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") ?
+                          ("@" + NetworkManager.currentUsername + " • " + root.getStatusLabel(root.userStatus)) : root.getStatusLabel(root.userStatus)
                     color: root.getStatusColor(root.userStatus)
                     font.family: "Segoe UI"
                     font.pixelSize: 11

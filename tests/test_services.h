@@ -38,4 +38,6 @@ private slots:
     void testRetryMessageFlow();
     void testFunctionalOnlineIdleDndInvisibleStates();
     void testRealtimeChatPresenceExchange();
+    void testDisplayNameResolutionAndSync();
+    void testAvatarProcessingAndPeerSync();
 };

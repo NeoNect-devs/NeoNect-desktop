@@ -206,4 +206,76 @@ void TestStorage::testAccountScopedFriends() {
     repo.clearSession();
 }
 
+void TestStorage::testDisplayNamePersistence() {
+    NeoNect::Storage::SettingsRepository repo("test_display_names");
+    repo.clearSession();
+
+    repo.setUsername("alice");
+    repo.setDisplayName("Alice in Wonderland");
+    QCOMPARE(repo.displayName(), QString("Alice in Wonderland"));
+
+    repo.setPeerDisplayName("bob", "Bobby Tables");
+    QCOMPARE(repo.peerDisplayName("bob"), QString("Bobby Tables"));
+    QCOMPARE(repo.peerDisplayName("BOB"), QString("Bobby Tables"));
+
+    // Verify persistence in new instance
+    NeoNect::Storage::SettingsRepository repoReopened("test_display_names");
+    repoReopened.setUsername("alice");
+    QCOMPARE(repoReopened.displayName(), QString("Alice in Wonderland"));
+    QCOMPARE(repoReopened.peerDisplayName("bob"), QString("Bobby Tables"));
+
+    // Bob has his own display name and peer mapping
+    repoReopened.setUsername("bob");
+    QCOMPARE(repoReopened.displayName(), QString());
+    repoReopened.setDisplayName("Bob the Builder");
+    repoReopened.setPeerDisplayName("alice", "Al");
+    QCOMPARE(repoReopened.displayName(), QString("Bob the Builder"));
+    QCOMPARE(repoReopened.peerDisplayName("alice"), QString("Al"));
+
+    // Cleanup
+    repo.setUsername("alice");
+    repo.setDisplayName("");
+    repo.setPeerDisplayName("bob", "");
+    repo.setUsername("bob");
+    repo.setDisplayName("");
+    repo.setPeerDisplayName("alice", "");
+    repo.clearSession();
+}
+
+void TestStorage::testAvatarUrlPersistence() {
+    NeoNect::Storage::SettingsRepository repo("test_avatars_storage");
+    repo.clearSession();
+
+    repo.setUsername("alice");
+    repo.setAvatarUrl("file:///path/to/alice_avatar.jpg");
+    QCOMPARE(repo.avatarUrl(), QString("file:///path/to/alice_avatar.jpg"));
+
+    repo.setPeerAvatarUrl("bob", "file:///path/to/bob_avatar.jpg");
+    QCOMPARE(repo.peerAvatarUrl("bob"), QString("file:///path/to/bob_avatar.jpg"));
+    QCOMPARE(repo.peerAvatarUrl("BOB"), QString("file:///path/to/bob_avatar.jpg"));
+
+    // Verify persistence across instances
+    NeoNect::Storage::SettingsRepository repoReopened("test_avatars_storage");
+    repoReopened.setUsername("alice");
+    QCOMPARE(repoReopened.avatarUrl(), QString("file:///path/to/alice_avatar.jpg"));
+    QCOMPARE(repoReopened.peerAvatarUrl("bob"), QString("file:///path/to/bob_avatar.jpg"));
+
+    // Bob has his own avatar & peer mapping
+    repoReopened.setUsername("bob");
+    QCOMPARE(repoReopened.avatarUrl(), QString());
+    repoReopened.setAvatarUrl("file:///path/to/bob_own.jpg");
+    repoReopened.setPeerAvatarUrl("alice", "file:///path/to/alice_on_bob.jpg");
+    QCOMPARE(repoReopened.avatarUrl(), QString("file:///path/to/bob_own.jpg"));
+    QCOMPARE(repoReopened.peerAvatarUrl("alice"), QString("file:///path/to/alice_on_bob.jpg"));
+
+    // Cleanup
+    repo.setUsername("alice");
+    repo.setAvatarUrl("");
+    repo.setPeerAvatarUrl("bob", "");
+    repo.setUsername("bob");
+    repo.setAvatarUrl("");
+    repo.setPeerAvatarUrl("alice", "");
+    repo.clearSession();
+}
+
 

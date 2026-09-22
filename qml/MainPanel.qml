@@ -112,11 +112,15 @@ Item {
         root.isOtherTyping = false;
         peerTypingTimeoutTimer.stop();
         if (root.selectedServer === "dms" && (root.activeChannel === "friends" || !root.activeChannel)) {
+            nativeMessageModel.setActiveConversation("");
             return;
         }
 
         var chan = root.activeChannel ? root.activeChannel.trim().toLowerCase() : "";
-        if (!chan) return;
+        if (!chan) {
+            nativeMessageModel.setActiveConversation("");
+            return;
+        }
         var key = (root.selectedServer + ":" + chan).toLowerCase();
         nativeMessageModel.setActiveConversation(key);
         MessageService.loadConversation(key);
@@ -194,19 +198,24 @@ Item {
         anchors.fill: parent
         spacing: 0
 
-        // ─── VIEW 1: FRIENDS DASHBOARD (Discord-like Homepage) ───
-        FriendsHomePanel {
-            visible: root.selectedServer === "dms" && root.activeChannel === "friends"
+        // ─── VIEW 1: FRIENDS DASHBOARD (Discord-like Homepage - Lazy Loaded) ───
+        Loader {
+            id: friendsPanelLoader
+            active: root.selectedServer === "dms" && root.activeChannel === "friends"
+            visible: active
             Layout.fillWidth: true
             Layout.fillHeight: true
-            onMessageFriendRequested: function(username) {
-                root.openDirectMessageRequested(username);
-            }
-            onAddFriendSubmitted: function(username) {
-                NetworkManager.addFriend(username);
+            sourceComponent: Component {
+                FriendsHomePanel {
+                    onMessageFriendRequested: function(username) {
+                        root.openDirectMessageRequested(username);
+                    }
+                    onAddFriendSubmitted: function(username) {
+                        NetworkManager.addFriend(username);
+                    }
+                }
             }
         }
-
 
         ChatView {
             id: chatView
@@ -236,101 +245,106 @@ Item {
             onAcceptMediaRequested: function(convId, reqId) { MessageService.acceptMediaRequest(convId, reqId); }
             onDeclineMediaRequested: function(convId, reqId) { MessageService.declineMediaRequest(convId, reqId); }
         }
-}
+    }
 
-    // ─── ADD FRIEND / DIRECT CHAT MODAL OVERLAY ───────────────────────────
-    Rectangle {
-        id: addFriendOverlay
+    // ─── ADD FRIEND / DIRECT CHAT MODAL OVERLAY (Lazy-Loaded) ─────────────
+    Loader {
+        id: addFriendModalLoader
         anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.7)
-        visible: root.showAddFriendModal
+        active: root.showAddFriendModal
         z: 9999
-
-        MouseArea {
-            anchors.fill: parent
-            onClicked: root.showAddFriendModal = false
-        }
-
-        Rectangle {
-            width: 380; height: 260
-            radius: 16
-            color: ThemeData.panelBackground
-            border.color: Qt.rgba(1, 1, 1, 0.1)
-            anchors.centerIn: parent
-
-            MouseArea { anchors.fill: parent } // Block clicks from closing modal
-
-            Column {
+        sourceComponent: Component {
+            Rectangle {
                 anchors.fill: parent
-                anchors.margins: 24
-                spacing: 16
+                color: Qt.rgba(0, 0, 0, 0.7)
 
-                RowLayout {
-                    width: parent.width
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.showAddFriendModal = false
+                }
 
-                    Text {
-                        text: "Add Friend / Start Direct Chat"
-                        color: ThemeData.textPrimary
-                        font.bold: true
-                        font.pixelSize: 16
-                        Layout.fillWidth: true
-                    }
+                Rectangle {
+                    width: 380; height: 260
+                    radius: 16
+                    color: ThemeData.panelBackground
+                    border.color: Qt.rgba(1, 1, 1, 0.1)
+                    anchors.centerIn: parent
 
-                    Text {
-                        text: "✕"
-                        color: ThemeData.textSecondary
-                        font.pixelSize: 16
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.showAddFriendModal = false
+                    MouseArea { anchors.fill: parent } // Block clicks from closing modal
+
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 24
+                        spacing: 16
+
+                        RowLayout {
+                            width: parent.width
+
+                            Text {
+                                text: "Add Friend / Start Direct Chat"
+                                color: ThemeData.textPrimary
+                                font.bold: true
+                                font.pixelSize: 16
+                                Layout.fillWidth: true
+                            }
+
+                            Text {
+                                text: "✕"
+                                color: ThemeData.textSecondary
+                                font.pixelSize: 16
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.showAddFriendModal = false
+                                }
+                            }
                         }
-                    }
-                }
 
-                Text {
-                    text: "Enter the username of a user on the NeoNect network to add them to your Direct Messages."
-                    color: ThemeData.textSecondary
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
-                    width: parent.width
-                }
-
-                NeoNectTextField {
-                    id: friendInput
-                    width: parent.width
-                    placeholderText: "Enter username (e.g. alex)"
-                }
-
-                Text {
-                    text: root.addFriendStatusMsg
-                    color: root.addFriendSuccess ? "#23a55a" : "#ef5350"
-                    font.pixelSize: 12
-                    visible: text !== ""
-                }
-
-                Row {
-                    width: parent.width
-                    spacing: 12
-
-                    NeoNectButton {
-                        text: "Cancel"
-                        width: (parent.width - 12) / 2
-                        highlighted: false
-                        onClicked: {
-                            root.showAddFriendModal = false;
-                            root.addFriendStatusMsg = "";
+                        Text {
+                            text: "Enter the username of a user on the NeoNect network to add them to your Direct Messages."
+                            color: ThemeData.textSecondary
+                            font.pixelSize: 12
+                            wrapMode: Text.WordWrap
+                            width: parent.width
                         }
-                    }
 
-                    NeoNectButton {
-                        text: "Add Friend"
-                        width: (parent.width - 12) / 2
-                        enabled: friendInput.text.trim() !== ""
-                        highlighted: true
-                        onClicked: {
-                            root.addFriendStatusMsg = "";
-                            NetworkManager.addFriend(friendInput.text.trim());
+                        NeoNectTextField {
+                            id: friendInput
+                            width: parent.width
+                            placeholderText: "Enter username (e.g. alex)"
+                        }
+
+                        Text {
+                            text: root.addFriendStatusMsg
+                            color: root.addFriendSuccess ? "#23a55a" : "#ef5350"
+                            font.pixelSize: 12
+                            visible: text !== ""
+                        }
+
+                        Row {
+                            width: parent.width
+                            spacing: 12
+
+                            NeoNectButton {
+                                text: "Cancel"
+                                width: (parent.width - 12) / 2
+                                highlighted: false
+                                onClicked: {
+                                    root.showAddFriendModal = false;
+                                    root.addFriendStatusMsg = "";
+                                }
+                            }
+
+                            NeoNectButton {
+                                text: "Add Friend"
+                                width: (parent.width - 12) / 2
+                                enabled: friendInput.text.trim() !== ""
+                                highlighted: true
+                                onClicked: {
+                                    root.addFriendStatusMsg = "";
+                                    NetworkManager.addFriend(friendInput.text.trim());
+                                }
+                            }
                         }
                     }
                 }

@@ -59,8 +59,10 @@ Window {
     // Automatically show window on the screen only when active notifications exist
     visible: notifModel.count > 0
 
+    readonly property int activeCount: notifModel.count
     signal actionTriggered(string notifId, string action, string channel)
     signal dismissed(string notifId)
+    signal allDismissed()
 
     ListModel {
         id: notifModel
@@ -130,6 +132,7 @@ Window {
         }
         if (notifModel.count === 0) {
             notifWindow.visible = false;
+            notifWindow.allDismissed();
         }
     }
 
@@ -144,6 +147,7 @@ Window {
     function clearAll() {
         notifModel.clear();
         notifWindow.visible = false;
+        notifWindow.allDismissed();
     }
 
     // Helper function for deterministic Telegram avatar gradient
@@ -294,10 +298,18 @@ Window {
                                 border.color: Qt.rgba(255, 255, 255, 0.2)
                                 border.width: 1
 
+                                CircularImage {
+                                    id: notifAvatarImg
+                                    anchors.fill: parent
+                                    source: (typeof NetworkManager !== "undefined" && NetworkManager && model.channel && model.type === "message") ? NetworkManager.getAvatarUrl(model.channel) : ""
+                                    cornerRadius: 18
+                                }
+
                                 Text {
-                                    visible: model.type === "message" || model.avatar !== ""
+                                    visible: !notifAvatarImg.ready && (model.type === "message" || model.avatar !== "")
                                     anchors.centerIn: parent
                                     text: {
+                                        if (model.channel && typeof NetworkManager !== "undefined" && NetworkManager && model.type === "message") return NetworkManager.getDisplayName(model.channel).charAt(0).toUpperCase();
                                         if (model.avatar && model.avatar.length > 0) return model.avatar.charAt(0).toUpperCase();
                                         if (model.title && model.title.length > 0) return model.title.charAt(0).toUpperCase();
                                         return "@";
@@ -309,7 +321,7 @@ Window {
                                 }
 
                                 IconImage {
-                                    visible: model.type !== "message" && model.avatar === ""
+                                    visible: !notifAvatarImg.ready && model.type !== "message" && model.avatar === ""
                                     anchors.centerIn: parent
                                     source: {
                                         if (model.type === "security") return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
@@ -346,7 +358,7 @@ Window {
                                 spacing: 6
 
                                 Text {
-                                    text: model.title
+                                    text: (model.channel && typeof NetworkManager !== "undefined" && NetworkManager && model.type === "message") ? NetworkManager.getDisplayName(model.channel) : model.title
                                     color: ThemeData.textPrimary
                                     font.family: "Segoe UI"
                                     font.pixelSize: 13

@@ -7,6 +7,13 @@
 #include <QDebug>
 #include <QDateTime>
 #include <QTimer>
+#include <QImage>
+#include <QBuffer>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFileInfo>
+#include <QUrl>
+#include <QUuid>
 #include <algorithm>
 
 NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
@@ -100,6 +107,7 @@ void NetworkManager::setupServiceSignals() {
             m_transport->setAuthToken(tokenOrError);
             emit tokenChanged();
             emit currentUsernameChanged();
+            emit displayNameChanged();
 
             // Reload user-scoped open conversations
             m_openConversations.clear();
@@ -182,6 +190,11 @@ void NetworkManager::setupServiceSignals() {
 
     connect(m_relayService.get(), &NeoNect::Services::RelayService::deviceRegistrationRequested, this, &NetworkManager::autoRegisterDevice);
 
+    connect(m_relayService.get(), &NeoNect::Services::RelayService::peerAvatarUpdated, this, [this](const QString &username, const QString &avatarUrl) {
+        emit peerAvatarUpdated(username.trimmed().toLower(), avatarUrl);
+        emit avatarUrlChanged();
+    });
+
     connect(m_relayService.get(), &NeoNect::Services::RelayService::serverConnected, this, [this]() {
         emit isConnectedChanged();
         emit effectiveStatusChanged();
@@ -232,6 +245,197 @@ QString NetworkManager::token() const {
 
 QString NetworkManager::currentUsername() const {
     return m_sessionToken.isEmpty() ? QString() : m_storage->username();
+}
+
+QString NetworkManager::displayName() const {
+    if (!m_storage) return QString();
+    QString custom = m_storage->displayName().trimmed();
+    if (!custom.isEmpty()) return custom;
+    QString u = m_storage->username().trimmed();
+    if (u.isEmpty()) return QString();
+    return u.left(1).toUpper() + u.mid(1);
+}
+
+void NetworkManager::setDisplayName(const QString &name) {
+    if (!m_storage) return;
+    m_storage->setDisplayName(name.trimmed());
+    emit displayNameChanged();
+    emit openConversationsChanged();
+    emit friendsChanged();
+}
+
+QString NetworkManager::getDisplayName(const QString &username) const {
+    QString clean = username.trimmed().toLower();
+    if (clean.isEmpty()) return QString();
+    if (m_storage && clean == m_storage->username().trimmed().toLower()) {
+        return displayName();
+    }
+    if (m_storage) {
+        QString peerName = m_storage->peerDisplayName(clean).trimmed();
+        if (!peerName.isEmpty()) return peerName;
+    }
+    return username.left(1).toUpper() + username.mid(1);
+}
+
+void NetworkManager::setPeerDisplayName(const QString &username, const QString &displayName) {
+    QString clean = username.trimmed().toLower();
+    if (clean.isEmpty() || !m_storage) return;
+    m_storage->setPeerDisplayName(clean, displayName.trimmed());
+    emit peerDisplayNameUpdated(clean, displayName.trimmed());
+    emit openConversationsChanged();
+    emit friendsChanged();
+}
+
+QString NetworkManager::avatarUrl() const {
+    if (!m_storage) return QString();
+    QString localUrl = m_storage->avatarUrl().trimmed();
+    if (!localUrl.isEmpty()) {
+        QString path = localUrl;
+        if (path.startsWith("file:///")) {
+            path = QUrl(path).toLocalFile();
+        } else if (path.startsWith("file://")) {
+            path = path.mid(7);
+        }
+        if (QFile::exists(path)) {
+            return localUrl;
+        }
+    }
+    QString profile = m_storage->profile();
+    QString username = m_storage->username().trimmed().toLower();
+    if (!username.isEmpty()) {
+        QString avatarPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/avatars/" + (profile.isEmpty() ? "" : profile + "_") + username + "_avatar.jpg";
+        if (QFile::exists(avatarPath)) {
+            return QUrl::fromLocalFile(avatarPath).toString();
+        }
+    }
+    return QString();
+}
+
+bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
+    if (filePathOrUrl.trimmed().isEmpty()) {
+        clearAvatar();
+        return true;
+    }
+    QString localPath = filePathOrUrl;
+    if (localPath.startsWith("file:///")) {
+        localPath = QUrl(localPath).toLocalFile();
+    } else if (localPath.startsWith("file://")) {
+        localPath = localPath.mid(7);
+    }
+
+    QImage image;
+    if (!image.load(localPath)) {
+        qWarning() << "[NetworkManager] setAvatar failed to load image from:" << localPath;
+        return false;
+    }
+
+    // 1. Crop to 1:1 aspect ratio (center crop)
+    int cropSize = qMin(image.width(), image.height());
+    int xOffset = (image.width() - cropSize) / 2;
+    int yOffset = (image.height() - cropSize) / 2;
+    QImage squareImage = image.copy(xOffset, yOffset, cropSize, cropSize);
+
+    // 2. Resize to standard high-res square (512x512 max)
+    int targetSize = qMin(cropSize, 512);
+    if (squareImage.width() > targetSize || squareImage.height() > targetSize) {
+        squareImage = squareImage.scaled(targetSize, targetSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    }
+
+    // 3. Compress ensuring size is strictly under 1MB (1024 * 1024 bytes)
+    QByteArray compressedData;
+    int quality = 90;
+    while (quality >= 30) {
+        compressedData.clear();
+        QBuffer buffer(&compressedData);
+        buffer.open(QIODevice::WriteOnly);
+        squareImage.save(&buffer, "JPEG", quality);
+        buffer.close();
+
+        if (compressedData.size() <= 1024 * 1024) {
+            break;
+        }
+        quality -= 10;
+    }
+
+    while (compressedData.size() > 1024 * 1024 && squareImage.width() > 128) {
+        squareImage = squareImage.scaled(squareImage.width() / 2, squareImage.height() / 2, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        compressedData.clear();
+        QBuffer buffer(&compressedData);
+        buffer.open(QIODevice::WriteOnly);
+        squareImage.save(&buffer, "JPEG", 75);
+        buffer.close();
+    }
+
+    // 4. Save to AppData avatar location
+    QString profile = m_storage ? m_storage->profile() : "";
+    QString username = m_storage ? m_storage->username().trimmed().toLower() : "user";
+    QString avatarDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/avatars/";
+    QDir().mkpath(avatarDir);
+
+    QString savedLocalPath = avatarDir + (profile.isEmpty() ? "" : profile + "_") + username + "_avatar.jpg";
+    QFile file(savedLocalPath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        qWarning() << "[NetworkManager] setAvatar failed to write to:" << savedLocalPath;
+        return false;
+    }
+    file.write(compressedData);
+    file.close();
+
+    QString fileUrl = QUrl::fromLocalFile(savedLocalPath).toString();
+    if (m_storage) {
+        m_storage->setAvatarUrl(fileUrl);
+    }
+    emit avatarUrlChanged();
+
+    // Broadcast avatar update to open conversations / friends
+    if (m_relayService && m_friendService) {
+        QStringList friendList = m_friendService->friends();
+        for (const QString &fr : friendList) {
+            if (fr.trimmed().isEmpty()) continue;
+            NeoNect::Domain::Message avMsg;
+            avMsg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            avMsg.conversationId = "dms:" + fr.trimmed().toLower();
+            avMsg.senderId = currentUsername();
+            avMsg.type = "avatar_update";
+            avMsg.text = QString::fromLatin1(compressedData.toBase64());
+            avMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
+            m_relayService->sendDomainMessage(avMsg);
+        }
+    }
+
+    return true;
+}
+
+void NetworkManager::clearAvatar() {
+    if (m_storage) {
+        m_storage->setAvatarUrl(QString());
+    }
+    emit avatarUrlChanged();
+}
+
+QString NetworkManager::getAvatarUrl(const QString &username) const {
+    QString u = username.trimmed().toLower();
+    QString myUser = currentUsername().trimmed().toLower();
+    if (u.isEmpty() || u == myUser) {
+        return avatarUrl();
+    }
+    if (m_storage) {
+        QString url = m_storage->peerAvatarUrl(u);
+        if (!url.isEmpty()) return url;
+    }
+    QString profile = m_storage ? m_storage->profile() : "";
+    QString peerAvatarPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/avatars/peers/" + (profile.isEmpty() ? "" : profile + "_") + u + "_avatar.jpg";
+    if (QFile::exists(peerAvatarPath)) {
+        return QUrl::fromLocalFile(peerAvatarPath).toString();
+    }
+    return QString();
+}
+
+void NetworkManager::setPeerAvatarUrl(const QString &username, const QString &avatarUrl) {
+    QString u = username.trimmed().toLower();
+    if (u.isEmpty() || !m_storage) return;
+    m_storage->setPeerAvatarUrl(u, avatarUrl.trimmed());
+    emit peerAvatarUpdated(u, avatarUrl.trimmed());
 }
 
 bool NetworkManager::isConnected() const {
@@ -316,6 +520,7 @@ void NetworkManager::setProfile(const QString &profileName) {
     emit serverUrlChanged();
     emit tokenChanged();
     emit currentUsernameChanged();
+    emit displayNameChanged();
     emit bookmarksChanged();
 
     if (m_storage) {
@@ -361,6 +566,7 @@ void NetworkManager::logoutUser() {
     emit openConversationsChanged();
     emit tokenChanged();
     emit currentUsernameChanged();
+    emit displayNameChanged();
     emit isConnectedChanged();
     emit effectiveStatusChanged();
 }
@@ -426,6 +632,20 @@ void NetworkManager::checkUserStatus(const QString &username) {
     m_friendService->checkUserStatus(username);
 }
 
+QString NetworkManager::getFriendStatus(const QString &username) const {
+    if (m_friendService) {
+        return m_friendService->getPeerStatus(username);
+    }
+    return QStringLiteral("offline");
+}
+
+QVariantMap NetworkManager::allFriendStatuses() const {
+    if (m_friendService) {
+        return m_friendService->allPeerStatuses();
+    }
+    return QVariantMap();
+}
+
 void NetworkManager::sortOpenConversations() {
     std::sort(m_openConversations.begin(), m_openConversations.end(), [](const QVariant &a, const QVariant &b) {
         qint64 tA = a.toMap().value("lastActivity").toLongLong();
@@ -438,7 +658,14 @@ void NetworkManager::sortOpenConversations() {
 }
 
 QVariantList NetworkManager::openConversations() const {
-    return m_openConversations;
+    QVariantList list = m_openConversations;
+    for (int i = 0; i < list.size(); ++i) {
+        QVariantMap map = list.at(i).toMap();
+        QString name = map.value("name").toString();
+        map["displayName"] = getDisplayName(name);
+        list[i] = map;
+    }
+    return list;
 }
 
 void NetworkManager::openDirectConversation(const QString &username, qint64 activityTimestamp) {

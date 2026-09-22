@@ -1,8 +1,8 @@
-// qml/components/SettingsProfileModal.qml
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
+import QtQuick.Dialogs
 import NeoNect.Core 1.0
 
 Rectangle {
@@ -13,14 +13,27 @@ Rectangle {
     opacity: 0.0
     z: 99999
 
+    FileDialog {
+        id: avatarFileDialog
+        title: "Select Profile Picture"
+        nameFilters: ["Image files (*.png *.jpg *.jpeg *.webp *.bmp *.gif)", "All files (*)"]
+        fileMode: FileDialog.OpenFile
+        onAccepted: {
+            if (selectedFile && NetworkManager) {
+                NetworkManager.setAvatar(selectedFile.toString());
+            }
+        }
+    }
+
     signal logoutRequested
     signal sendTestNotificationRequested
     signal profileUpdated(string displayName, string bio, string status)
+    signal closed()
 
     property string currentTab: "profile" // "profile", "appearance", "notifications", "privacy", "logout"
     property string currentStatus: "online"
     property string userBio: "Decentralized E2EE NeoNect Communicator"
-    property string customDisplayName: (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.replace(/^\w/, c => c.toUpperCase()) : "NeoNect User"
+    property string customDisplayName: (NetworkManager && NetworkManager.displayName && NetworkManager.displayName.length > 0) ? NetworkManager.displayName : ((NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername.length > 0) ? NetworkManager.currentUsername.replace(/^\w/, c => c.toUpperCase()) : "NeoNect User")
     property int selectedThemeIndex: 0
     property string selectedAccentColor: "#0A84FF"
 
@@ -30,6 +43,7 @@ Rectangle {
 
     function close() {
         modalRoot.opacity = 0.0;
+        modalRoot.closed();
     }
 
     Behavior on opacity {
@@ -229,12 +243,13 @@ Rectangle {
                                 Layout.fillWidth: true
                                 spacing: 16
 
-                                // Avatar with Status Pill
+                                // Avatar with Status Pill & Change Hover
                                 Item {
                                     width: 72
                                     height: 72
 
                                     Rectangle {
+                                        id: profileAvatarBox
                                         width: 72
                                         height: 72
                                         radius: 18
@@ -242,13 +257,50 @@ Rectangle {
                                         border.color: Qt.rgba(255, 255, 255, 0.2)
                                         border.width: 1.5
 
+                                        CircularImage {
+                                            id: profileAvatarImg
+                                            anchors.fill: parent
+                                            source: (NetworkManager && NetworkManager.avatarUrl) ? NetworkManager.avatarUrl : ""
+                                            cornerRadius: 18
+                                        }
+
                                         Text {
                                             anchors.centerIn: parent
-                                            text: (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.charAt(0).toUpperCase() : "A"
+                                            visible: !profileAvatarImg.ready
+                                            text: {
+                                                var n = (nameInput && nameInput.text && nameInput.text.trim().length > 0) ? nameInput.text.trim() : modalRoot.customDisplayName;
+                                                return (n && n.length > 0) ? n.charAt(0).toUpperCase() : "A";
+                                            }
                                             color: "#FFFFFF"
                                             font.family: "Segoe UI"
                                             font.bold: true
                                             font.pixelSize: 28
+                                        }
+
+                                        // Hover Overlay to Change Avatar
+                                        Rectangle {
+                                            anchors.fill: parent
+                                            radius: 18
+                                            color: Qt.rgba(0, 0, 0, 0.6)
+                                            visible: avatarHoverArea.containsMouse
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "Change\nAvatar"
+                                                horizontalAlignment: Text.AlignHCenter
+                                                color: "#FFFFFF"
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: 11
+                                                font.bold: true
+                                            }
+                                        }
+
+                                        MouseArea {
+                                            id: avatarHoverArea
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: avatarFileDialog.open()
                                         }
                                     }
 
@@ -258,11 +310,12 @@ Rectangle {
                                         height: 9
                                         radius: 4.5
                                         color: {
-                                            if (modalRoot.currentStatus === "online")
+                                            var st = (NetworkManager && NetworkManager.userStatus) ? NetworkManager.userStatus : modalRoot.currentStatus;
+                                            if (st === "online")
                                                 return "#23A55A";
-                                            if (modalRoot.currentStatus === "afk")
+                                            if (st === "afk")
                                                 return "#FAA81A";
-                                            if (modalRoot.currentStatus === "dnd")
+                                            if (st === "dnd")
                                                 return "#F23F43";
                                             return "#80848E";
                                         }
@@ -278,7 +331,7 @@ Rectangle {
                                     spacing: 4
 
                                     Text {
-                                        text: modalRoot.customDisplayName
+                                        text: (nameInput && nameInput.text && nameInput.text.trim().length > 0) ? nameInput.text.trim() : modalRoot.customDisplayName
                                         color: "#FFFFFF"
                                         font.family: "Segoe UI"
                                         font.pixelSize: 18
@@ -292,11 +345,66 @@ Rectangle {
                                         font.pixelSize: 13
                                     }
 
-                                    Text {
-                                        text: "Node: Relay Connected • E2EE Active"
-                                        color: "#80848E"
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 11
+                                    RowLayout {
+                                        spacing: 8
+                                        Layout.topMargin: 4
+
+                                        Rectangle {
+                                            height: 26
+                                            width: uploadBtnText.implicitWidth + 16
+                                            radius: 6
+                                            color: Qt.rgba(10, 132, 255, uploadMouse.containsMouse ? 0.35 : 0.2)
+                                            border.color: "#0A84FF"
+                                            border.width: 1
+
+                                            Text {
+                                                id: uploadBtnText
+                                                anchors.centerIn: parent
+                                                text: "Change Avatar"
+                                                color: "#0A84FF"
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: 11
+                                                font.bold: true
+                                            }
+
+                                            MouseArea {
+                                                id: uploadMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: avatarFileDialog.open()
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            visible: NetworkManager && NetworkManager.avatarUrl !== ""
+                                            height: 26
+                                            width: removeBtnText.implicitWidth + 16
+                                            radius: 6
+                                            color: Qt.rgba(242, 63, 67, removeMouse.containsMouse ? 0.35 : 0.2)
+                                            border.color: "#F23F43"
+                                            border.width: 1
+
+                                            Text {
+                                                id: removeBtnText
+                                                anchors.centerIn: parent
+                                                text: "Remove"
+                                                color: "#F23F43"
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: 11
+                                                font.bold: true
+                                            }
+
+                                            MouseArea {
+                                                id: removeMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    if (NetworkManager) NetworkManager.clearAvatar();
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -305,41 +413,6 @@ Rectangle {
                                 Layout.fillWidth: true
                                 height: 1
                                 color: Qt.rgba(255, 255, 255, 0.08)
-                            }
-
-                            // Online Status Selector
-                            Text {
-                                text: "Online Status"
-                                color: "#FFFFFF"
-                                font.family: "Segoe UI"
-                                font.pixelSize: 13
-                                font.bold: true
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-
-                                StatusPillOption {
-                                    statusKey: "online"
-                                    statusLabel: "Online"
-                                    statusColor: "#23A55A"
-                                }
-                                StatusPillOption {
-                                    statusKey: "afk"
-                                    statusLabel: "Idle / Away"
-                                    statusColor: "#FAA81A"
-                                }
-                                StatusPillOption {
-                                    statusKey: "dnd"
-                                    statusLabel: "Do Not Disturb"
-                                    statusColor: "#F23F43"
-                                }
-                                StatusPillOption {
-                                    statusKey: "offline"
-                                    statusLabel: "Invisible"
-                                    statusColor: "#80848E"
-                                }
                             }
 
                             // Display Name Editor
@@ -369,37 +442,19 @@ Rectangle {
                                     color: "#FFFFFF"
                                     font.family: "Segoe UI"
                                     font.pixelSize: 13
-                                    onTextChanged: modalRoot.customDisplayName = text
-                                }
-                            }
-
-                            // Bio / Description
-                            Text {
-                                text: "About / Bio"
-                                color: "#FFFFFF"
-                                font.family: "Segoe UI"
-                                font.pixelSize: 13
-                                font.bold: true
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                height: 60
-                                radius: 8
-                                color: "#14161A"
-                                border.color: bioInput.activeFocus ? "#0A84FF" : Qt.rgba(255, 255, 255, 0.1)
-                                border.width: 1
-
-                                TextEdit {
-                                    id: bioInput
-                                    anchors.fill: parent
-                                    anchors.margins: 8
-                                    text: modalRoot.userBio
-                                    color: "#FFFFFF"
-                                    font.family: "Segoe UI"
-                                    font.pixelSize: 13
-                                    wrapMode: TextEdit.Wrap
-                                    onTextChanged: modalRoot.userBio = text
+                                    selectByMouse: true
+                                    onTextEdited: {
+                                        var trimmed = text.trim();
+                                        if (NetworkManager) {
+                                            NetworkManager.setDisplayName(trimmed.length > 0 ? trimmed : (NetworkManager.currentUsername || ""));
+                                        }
+                                    }
+                                    onEditingFinished: {
+                                        var trimmed = text.trim();
+                                        if (NetworkManager) {
+                                            NetworkManager.setDisplayName(trimmed.length > 0 ? trimmed : (NetworkManager.currentUsername || ""));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -902,47 +957,6 @@ Rectangle {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: modalRoot.currentTab = tabId
-        }
-    }
-
-    component StatusPillOption: Rectangle {
-        property string statusKey: ""
-        property string statusLabel: ""
-        property string statusColor: ""
-
-        Layout.fillWidth: true
-        height: 34
-        radius: 8
-        color: modalRoot.currentStatus === statusKey ? Qt.rgba(255, 255, 255, 0.12) : (statusMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.06) : Qt.rgba(255, 255, 255, 0.03))
-        border.color: modalRoot.currentStatus === statusKey ? statusColor : "transparent"
-        border.width: 1
-
-        RowLayout {
-            anchors.centerIn: parent
-            spacing: 6
-
-            Rectangle {
-                width: 14
-                height: 6
-                radius: 3
-                color: statusColor
-            }
-
-            Text {
-                text: statusLabel
-                color: modalRoot.currentStatus === statusKey ? "#FFFFFF" : "#949BA4"
-                font.family: "Segoe UI"
-                font.pixelSize: 12
-                font.weight: modalRoot.currentStatus === statusKey ? Font.DemiBold : Font.Normal
-            }
-        }
-
-        MouseArea {
-            id: statusMouse
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: modalRoot.currentStatus = statusKey
         }
     }
 

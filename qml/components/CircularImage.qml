@@ -1,31 +1,41 @@
-// CircularImage.qml
 import QtQuick
+import QtQuick.Effects
+import "UIHelpers.js" as UIHelpers
 
 Item {
     id: root
-    width: 32
-    height: 32
 
     property string source: ""
-    property int cornerRadius: 8
+    property real cornerRadius: 8
+    property int fillMode: Image.PreserveAspectCrop
+    readonly property bool ready: imageLoader.status === Image.Ready && root.source !== ""
 
-    // Native architectural layout mask boundary box running directly on your GPU pipeline
     Rectangle {
-        id: maskContainer
+        id: maskRect
         anchors.fill: parent
         radius: root.cornerRadius
-        color: "#2F3136" // Fallback placeholder color layer
-        clip: true
+        color: "black"
+        visible: false
+        layer.enabled: true
+    }
 
-        Image {
-            id: imageLoader
-            anchors.fill: parent
-            source: root.source
-            fillMode: Image.PreserveAspectCrop
-            asynchronous: true
+    Image {
+        id: imageLoader
+        anchors.fill: parent
+        source: UIHelpers.formatMediaSource(root.source)
+        fillMode: root.fillMode
+        sourceSize.width: 96
+        sourceSize.height: 96
+        asynchronous: true
+        mipmap: true
+        visible: false
+    }
 
-            // Smoothes visual sampling scaling artifact lines
-            mipmap: true
-        }
+    MultiEffect {
+        anchors.fill: parent
+        source: imageLoader
+        maskEnabled: true
+        maskSource: maskRect
+        visible: root.ready
     }
 }

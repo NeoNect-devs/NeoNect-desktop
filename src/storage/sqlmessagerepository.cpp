@@ -1,4 +1,5 @@
 #include "sqlmessagerepository.h"
+#include <QPointer>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
@@ -334,22 +335,34 @@ private:
 
     void invokeCallback(const QObject* context, IMessageRepository::SaveCallback callback, bool success) {
         if (!context || !callback) return;
-        QMetaObject::invokeMethod(const_cast<QObject*>(context), [callback, success]() {
-            callback(success);
+        QPointer<QObject> safeContext(const_cast<QObject*>(context));
+        if (!safeContext) return;
+        QMetaObject::invokeMethod(safeContext.data(), [safeContext, callback, success]() {
+            if (safeContext) {
+                callback(success);
+            }
         }, Qt::QueuedConnection);
     }
 
     void invokeFetchCallback(const QObject* context, IMessageRepository::FetchCallback callback, const std::vector<Domain::Message>& results) {
         if (!context || !callback) return;
-        QMetaObject::invokeMethod(const_cast<QObject*>(context), [callback, results]() {
-            callback(results);
+        QPointer<QObject> safeContext(const_cast<QObject*>(context));
+        if (!safeContext) return;
+        QMetaObject::invokeMethod(safeContext.data(), [safeContext, callback, results]() {
+            if (safeContext) {
+                callback(results);
+            }
         }, Qt::QueuedConnection);
     }
 
     void invokeMessageCallback(const QObject* context, IMessageRepository::MessageCallback callback, const std::optional<Domain::Message>& result) {
         if (!context || !callback) return;
-        QMetaObject::invokeMethod(const_cast<QObject*>(context), [callback, result]() {
-            callback(result);
+        QPointer<QObject> safeContext(const_cast<QObject*>(context));
+        if (!safeContext) return;
+        QMetaObject::invokeMethod(safeContext.data(), [safeContext, callback, result]() {
+            if (safeContext) {
+                callback(result);
+            }
         }, Qt::QueuedConnection);
     }
 };
@@ -369,50 +382,73 @@ SqlMessageRepository::~SqlMessageRepository() {
 }
 
 void SqlMessageRepository::saveMessageAsync(const Domain::Message &msg, const QObject* context, SaveCallback callback) {
-    QMetaObject::invokeMethod(m_worker, [this, msg, context, callback]() {
-        m_worker->doSaveMessage(msg, context, callback);
+    QPointer<QObject> safeContext(const_cast<QObject*>(context));
+    QMetaObject::invokeMethod(m_worker, [this, msg, safeContext, callback]() {
+        if (m_worker) {
+            m_worker->doSaveMessage(msg, safeContext.data(), callback);
+        }
     }, Qt::QueuedConnection);
 }
 
 void SqlMessageRepository::saveMessagesAsync(const std::vector<Domain::Message> &msgs, const QObject* context, SaveCallback callback) {
-    QMetaObject::invokeMethod(m_worker, [this, msgs, context, callback]() {
-        m_worker->doSaveMessages(msgs, context, callback);
+    QPointer<QObject> safeContext(const_cast<QObject*>(context));
+    QMetaObject::invokeMethod(m_worker, [this, msgs, safeContext, callback]() {
+        if (m_worker) {
+            m_worker->doSaveMessages(msgs, safeContext.data(), callback);
+        }
     }, Qt::QueuedConnection);
 }
 
 void SqlMessageRepository::updateMessageStatusAsync(const QString &id, Domain::MessageStatus status, const QString &errorText, const QObject* context, SaveCallback callback) {
-    QMetaObject::invokeMethod(m_worker, [this, id, status, errorText, context, callback]() {
-        m_worker->doUpdateStatus(id, status, errorText, context, callback);
+    QPointer<QObject> safeContext(const_cast<QObject*>(context));
+    QMetaObject::invokeMethod(m_worker, [this, id, status, errorText, safeContext, callback]() {
+        if (m_worker) {
+            m_worker->doUpdateStatus(id, status, errorText, safeContext.data(), callback);
+        }
     }, Qt::QueuedConnection);
 }
 
 void SqlMessageRepository::markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context, SaveCallback callback) {
-    QMetaObject::invokeMethod(m_worker, [this, conversationId, senderId, context, callback]() {
-        m_worker->doMarkMessagesSeen(conversationId, senderId, context, callback);
+    QPointer<QObject> safeContext(const_cast<QObject*>(context));
+    QMetaObject::invokeMethod(m_worker, [this, conversationId, senderId, safeContext, callback]() {
+        if (m_worker) {
+            m_worker->doMarkMessagesSeen(conversationId, senderId, safeContext.data(), callback);
+        }
     }, Qt::QueuedConnection);
 }
 
 void SqlMessageRepository::deleteMessageAsync(const QString &id, const QObject* context, SaveCallback callback) {
-    QMetaObject::invokeMethod(m_worker, [this, id, context, callback]() {
-        m_worker->doDeleteMessage(id, context, callback);
+    QPointer<QObject> safeContext(const_cast<QObject*>(context));
+    QMetaObject::invokeMethod(m_worker, [this, id, safeContext, callback]() {
+        if (m_worker) {
+            m_worker->doDeleteMessage(id, safeContext.data(), callback);
+        }
     }, Qt::QueuedConnection);
 }
 
 void SqlMessageRepository::getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, FetchCallback callback) {
-    QMetaObject::invokeMethod(m_worker, [this, conversationId, limit, beforeTimestamp, context, callback]() {
-        m_worker->doGetMessages(conversationId, limit, beforeTimestamp, context, callback);
+    QPointer<QObject> safeContext(const_cast<QObject*>(context));
+    QMetaObject::invokeMethod(m_worker, [this, conversationId, limit, beforeTimestamp, safeContext, callback]() {
+        if (m_worker) {
+            m_worker->doGetMessages(conversationId, limit, beforeTimestamp, safeContext.data(), callback);
+        }
     }, Qt::QueuedConnection);
 }
 
 void SqlMessageRepository::getMessageByIdAsync(const QString &id, const QObject* context, MessageCallback callback) {
-    QMetaObject::invokeMethod(m_worker, [this, id, context, callback]() {
-        m_worker->doGetMessageById(id, context, callback);
+    QPointer<QObject> safeContext(const_cast<QObject*>(context));
+    QMetaObject::invokeMethod(m_worker, [this, id, safeContext, callback]() {
+        if (m_worker) {
+            m_worker->doGetMessageById(id, safeContext.data(), callback);
+        }
     }, Qt::QueuedConnection);
 }
 
 void SqlMessageRepository::switchDatabase(const QString &dbPath) {
     QMetaObject::invokeMethod(m_worker, [this, dbPath]() {
-        m_worker->doSwitchDatabase(dbPath);
+        if (m_worker) {
+            m_worker->doSwitchDatabase(dbPath);
+        }
     }, Qt::QueuedConnection);
 }
 

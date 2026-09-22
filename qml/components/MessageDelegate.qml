@@ -165,9 +165,17 @@ import "UIHelpers.js" as UIHelpers
             radius: 8
             color: UIHelpers.getAvatarColor(model.senderName)
 
+            CircularImage {
+                id: msgSenderAvatarImg
+                anchors.fill: parent
+                source: (typeof NetworkManager !== "undefined" && NetworkManager) ? NetworkManager.getAvatarUrl(model.senderName) : ""
+                cornerRadius: 8
+            }
+
             Text {
                 anchors.centerIn: parent
-                text: model.senderAvatar !== "" ? model.senderAvatar : model.senderName.charAt(0).toUpperCase()
+                visible: !msgSenderAvatarImg.ready
+                text: (typeof NetworkManager !== "undefined" && NetworkManager) ? NetworkManager.getDisplayName(model.senderName).charAt(0).toUpperCase() : (model.senderAvatar !== "" ? model.senderAvatar : model.senderName.charAt(0).toUpperCase())
                 color: "#FFFFFF"
                 font.bold: true
             }
@@ -189,24 +197,31 @@ import "UIHelpers.js" as UIHelpers
         // Sender Name & Timestamp (Server view OR first in block)
         RowLayout {
             visible: !delegateRoot.isDM && model.isFirstInBlock
-            spacing: 8
+            spacing: 6
             Layout.fillWidth: true
 
             Text {
-                text: model.senderName
+                text: (typeof NetworkManager !== "undefined" && NetworkManager) ? NetworkManager.getDisplayName(model.senderName) : model.senderName
                 color: model.fromMe ? ThemeData.accentColor : ThemeData.textPrimary
-                                        font.family: "Segoe UI"
-                                        font.bold: true
-                                        font.pixelSize: 14
-                                    }
+                font.family: "Segoe UI"
+                font.bold: true
+                font.pixelSize: 14
+            }
 
-                                    Text {
-                                        text: "Today at " + UIHelpers.formatTime(model.timestamp)
-                                        color: ThemeData.textSecondary
-                                        font.family: "Segoe UI"
-                                        font.pixelSize: 11
-                                    }
-                                }
+            Text {
+                text: "@" + model.senderName
+                color: "#949BA4"
+                font.family: "Segoe UI"
+                font.pixelSize: 11
+            }
+
+            Text {
+                text: "Today at " + UIHelpers.formatTime(model.timestamp)
+                color: ThemeData.textSecondary
+                font.family: "Segoe UI"
+                font.pixelSize: 11
+            }
+        }
 
                                 // ─── MESSAGE BODY (BUBBLE IN DM VS FLAT STREAM IN SERVER) ───
                                 RowLayout {
@@ -327,8 +342,8 @@ import "UIHelpers.js" as UIHelpers
                                                     return url.endsWith(".gif") || fn.endsWith(".gif");
                                                 }
                                                 readonly property var activeImgObj: isGif ? chatGif : chatImg
-                                                readonly property real naturalW: (activeImgObj && activeImgObj.sourceSize && activeImgObj.sourceSize.width > 0) ? activeImgObj.sourceSize.width : (activeImgObj && activeImgObj.implicitWidth > 0 ? activeImgObj.implicitWidth : 320)
-                                                readonly property real naturalH: (activeImgObj && activeImgObj.sourceSize && activeImgObj.sourceSize.height > 0) ? activeImgObj.sourceSize.height : (activeImgObj && activeImgObj.implicitHeight > 0 ? activeImgObj.implicitHeight : 200)
+                                                readonly property real naturalW: (activeImgObj && activeImgObj.implicitWidth > 0) ? activeImgObj.implicitWidth : 320
+                                                readonly property real naturalH: (activeImgObj && activeImgObj.implicitHeight > 0) ? activeImgObj.implicitHeight : 200
                                                 readonly property real ratio: (naturalW > 0 && naturalH > 0) ? (naturalW / naturalH) : 1.6
 
                                                 readonly property real maxAllowedWidth: Math.min(420, Math.max(160, bubbleBox.maxContentWidth))
@@ -369,8 +384,11 @@ import "UIHelpers.js" as UIHelpers
                                                         anchors.fill: parent
                                                         source: visible ? UIHelpers.formatMediaSource(model.mediaUrl) : ""
                                                         fillMode: Image.PreserveAspectFit
+                                                        sourceSize.width: 640
                                                         smooth: true
                                                         asynchronous: true
+                                                        cache: true
+                                                        mipmap: true
                                                     }
 
                                                     AnimatedImage {
@@ -379,8 +397,10 @@ import "UIHelpers.js" as UIHelpers
                                                         anchors.fill: parent
                                                         source: visible ? UIHelpers.formatMediaSource(model.mediaUrl) : ""
                                                         fillMode: Image.PreserveAspectFit
+                                                        sourceSize.width: 480
                                                         smooth: true
                                                         asynchronous: true
+                                                        cache: false
                                                         playing: imgMouseArea.containsMouse
                                                         paused: !imgMouseArea.containsMouse
                                                         currentFrame: !imgMouseArea.containsMouse ? 0 : currentFrame
@@ -495,111 +515,116 @@ import "UIHelpers.js" as UIHelpers
                                                         }
                                                     }
 
-                                                    // Transferring overlay (Uploading / Downloading)
-                                                    Rectangle {
-                                                        id: imgTransferOverlay
+                                                    // Transferring overlay (Uploading / Downloading - Lazy Loaded)
+                                                    Loader {
+                                                        id: imgTransferOverlayLoader
                                                         anchors.fill: parent
-                                                        visible: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
-                                                        color: Qt.rgba(0, 0, 0, 0.78)
-                                                        radius: 10
+                                                        active: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
                                                         z: 5
+                                                        sourceComponent: Component {
+                                                            Rectangle {
+                                                                anchors.fill: parent
+                                                                color: Qt.rgba(0, 0, 0, 0.78)
+                                                                radius: 10
 
-                                                        ColumnLayout {
-                                                            anchors.centerIn: parent
-                                                            spacing: 8
-
-                                                            Item {
-                                                                Layout.alignment: Qt.AlignHCenter
-                                                                width: 52; height: 52
-
-                                                                Canvas {
-                                                                    id: imgProgressCanvas
-                                                                    anchors.fill: parent
-                                                                    property real progressVal: Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
-                                                                    onProgressValChanged: requestPaint()
-                                                                    Component.onCompleted: requestPaint()
-
-                                                                    onPaint: {
-                                                                        var ctx = getContext("2d");
-                                                                        ctx.reset();
-                                                                        var cx = width / 2;
-                                                                        var cy = height / 2;
-                                                                        var r = width / 2 - 4;
-
-                                                                        // Background track
-                                                                        ctx.beginPath();
-                                                                        ctx.arc(cx, cy, r, 0, 2 * Math.PI, false);
-                                                                        ctx.lineWidth = 3.5;
-                                                                        ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-                                                                        ctx.stroke();
-
-                                                                        // Progress arc
-                                                                        var startAngle = -Math.PI / 2;
-                                                                        var endAngle = startAngle + (2 * Math.PI * progressVal);
-                                                                        ctx.beginPath();
-                                                                        ctx.arc(cx, cy, r, startAngle, endAngle, false);
-                                                                        ctx.lineWidth = 3.5;
-                                                                        ctx.strokeStyle = ThemeData.accentColor;
-                                                                        ctx.lineCap = "round";
-                                                                        ctx.stroke();
-                                                                    }
-                                                                }
-
-                                                                // Cancel button in center
-                                                                Rectangle {
-                                                                    id: imgCancelCircle
+                                                                ColumnLayout {
                                                                     anchors.centerIn: parent
-                                                                    width: 30; height: 30
-                                                                    radius: 15
-                                                                    color: imgCancelMouse.containsMouse ? "#E53935" : "rgba(0, 0, 0, 0.65)"
-                                                                    border.color: imgCancelMouse.containsMouse ? "#E53935" : "rgba(255, 255, 255, 0.35)"
-                                                                    border.width: 1
+                                                                    spacing: 8
 
-                                                                    Text {
-                                                                        anchors.centerIn: parent
-                                                                        text: "✕"
-                                                                        color: "#FFFFFF"
-                                                                        font.family: "Segoe UI"
-                                                                        font.pixelSize: 11
-                                                                        font.bold: true
-                                                                    }
+                                                                    Item {
+                                                                        Layout.alignment: Qt.AlignHCenter
+                                                                        width: 52; height: 52
 
-                                                                    MouseArea {
-                                                                        id: imgCancelMouse
-                                                                        anchors.fill: parent
-                                                                        hoverEnabled: true
-                                                                        cursorShape: Qt.PointingHandCursor
-                                                                        onClicked: {
-                                                                            if (typeof MessageService !== "undefined" && MessageService) {
-                                                                                MessageService.cancelMediaTransfer(delegateRoot.getConversationId(), model.messageId);
+                                                                        Canvas {
+                                                                            id: imgProgressCanvas
+                                                                            anchors.fill: parent
+                                                                            property real progressVal: Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                            onProgressValChanged: requestPaint()
+                                                                            Component.onCompleted: requestPaint()
+
+                                                                            onPaint: {
+                                                                                var ctx = getContext("2d");
+                                                                                ctx.reset();
+                                                                                var cx = width / 2;
+                                                                                var cy = height / 2;
+                                                                                var r = width / 2 - 4;
+
+                                                                                // Background track
+                                                                                ctx.beginPath();
+                                                                                ctx.arc(cx, cy, r, 0, 2 * Math.PI, false);
+                                                                                ctx.lineWidth = 3.5;
+                                                                                ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+                                                                                ctx.stroke();
+
+                                                                                // Progress arc
+                                                                                var startAngle = -Math.PI / 2;
+                                                                                var endAngle = startAngle + (2 * Math.PI * progressVal);
+                                                                                ctx.beginPath();
+                                                                                ctx.arc(cx, cy, r, startAngle, endAngle, false);
+                                                                                ctx.lineWidth = 3.5;
+                                                                                ctx.strokeStyle = ThemeData.accentColor;
+                                                                                ctx.lineCap = "round";
+                                                                                ctx.stroke();
+                                                                            }
+                                                                        }
+
+                                                                        // Cancel button in center
+                                                                        Rectangle {
+                                                                            id: imgCancelCircle
+                                                                            anchors.centerIn: parent
+                                                                            width: 30; height: 30
+                                                                            radius: 15
+                                                                            color: imgCancelMouse.containsMouse ? "#E53935" : "rgba(0, 0, 0, 0.65)"
+                                                                            border.color: imgCancelMouse.containsMouse ? "#E53935" : "rgba(255, 255, 255, 0.35)"
+                                                                            border.width: 1
+
+                                                                            Text {
+                                                                                anchors.centerIn: parent
+                                                                                text: "✕"
+                                                                                color: "#FFFFFF"
+                                                                                font.family: "Segoe UI"
+                                                                                font.pixelSize: 11
+                                                                                font.bold: true
+                                                                            }
+
+                                                                            MouseArea {
+                                                                                id: imgCancelMouse
+                                                                                anchors.fill: parent
+                                                                                hoverEnabled: true
+                                                                                cursorShape: Qt.PointingHandCursor
+                                                                                onClicked: {
+                                                                                    if (typeof MessageService !== "undefined" && MessageService) {
+                                                                                        MessageService.cancelMediaTransfer(delegateRoot.getConversationId(), model.messageId);
+                                                                                    }
+                                                                                }
                                                                             }
                                                                         }
                                                                     }
-                                                                }
-                                                            }
 
-                                                            ColumnLayout {
-                                                                Layout.alignment: Qt.AlignHCenter
-                                                                spacing: 2
+                                                                    ColumnLayout {
+                                                                        Layout.alignment: Qt.AlignHCenter
+                                                                        spacing: 2
 
-                                                                Text {
-                                                                    Layout.alignment: Qt.AlignHCenter
-                                                                    text: model.status === "downloading" ? "Downloading..." : "Uploading..."
-                                                                    color: ThemeData.textPrimary
-                                                                    font.family: "Segoe UI"
-                                                                    font.pixelSize: 11
-                                                                    font.bold: true
-                                                                }
+                                                                        Text {
+                                                                            Layout.alignment: Qt.AlignHCenter
+                                                                            text: model.status === "downloading" ? "Downloading..." : "Uploading..."
+                                                                            color: ThemeData.textPrimary
+                                                                            font.family: "Segoe UI"
+                                                                            font.pixelSize: 11
+                                                                            font.bold: true
+                                                                        }
 
-                                                                Text {
-                                                                    Layout.alignment: Qt.AlignHCenter
-                                                                    property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
-                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2500000)
-                                                                    property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
-                                                                    text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
-                                                                    color: ThemeData.textSecondary
-                                                                    font.family: "Segoe UI"
-                                                                    font.pixelSize: 10
+                                                                        Text {
+                                                                            Layout.alignment: Qt.AlignHCenter
+                                                                            property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                            property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2500000)
+                                                                            property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
+                                                                            text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
+                                                                            color: ThemeData.textSecondary
+                                                                            font.family: "Segoe UI"
+                                                                            font.pixelSize: 10
+                                                                        }
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -639,105 +664,111 @@ import "UIHelpers.js" as UIHelpers
                                                     onOpenFullscreenRequested: (url, name, pos, playing) => delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(url), "video", name, pos, playing)
                                                 }
 
-                                                // Video Transfer Progress Overlay
-                                                Rectangle {
+                                                // Video Transfer Progress Overlay (Lazy Loaded)
+                                                Loader {
+                                                    id: videoTransferOverlayLoader
                                                     anchors.fill: parent
-                                                    radius: 12
-                                                    visible: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
-                                                    color: Qt.rgba(0, 0, 0, 0.82)
+                                                    active: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
                                                     z: 10
+                                                    sourceComponent: Component {
+                                                        Rectangle {
+                                                            anchors.fill: parent
+                                                            radius: 12
+                                                            color: Qt.rgba(0, 0, 0, 0.82)
 
-                                                    ColumnLayout {
-                                                        anchors.centerIn: parent
-                                                        spacing: 8
-
-                                                        Item {
-                                                            Layout.alignment: Qt.AlignHCenter
-                                                            width: 52; height: 52
-
-                                                            Canvas {
-                                                                anchors.fill: parent
-                                                                property real progressVal: Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
-                                                                onProgressValChanged: requestPaint()
-                                                                Component.onCompleted: requestPaint()
-
-                                                                onPaint: {
-                                                                    var ctx = getContext("2d");
-                                                                    ctx.reset();
-                                                                    var cx = width / 2;
-                                                                    var cy = height / 2;
-                                                                    var r = width / 2 - 4;
-
-                                                                    ctx.beginPath();
-                                                                    ctx.arc(cx, cy, r, 0, 2 * Math.PI, false);
-                                                                    ctx.lineWidth = 3.5;
-                                                                    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-                                                                    ctx.stroke();
-
-                                                                    var startAngle = -Math.PI / 2;
-                                                                    var endAngle = startAngle + (2 * Math.PI * progressVal);
-                                                                    ctx.beginPath();
-                                                                    ctx.arc(cx, cy, r, startAngle, endAngle, false);
-                                                                    ctx.lineWidth = 3.5;
-                                                                    ctx.strokeStyle = ThemeData.accentColor;
-                                                                    ctx.lineCap = "round";
-                                                                    ctx.stroke();
-                                                                }
-                                                            }
-
-                                                            Rectangle {
+                                                            ColumnLayout {
                                                                 anchors.centerIn: parent
-                                                                width: 30; height: 30
-                                                                radius: 15
-                                                                color: vidCancelMouse.containsMouse ? "#E53935" : "rgba(0, 0, 0, 0.65)"
-                                                                border.color: vidCancelMouse.containsMouse ? "#E53935" : "rgba(255, 255, 255, 0.35)"
-                                                                border.width: 1
+                                                                spacing: 8
 
-                                                                Text {
-                                                                    anchors.centerIn: parent
-                                                                    text: "✕"
-                                                                    color: "#FFFFFF"
-                                                                    font.family: "Segoe UI"
-                                                                    font.pixelSize: 11
-                                                                    font.bold: true
-                                                                }
+                                                                Item {
+                                                                    Layout.alignment: Qt.AlignHCenter
+                                                                    width: 52; height: 52
 
-                                                                MouseArea {
-                                                                    id: vidCancelMouse
-                                                                    anchors.fill: parent
-                                                                    hoverEnabled: true
-                                                                    cursorShape: Qt.PointingHandCursor
-                                                                    onClicked: {
-                                                                        if (typeof MessageService !== "undefined" && MessageService) {
-                                                                            MessageService.cancelMediaTransfer(delegateRoot.getConversationId(), model.messageId);
+                                                                    Canvas {
+                                                                        anchors.fill: parent
+                                                                        property real progressVal: Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                        onProgressValChanged: requestPaint()
+                                                                        Component.onCompleted: requestPaint()
+
+                                                                        onPaint: {
+                                                                            var ctx = getContext("2d");
+                                                                            ctx.reset();
+                                                                            var cx = width / 2;
+                                                                            var cy = height / 2;
+                                                                            var r = width / 2 - 4;
+
+                                                                            ctx.beginPath();
+                                                                            ctx.arc(cx, cy, r, 0, 2 * Math.PI, false);
+                                                                            ctx.lineWidth = 3.5;
+                                                                            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+                                                                            ctx.stroke();
+
+                                                                            var startAngle = -Math.PI / 2;
+                                                                            var endAngle = startAngle + (2 * Math.PI * progressVal);
+                                                                            ctx.beginPath();
+                                                                            ctx.arc(cx, cy, r, startAngle, endAngle, false);
+                                                                            ctx.lineWidth = 3.5;
+                                                                            ctx.strokeStyle = ThemeData.accentColor;
+                                                                            ctx.lineCap = "round";
+                                                                            ctx.stroke();
+                                                                        }
+                                                                    }
+
+                                                                    Rectangle {
+                                                                        anchors.centerIn: parent
+                                                                        width: 30; height: 30
+                                                                        radius: 15
+                                                                        color: vidCancelMouse.containsMouse ? "#E53935" : "rgba(0, 0, 0, 0.65)"
+                                                                        border.color: vidCancelMouse.containsMouse ? "#E53935" : "rgba(255, 255, 255, 0.35)"
+                                                                        border.width: 1
+
+                                                                        Text {
+                                                                            anchors.centerIn: parent
+                                                                            text: "✕"
+                                                                            color: "#FFFFFF"
+                                                                            font.family: "Segoe UI"
+                                                                            font.pixelSize: 11
+                                                                            font.bold: true
+                                                                        }
+
+                                                                        MouseArea {
+                                                                            id: vidCancelMouse
+                                                                            anchors.fill: parent
+                                                                            hoverEnabled: true
+                                                                            cursorShape: Qt.PointingHandCursor
+                                                                            onClicked: {
+                                                                                if (typeof MessageService !== "undefined" && MessageService) {
+                                                                                    MessageService.cancelMediaTransfer(delegateRoot.getConversationId(), model.messageId);
+                                                                                }
+                                                                            }
                                                                         }
                                                                     }
                                                                 }
-                                                            }
-                                                        }
 
-                                                        ColumnLayout {
-                                                            Layout.alignment: Qt.AlignHCenter
-                                                            spacing: 2
+                                                                ColumnLayout {
+                                                                    Layout.alignment: Qt.AlignHCenter
+                                                                    spacing: 2
 
-                                                            Text {
-                                                                Layout.alignment: Qt.AlignHCenter
-                                                                text: model.status === "downloading" ? "Downloading Video..." : "Uploading Video..."
-                                                                color: ThemeData.textPrimary
-                                                                font.family: "Segoe UI"
-                                                                font.pixelSize: 11
-                                                                font.bold: true
-                                                            }
+                                                                    Text {
+                                                                        Layout.alignment: Qt.AlignHCenter
+                                                                        text: model.status === "downloading" ? "Downloading Video..." : "Uploading Video..."
+                                                                        color: ThemeData.textPrimary
+                                                                        font.family: "Segoe UI"
+                                                                        font.pixelSize: 11
+                                                                        font.bold: true
+                                                                    }
 
-                                                            Text {
-                                                                Layout.alignment: Qt.AlignHCenter
-                                                                property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
-                                                                property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 5000000)
-                                                                property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
-                                                                text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
-                                                                color: ThemeData.textSecondary
-                                                                font.family: "Segoe UI"
-                                                                font.pixelSize: 10
+                                                                    Text {
+                                                                        Layout.alignment: Qt.AlignHCenter
+                                                                        property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                        property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 5000000)
+                                                                        property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
+                                                                        text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
+                                                                        color: ThemeData.textSecondary
+                                                                        font.family: "Segoe UI"
+                                                                        font.pixelSize: 10
+                                                                    }
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -810,45 +841,54 @@ import "UIHelpers.js" as UIHelpers
                                                             }
                                                         }
 
-                                                        ColumnLayout {
+                                                        // Audio Transfer Progress (Lazy Loaded)
+                                                        Loader {
+                                                            id: audioTransferProgressLoader
                                                             Layout.fillWidth: true
-                                                            spacing: 4
+                                                            active: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
+                                                            visible: active
+                                                            sourceComponent: Component {
+                                                                ColumnLayout {
+                                                                    Layout.fillWidth: true
+                                                                    spacing: 4
 
-                                                            RowLayout {
-                                                                Layout.fillWidth: true
-                                                                Text {
-                                                                    text: model.status === "downloading" ? "Downloading Audio..." : "Uploading Audio..."
-                                                                    color: ThemeData.textPrimary
-                                                                    font.family: "Segoe UI"
-                                                                    font.pixelSize: 12
-                                                                    font.bold: true
-                                                                }
-                                                                Item { Layout.fillWidth: true }
-                                                                Text {
-                                                                    property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
-                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2000000)
-                                                                    property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
-                                                                    text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
-                                                                    color: ThemeData.accentColor
-                                                                    font.family: "Segoe UI"
-                                                                    font.pixelSize: 10
-                                                                }
-                                                            }
+                                                                    RowLayout {
+                                                                        Layout.fillWidth: true
+                                                                        Text {
+                                                                            text: model.status === "downloading" ? "Downloading Audio..." : "Uploading Audio..."
+                                                                            color: ThemeData.textPrimary
+                                                                            font.family: "Segoe UI"
+                                                                            font.pixelSize: 12
+                                                                            font.bold: true
+                                                                        }
+                                                                        Item { Layout.fillWidth: true }
+                                                                        Text {
+                                                                            property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                            property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2000000)
+                                                                            property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
+                                                                            text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
+                                                                            color: ThemeData.accentColor
+                                                                            font.family: "Segoe UI"
+                                                                            font.pixelSize: 10
+                                                                        }
+                                                                    }
 
-                                                            Rectangle {
-                                                                Layout.fillWidth: true
-                                                                Layout.preferredHeight: 3
-                                                                radius: 1.5
-                                                                color: Qt.rgba(255, 255, 255, 0.1)
-                                                                clip: true
+                                                                    Rectangle {
+                                                                        Layout.fillWidth: true
+                                                                        Layout.preferredHeight: 3
+                                                                        radius: 1.5
+                                                                        color: Qt.rgba(255, 255, 255, 0.1)
+                                                                        clip: true
 
-                                                                Rectangle {
-                                                                    anchors.left: parent.left
-                                                                    anchors.top: parent.top
-                                                                    anchors.bottom: parent.bottom
-                                                                    width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
-                                                                    color: ThemeData.accentColor
-                                                                    radius: 1.5
+                                                                        Rectangle {
+                                                                            anchors.left: parent.left
+                                                                            anchors.top: parent.top
+                                                                            anchors.bottom: parent.bottom
+                                                                            width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                            color: ThemeData.accentColor
+                                                                            radius: 1.5
+                                                                        }
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -987,24 +1027,31 @@ import "UIHelpers.js" as UIHelpers
                                                     }
                                                 }
 
-                                                // Bottom progress bar when transferring
-                                                Rectangle {
+                                                // Bottom progress bar when transferring (Lazy Loaded)
+                                                Loader {
+                                                    id: fileTransferProgressLoader
                                                     anchors.left: parent.left
                                                     anchors.right: parent.right
                                                     anchors.bottom: parent.bottom
                                                     height: 3
-                                                    radius: 1.5
-                                                    color: Qt.rgba(255, 255, 255, 0.1)
-                                                    visible: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
-                                                    clip: true
+                                                    active: (model.status === "sending" || model.status === "downloading") && !delegateRoot.isFailed
+                                                    visible: active
+                                                    sourceComponent: Component {
+                                                        Rectangle {
+                                                            anchors.fill: parent
+                                                            radius: 1.5
+                                                            color: Qt.rgba(255, 255, 255, 0.1)
+                                                            clip: true
 
-                                                    Rectangle {
-                                                        anchors.left: parent.left
-                                                        anchors.top: parent.top
-                                                        anchors.bottom: parent.bottom
-                                                        width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
-                                                        color: ThemeData.accentColor
-                                                        radius: 1.5
+                                                            Rectangle {
+                                                                anchors.left: parent.left
+                                                                anchors.top: parent.top
+                                                                anchors.bottom: parent.bottom
+                                                                width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                color: ThemeData.accentColor
+                                                                radius: 1.5
+                                                            }
+                                                        }
                                                     }
                                                 }
 
@@ -1226,48 +1273,55 @@ import "UIHelpers.js" as UIHelpers
                                                             }
                                                         }
 
-                                                        // Sender Transfer Progress when accepted or sending
-                                                        ColumnLayout {
-                                                            visible: model.status === "accepted" || model.status === "sending"
+                                                        // Sender Transfer Progress when accepted or sending (Lazy Loaded)
+                                                        Loader {
+                                                            id: mediaRequestTransferLoader
                                                             Layout.fillWidth: true
-                                                            spacing: 4
+                                                            active: model.status === "accepted" || model.status === "sending"
+                                                            visible: active
+                                                            sourceComponent: Component {
+                                                                ColumnLayout {
+                                                                    Layout.fillWidth: true
+                                                                    spacing: 4
 
-                                                            RowLayout {
-                                                                Layout.fillWidth: true
-                                                                Text {
-                                                                    text: "Transmitting..."
-                                                                    color: ThemeData.textSecondary
-                                                                    font.family: "Segoe UI"
-                                                                    font.pixelSize: 10
-                                                                    font.bold: true
-                                                                }
-                                                                Item { Layout.fillWidth: true }
-                                                                Text {
-                                                                    property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
-                                                                    property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2500000)
-                                                                    property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
-                                                                    text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
-                                                                    color: ThemeData.accentColor
-                                                                    font.family: "Segoe UI"
-                                                                    font.pixelSize: 10
-                                                                    font.bold: true
-                                                                }
-                                                            }
+                                                                    RowLayout {
+                                                                        Layout.fillWidth: true
+                                                                        Text {
+                                                                            text: "Transmitting..."
+                                                                            color: ThemeData.textSecondary
+                                                                            font.family: "Segoe UI"
+                                                                            font.pixelSize: 10
+                                                                            font.bold: true
+                                                                        }
+                                                                        Item { Layout.fillWidth: true }
+                                                                        Text {
+                                                                            property real currentProg: (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05
+                                                                            property real totalBytes: (model.fileSize && model.fileSize > 0) ? model.fileSize : ((model.transferBytes && model.transferBytes > 0 && currentProg > 0) ? Math.round(model.transferBytes / currentProg) : 2500000)
+                                                                            property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
+                                                                            text: UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)"
+                                                                            color: ThemeData.accentColor
+                                                                            font.family: "Segoe UI"
+                                                                            font.pixelSize: 10
+                                                                            font.bold: true
+                                                                        }
+                                                                    }
 
-                                                            Rectangle {
-                                                                Layout.fillWidth: true
-                                                                Layout.preferredHeight: 4
-                                                                radius: 2
-                                                                color: Qt.rgba(255, 255, 255, 0.1)
-                                                                clip: true
+                                                                    Rectangle {
+                                                                        Layout.fillWidth: true
+                                                                        Layout.preferredHeight: 4
+                                                                        radius: 2
+                                                                        color: Qt.rgba(255, 255, 255, 0.1)
+                                                                        clip: true
 
-                                                                Rectangle {
-                                                                    anchors.left: parent.left
-                                                                    anchors.top: parent.top
-                                                                    anchors.bottom: parent.bottom
-                                                                    width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
-                                                                    color: ThemeData.accentColor
-                                                                    radius: 2
+                                                                        Rectangle {
+                                                                            anchors.left: parent.left
+                                                                            anchors.top: parent.top
+                                                                            anchors.bottom: parent.bottom
+                                                                            width: parent.width * Math.max(0.05, Math.min(1.0, (model.transferProgress !== undefined && !isNaN(model.transferProgress)) ? model.transferProgress : 0.05))
+                                                                            color: ThemeData.accentColor
+                                                                            radius: 2
+                                                                        }
+                                                                    }
                                                                 }
                                                             }
                                                         }

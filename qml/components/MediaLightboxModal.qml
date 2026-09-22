@@ -103,7 +103,7 @@ Rectangle {
     visible: active || opacity > 0
     opacity: active ? 1.0 : 0.0
     z: 100000
-    color: Qt.rgba(0, 0, 0, 0.96)
+    color: "#000000"
 
     Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.InOutQuad } }
 

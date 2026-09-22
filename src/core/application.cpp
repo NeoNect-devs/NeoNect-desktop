@@ -79,12 +79,6 @@ Application::Application(int &argc, char **argv) {
     setupLogging();
 
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
-#ifdef _WIN32
-    qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "none");
-    qputenv("QT_FFMPEG_ENCODING_HW_DEVICE_TYPES", "none");
-    qputenv("QT_DISABLE_HW_TEXTURES_CONVERSION", "1");
-    qputenv("QT_MEDIA_BACKEND", "ffmpeg");
-#endif
 
     m_app = std::make_unique<QGuiApplication>(argc, argv);
     m_app->setWindowIcon(QIcon(":/qt/qml/NeoNect/assets/NeoNect/icon.png"));
@@ -222,6 +216,7 @@ void Application::initializeServices() {
 
     QObject::connect(m_networkManager.get(), &NetworkManager::effectiveStatusChanged, m_networkManager.get(), broadcastPresence);
     QObject::connect(m_networkManager.get(), &NetworkManager::friendsChanged, m_networkManager.get(), broadcastPresence);
+    QObject::connect(m_networkManager.get(), &NetworkManager::displayNameChanged, m_networkManager.get(), broadcastPresence);
 
     m_audioManager = std::make_unique<AudioManager>();
     m_notificationManager = std::make_unique<Core::NotificationManager>();
@@ -238,15 +233,18 @@ void Application::initializeServices() {
     // FriendService -> NotificationManager
     QObject::connect(friendService.get(), &Services::FriendService::friendRequestReceived,
                      m_notificationManager.get(), [this](const QString &sender) {
-        m_notificationManager->showNotification(sender, "sent you a friend request!", "friend_request", sender, sender.left(1).toUpper(), 5000);
+        QString dn = m_networkManager->getDisplayName(sender);
+        m_notificationManager->showNotification(dn, "sent you a friend request!", "friend_request", sender, dn.left(1).toUpper(), 5000);
     });
     QObject::connect(friendService.get(), &Services::FriendService::friendAccepted,
                      m_notificationManager.get(), [this](const QString &sender) {
-        m_notificationManager->showNotification(sender, "accepted your friend request!", "friend_accept", sender, sender.left(1).toUpper(), 5000);
+        QString dn = m_networkManager->getDisplayName(sender);
+        m_notificationManager->showNotification(dn, "accepted your friend request!", "friend_accept", sender, dn.left(1).toUpper(), 5000);
     });
     QObject::connect(friendService.get(), &Services::FriendService::friendRejected,
                      m_notificationManager.get(), [this](const QString &sender) {
-        m_notificationManager->showNotification(sender, "declined your friend request.", "friend_reject", sender, sender.left(1).toUpper(), 5000);
+        QString dn = m_networkManager->getDisplayName(sender);
+        m_notificationManager->showNotification(dn, "declined your friend request.", "friend_reject", sender, dn.left(1).toUpper(), 5000);
     });
     QObject::connect(friendService.get(), &Services::FriendService::acceptFriendResult,
                      m_notificationManager.get(), [this](bool success, const QString &, const QString &username) {

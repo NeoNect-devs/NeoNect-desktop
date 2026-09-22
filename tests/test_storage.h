@@ -13,4 +13,6 @@ private slots:
     void testOpenConversationsPersistence();
     void testAccountScopedConversations();
     void testAccountScopedFriends();
+    void testDisplayNamePersistence();
+    void testAvatarUrlPersistence();
 };

@@ -19,6 +19,8 @@ class NetworkManager : public QObject {
     Q_PROPERTY(QString serverUrl READ serverUrl NOTIFY serverUrlChanged)
     Q_PROPERTY(QString token READ token NOTIFY tokenChanged)
     Q_PROPERTY(QString currentUsername READ currentUsername NOTIFY currentUsernameChanged)
+    Q_PROPERTY(QString displayName READ displayName WRITE setDisplayName NOTIFY displayNameChanged)
+    Q_PROPERTY(QString avatarUrl READ avatarUrl NOTIFY avatarUrlChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(bool isConnected READ isConnected NOTIFY isConnectedChanged)
     Q_PROPERTY(QStringList friends READ friends NOTIFY friendsChanged)
@@ -47,11 +49,22 @@ public:
     QString serverUrl() const;
     QString token() const;
     QString currentUsername() const;
+    QString displayName() const;
+    QString avatarUrl() const;
     bool isLoading() const { return m_isLoading; }
     bool isConnected() const;
     QStringList friends() const;
     QStringList pendingRequests() const;
     QVariantList bookmarks() const;
+
+    Q_INVOKABLE void setDisplayName(const QString &displayName);
+    Q_INVOKABLE QString getDisplayName(const QString &username) const;
+    Q_INVOKABLE void setPeerDisplayName(const QString &username, const QString &displayName);
+
+    Q_INVOKABLE bool setAvatar(const QString &filePathOrUrl);
+    Q_INVOKABLE void clearAvatar();
+    Q_INVOKABLE QString getAvatarUrl(const QString &username) const;
+    Q_INVOKABLE void setPeerAvatarUrl(const QString &username, const QString &avatarUrl);
 
     Q_INVOKABLE void setProfile(const QString &profileName);
     Q_INVOKABLE void verifyServer(const QString &address);
@@ -84,6 +97,8 @@ public:
     Q_INVOKABLE void removeFriend(const QString &username);
     Q_INVOKABLE void checkFriendsStatus();
     Q_INVOKABLE void checkUserStatus(const QString &username);
+    Q_INVOKABLE QString getFriendStatus(const QString &username) const;
+    Q_INVOKABLE QVariantMap allFriendStatuses() const;
 
     // Presence & Status Management
     QString userStatus() const { return m_userStatusPreference; }
@@ -108,6 +123,10 @@ signals:
     void serverUrlChanged();
     void tokenChanged();
     void currentUsernameChanged();
+    void displayNameChanged();
+    void peerDisplayNameUpdated(const QString &username, const QString &displayName);
+    void avatarUrlChanged();
+    void peerAvatarUpdated(const QString &username, const QString &avatarUrl);
     void isLoadingChanged();
     void isConnectedChanged();
     void friendsChanged();

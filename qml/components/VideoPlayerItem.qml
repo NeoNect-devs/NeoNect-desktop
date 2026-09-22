@@ -19,9 +19,9 @@ Rectangle {
     property bool isMuted: (typeof AudioManager !== "undefined" && AudioManager) ? AudioManager.isMuted : false
     property bool hasPlaybackError: false
     property string playbackErrorMsg: ""
+    property bool controlsLoaded: false
 
     readonly property bool isPlaying: player.playbackState === MediaPlayer.PlayingState
-    readonly property bool isControlsVisible: !videoRoot.hasPlaybackError && (!videoRoot.isPlaying || videoHoverHandler.hovered || (typeof videoVolCtrl !== "undefined" && videoVolCtrl && videoVolCtrl.expanded))
 
     signal openFullscreenRequested(string url, string name, int startPosMs, bool isPlaying)
 
@@ -73,14 +73,35 @@ Rectangle {
     height: calcHeight
 
     radius: 12
-    clip: false
+    clip: true
     color: "#111214"
-    border.color: Qt.rgba(255, 255, 255, 0.1)
+    border.color: videoHoverHandler.hovered ? Qt.rgba(10, 132, 255, 0.4) : Qt.rgba(255, 255, 255, 0.1)
     border.width: 1
 
-    // Non-conflicting hover handler covering entire video root without mouse grabbing
+    Behavior on border.color { ColorAnimation { duration: 150 } }
+
     HoverHandler {
         id: videoHoverHandler
+        onHoveredChanged: {
+            if (hovered) {
+                unloadTimer.stop();
+            } else {
+                if (!videoRoot.isPlaying && videoRoot.controlsLoaded) {
+                    unloadTimer.restart();
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: unloadTimer
+        interval: 3500
+        repeat: false
+        onTriggered: {
+            if (!videoRoot.isPlaying && !videoHoverHandler.hovered) {
+                videoRoot.controlsLoaded = false;
+            }
+        }
     }
 
     MediaPlayer {
@@ -93,6 +114,17 @@ Rectangle {
         }
         videoOutput: videoOutputItem
 
+        onPlaybackStateChanged: {
+            if (playbackState === MediaPlayer.PlayingState) {
+                videoRoot.controlsLoaded = true;
+                unloadTimer.stop();
+            } else if (playbackState === MediaPlayer.PausedState) {
+                if (!videoHoverHandler.hovered) {
+                    unloadTimer.restart();
+                }
+            }
+        }
+
         onErrorOccurred: (error, errorString) => {
             console.log("[VideoPlayerItem] Playback error:", errorString);
             videoRoot.hasPlaybackError = true;
@@ -102,20 +134,26 @@ Rectangle {
 
     Component.onCompleted: {
         if (videoRoot.videoUrl && videoRoot.videoUrl !== "") {
-            // Pre-load and pause at frame 0 to decode initial thumbnail frame
             player.pause();
         }
     }
 
     Component.onDestruction: {
+        unloadTimer.stop();
+        videoRoot.controlsLoaded = false;
         if (player.playbackState !== MediaPlayer.StoppedState) {
             player.stop();
         }
+        player.source = "";
     }
 
     onVisibleChanged: {
-        if (!visible && player.playbackState === MediaPlayer.PlayingState) {
-            player.pause();
+        if (!visible) {
+            if (player.playbackState === MediaPlayer.PlayingState) {
+                player.pause();
+            }
+            unloadTimer.stop();
+            videoRoot.controlsLoaded = false;
         }
     }
 
@@ -123,6 +161,7 @@ Rectangle {
         if (videoRoot.videoUrl && videoRoot.videoUrl !== "") {
             player.pause();
         }
+        videoRoot.controlsLoaded = false;
     }
 
     // 1. Video Canvas / Poster Background Layer
@@ -151,7 +190,7 @@ Rectangle {
         }
     }
 
-    // 2. Real Decoded Video Frame Surface (Thumbnail & Playback)
+    // 2. In-App Video Rendering Surface
     VideoOutput {
         id: videoOutputItem
         anchors.fill: parent
@@ -159,36 +198,56 @@ Rectangle {
         visible: !videoRoot.hasPlaybackError
     }
 
-    // 3. Main Surface Click Area (Toggles Play/Pause)
+    // 3. Surface Click Area (Toggles inline Play/Pause)
     MouseArea {
-        id: videoSurfaceClickArea
+        id: surfaceClickArea
         anchors.fill: parent
-        z: 1
         cursorShape: Qt.PointingHandCursor
-        enabled: !videoRoot.hasPlaybackError && !(typeof videoVolCtrl !== "undefined" && videoVolCtrl && videoVolCtrl.expanded)
         onClicked: {
-            videoRoot.hasPlaybackError = false;
             if (player.playbackState === MediaPlayer.PlayingState) {
                 player.pause();
             } else {
+                videoRoot.controlsLoaded = true;
                 player.play();
             }
         }
     }
 
-    // 4. Central Glowing Play Button (Visible only when paused)
+    // 4. Lightweight Idle Duration Badge (Only visible when controls are unloaded)
+    Rectangle {
+        visible: !videoRoot.controlsLoaded && !videoRoot.isPlaying && videoRoot.duration > 0
+        anchors.bottom: parent.bottom
+        anchors.left: parent.left
+        anchors.margins: 8
+        height: 20
+        radius: 10
+        color: Qt.rgba(0, 0, 0, 0.65)
+        implicitWidth: idleDurText.implicitWidth + 12
+
+        Text {
+            id: idleDurText
+            anchors.centerIn: parent
+            text: videoRoot.formatTime(videoRoot.duration)
+            color: "#FFFFFF"
+            font.family: "Segoe UI"
+            font.pixelSize: 10
+            font.bold: true
+        }
+    }
+
+    // 5. Central Glowing Play Button (Visible only when paused)
     Rectangle {
         id: playBtn
         z: 5
-        width: 54; height: 54
-        radius: 27
+        width: 48; height: 48
+        radius: 24
         color: playBtnMouse.containsMouse ? ThemeData.accentColor : Qt.rgba(0, 0, 0, 0.72)
         border.color: "#FFFFFF"
-        border.width: 2
+        border.width: 1.5
         anchors.centerIn: parent
         visible: opacity > 0
         opacity: (!videoRoot.isPlaying && !videoRoot.hasPlaybackError) ? 1.0 : 0.0
-        scale: playBtnMouse.containsMouse ? 1.1 : 1.0
+        scale: playBtnMouse.containsMouse ? 1.08 : 1.0
 
         Behavior on opacity { NumberAnimation { duration: 150 } }
         Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutBack } }
@@ -197,7 +256,7 @@ Rectangle {
             anchors.centerIn: parent
             anchors.horizontalCenterOffset: 2
             source: "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
-            width: 22; height: 22
+            width: 20; height: 20
             color: "#FFFFFF"
         }
 
@@ -207,152 +266,198 @@ Rectangle {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                videoRoot.hasPlaybackError = false;
-                if (player.playbackState === MediaPlayer.PlayingState) {
-                    player.pause();
-                } else {
-                    player.play();
-                }
+                videoRoot.controlsLoaded = true;
+                player.play();
             }
         }
     }
 
-    // 5. Bottom Controls Bar with Advanced Volume Controller & Fullscreen Icon
-    Rectangle {
-        id: bottomControlsBar
-        z: 20
-        anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: 38
-        color: Qt.rgba(0, 0, 0, 0.85)
-        visible: opacity > 0 && !videoRoot.hasPlaybackError
-        opacity: videoRoot.isControlsVisible ? 1.0 : 0.0
+    // 6. Dynamic Overlay Loader for Top Info Bar & Bottom Transport Bar
+    Loader {
+        id: controlsOverlayLoader
+        anchors.fill: parent
+        active: videoRoot.controlsLoaded
+        z: 10
+        sourceComponent: controlsOverlayComponent
+    }
 
-        Behavior on opacity { NumberAnimation { duration: 150 } }
+    Component {
+        id: controlsOverlayComponent
 
-        MouseArea {
+        Item {
             anchors.fill: parent
-            acceptedButtons: Qt.AllButtons
-            onPressed: (mouse) => mouse.accepted = true
-        }
 
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 8; anchors.rightMargin: 8
-            spacing: 6
+            readonly property bool isControlsVisible: !videoRoot.hasPlaybackError && (!videoRoot.isPlaying || videoHoverHandler.hovered || (typeof videoVolCtrl !== "undefined" && videoVolCtrl && videoVolCtrl.expanded))
 
-            // Play / Pause Toggle
+            // Top Info Bar (Filename & Size Badge)
             Rectangle {
-                width: 24; height: 24
-                radius: 12
-                color: smPlayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.2) : "transparent"
+                id: topInfoBar
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 28
+                color: Qt.rgba(0, 0, 0, 0.55)
+                visible: opacity > 0
+                opacity: isControlsVisible ? 1.0 : 0.0
 
-                IconImage {
-                    anchors.centerIn: parent
-                    source: videoRoot.isPlaying ? "qrc:/qt/qml/NeoNect/assets/icons/pause.svg" : "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
-                    width: 14; height: 14
-                    color: "#FFFFFF"
-                }
+                Behavior on opacity { NumberAnimation { duration: 150 } }
 
-                MouseArea {
-                    id: smPlayMouse
+                RowLayout {
                     anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (player.playbackState === MediaPlayer.PlayingState) {
-                            player.pause();
-                        } else {
-                            player.play();
+                    anchors.leftMargin: 8; anchors.rightMargin: 8
+                    spacing: 6
+
+                    Text {
+                        text: videoRoot.fileName
+                        color: "#FFFFFF"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 11
+                        font.bold: true
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        visible: videoRoot.fileSize > 0
+                        text: videoRoot.formatBytes(videoRoot.fileSize)
+                        color: "#949BA4"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 10
+                    }
+                }
+            }
+
+            // Bottom Transport Bar (Inline Controls)
+            Rectangle {
+                id: bottomBar
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 38
+                color: Qt.rgba(0, 0, 0, 0.75)
+                visible: opacity > 0
+                opacity: isControlsVisible ? 1.0 : 0.0
+
+                Behavior on opacity { NumberAnimation { duration: 150 } }
+
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8; anchors.rightMargin: 8
+                    spacing: 6
+
+                    // Play / Pause Toggle
+                    Rectangle {
+                        width: 24; height: 24
+                        radius: 12
+                        color: smPlayMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.2) : "transparent"
+
+                        IconImage {
+                            anchors.centerIn: parent
+                            source: videoRoot.isPlaying ? "qrc:/qt/qml/NeoNect/assets/icons/pause.svg" : "qrc:/qt/qml/NeoNect/assets/icons/play.svg"
+                            width: 14; height: 14
+                            color: "#FFFFFF"
+                        }
+
+                        MouseArea {
+                            id: smPlayMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (player.playbackState === MediaPlayer.PlayingState) {
+                                    player.pause();
+                                } else {
+                                    player.play();
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: videoRoot.formatTime(player.position / 1000)
+                        color: "#FFFFFF"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+
+                    // Interactive Gradient Progress Scrubber
+                    GradientSeekBar {
+                        id: videoScrubber
+                        Layout.fillWidth: true
+                        value: player.duration > 0 ? (player.position / player.duration) : 0.0
+                        duration: player.duration > 0 ? player.duration : (videoRoot.duration * 1000)
+                        onSeekMoved: (p) => {
+                            if (player.duration > 0) {
+                                player.position = p * player.duration;
+                            }
+                        }
+                        onSeekFinished: (p) => {
+                            if (player.duration > 0) {
+                                player.position = p * player.duration;
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: videoRoot.formatTime(player.duration > 0 ? (player.duration / 1000) : videoRoot.duration)
+                        color: "#FFFFFF"
+                        font.family: "Segoe UI"
+                        font.pixelSize: 10
+                        font.bold: true
+                    }
+
+                    // Volume Controller
+                    VolumeController {
+                        id: videoVolCtrl
+                        volume: videoRoot.volumeLevel
+                        isMuted: videoRoot.isMuted
+                        textColor: "#FFFFFF"
+                        accentColor: ThemeData.accentColor
+                        onVolumeChangedManually: (v) => {
+                            if (typeof AudioManager !== "undefined" && AudioManager) {
+                                AudioManager.setVolume(v);
+                            }
+                        }
+                        onMuteToggled: {
+                            if (typeof AudioManager !== "undefined" && AudioManager) {
+                                AudioManager.toggleMute();
+                            }
+                        }
+                    }
+
+                    // Fullscreen Expansion Button
+                    Rectangle {
+                        width: 26; height: 26
+                        radius: 13
+                        color: fsMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.2) : "transparent"
+
+                        IconImage {
+                            anchors.centerIn: parent
+                            source: "qrc:/qt/qml/NeoNect/assets/icons/maximize.svg"
+                            width: 14; height: 14
+                            color: "#FFFFFF"
+                        }
+
+                        MouseArea {
+                            id: fsMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                var curPos = player.position;
+                                var wasPlaying = videoRoot.isPlaying;
+                                player.pause();
+                                videoRoot.openFullscreenRequested(videoRoot.videoUrl, videoRoot.fileName, curPos, wasPlaying);
+                            }
                         }
                     }
                 }
             }
-
-            Text {
-                text: videoRoot.formatTime(player.position / 1000)
-                color: "#FFFFFF"
-                font.family: "Segoe UI"
-                font.pixelSize: 10
-                font.bold: true
-            }
-
-            // Interactive Gradient Progress Scrubber
-            GradientSeekBar {
-                id: videoScrubber
-                Layout.fillWidth: true
-                value: player.duration > 0 ? (player.position / player.duration) : 0.0
-                duration: player.duration > 0 ? player.duration : (videoRoot.duration * 1000)
-                onSeekMoved: (p) => {
-                    if (player.duration > 0) {
-                        player.position = p * player.duration;
-                    }
-                }
-                onSeekFinished: (p) => {
-                    if (player.duration > 0) {
-                        player.position = p * player.duration;
-                    }
-                }
-            }
-
-            Text {
-                text: videoRoot.formatTime(player.duration > 0 ? (player.duration / 1000) : videoRoot.duration)
-                color: "#FFFFFF"
-                font.family: "Segoe UI"
-                font.pixelSize: 10
-                font.bold: true
-            }
-
-            // Advanced 0% - 100% Volume Controller
-            VolumeController {
-                id: videoVolCtrl
-                volume: videoRoot.volumeLevel
-                isMuted: videoRoot.isMuted
-                textColor: "#FFFFFF"
-                accentColor: ThemeData.accentColor
-                onVolumeChangedManually: (v) => {
-                    if (typeof AudioManager !== "undefined" && AudioManager) {
-                        AudioManager.setVolume(v);
-                    }
-                }
-                onMuteToggled: {
-                    if (typeof AudioManager !== "undefined" && AudioManager) {
-                        AudioManager.toggleMute();
-                    }
-                }
-            }
-
-            // Fullscreen Expansion Button (SVG Icon)
-            Rectangle {
-                width: 26; height: 26
-                radius: 13
-                color: fsMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.2) : "transparent"
-
-                IconImage {
-                    anchors.centerIn: parent
-                    source: "qrc:/qt/qml/NeoNect/assets/icons/maximize.svg"
-                    width: 14; height: 14
-                    color: "#FFFFFF"
-                }
-
-                MouseArea {
-                    id: fsMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        var curPos = player.position;
-                        var wasPlaying = videoRoot.isPlaying;
-                        player.pause();
-                        videoRoot.openFullscreenRequested(videoRoot.videoUrl, videoRoot.fileName, curPos, wasPlaying);
-                    }
-                }
-            }
         }
     }
 
-    // 6. Codec / Playback Error Recovery Card
+    // 7. Codec / Playback Error Recovery Card
     Rectangle {
         anchors.fill: parent
         color: "#16171A"
@@ -426,6 +531,7 @@ Rectangle {
                             videoRoot.hasPlaybackError = false;
                             player.source = "";
                             player.source = videoRoot.videoUrl;
+                            videoRoot.controlsLoaded = true;
                             player.play();
                             if (videoRoot.messageId && typeof MessageService !== "undefined" && MessageService) {
                                 MessageService.retryMessage(videoRoot.messageId);

@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
 import NeoNect.Core 1.0
+import "../components"
 
 Rectangle {
     id: membersRoot
@@ -51,9 +52,10 @@ Rectangle {
 
         // Insert current logged in user at top of online members list
         if (NetworkManager && NetworkManager.currentUsername && NetworkManager.currentUsername !== "") {
+            var myDn = (NetworkManager.displayName && NetworkManager.displayName !== "") ? NetworkManager.displayName : NetworkManager.currentUsername;
             membersModel.append({
-                name: NetworkManager.currentUsername + " (You)",
-                role: "YOU",
+                name: myDn + " (You)",
+                role: "@" + NetworkManager.currentUsername,
                 status: "online",
                 avatarColor: "#0A84FF"
             })
@@ -206,9 +208,17 @@ Rectangle {
                             radius: 7
                             color: model.avatarColor ? model.avatarColor : "#0A84FF"
 
+                            CircularImage {
+                                id: memberAvatarImg
+                                anchors.fill: parent
+                                source: (typeof NetworkManager !== "undefined" && NetworkManager && model.name) ? NetworkManager.getAvatarUrl(model.name) : ""
+                                cornerRadius: 7
+                            }
+
                             Text {
                                 anchors.centerIn: parent
-                                text: model.name ? model.name.charAt(0) : "?"
+                                visible: !memberAvatarImg.ready
+                                text: (typeof NetworkManager !== "undefined" && NetworkManager && model.name) ? NetworkManager.getDisplayName(model.name).charAt(0).toUpperCase() : (model.name ? model.name.charAt(0).toUpperCase() : "?")
                                 color: "#FFFFFF"
                                 font.bold: true
                                 font.pixelSize: 12

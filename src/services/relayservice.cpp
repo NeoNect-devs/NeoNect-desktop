@@ -167,6 +167,31 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     packet["messageId"] = msg.id;
     packet["timestamp"] = msg.timestamp > 0 ? (msg.timestamp < 100000000000LL ? msg.timestamp * 1000LL : msg.timestamp) : QDateTime::currentMSecsSinceEpoch();
     packet["type"] = msg.type;
+    if (m_storage) {
+        QString myDisplayName = m_storage->displayName().trimmed();
+        if (!myDisplayName.isEmpty()) {
+            packet["displayName"] = myDisplayName;
+        }
+        QString myAvatarUrl = m_storage->avatarUrl().trimmed();
+        if (!myAvatarUrl.isEmpty()) {
+            QString localPath = myAvatarUrl;
+            if (localPath.startsWith("file:///")) {
+                localPath = QUrl(localPath).toLocalFile();
+            } else if (localPath.startsWith("file://")) {
+                localPath = localPath.mid(7);
+            }
+            if (QFile::exists(localPath)) {
+                QFile f(localPath);
+                if (f.open(QIODevice::ReadOnly)) {
+                    QByteArray avBytes = f.readAll();
+                    f.close();
+                    if (!avBytes.isEmpty() && avBytes.size() <= 1024 * 1024) {
+                        packet["avatarData"] = QString::fromLatin1(avBytes.toBase64());
+                    }
+                }
+            }
+        }
+    }
     packet["content"] = msg.text;
     packet["text"] = msg.text;
     
@@ -338,6 +363,7 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
     QVariantList waveform;
     QString messageUuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
     qint64 timestamp = 0;
+    QString displayName = "";
 
     auto packetDoc = QJsonDocument::fromJson(decodedBytes);
     if (!packetDoc.isNull() && packetDoc.isObject()) {
@@ -349,6 +375,7 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         if (packetObj.contains("type")) type = packetObj.value("type").toString();
         if (packetObj.contains("mediaUrl")) mediaUrl = packetObj.value("mediaUrl").toString();
         if (packetObj.contains("fileName")) fileName = packetObj.value("fileName").toString();
+        if (packetObj.contains("displayName")) displayName = packetObj.value("displayName").toString().trimmed();
         if (packetObj.contains("fileSize")) fileSize = packetObj.value("fileSize").toInteger();
         if (packetObj.contains("duration")) duration = static_cast<int>(packetObj.value("duration").toInteger());
         if (packetObj.contains("waveform")) waveform = packetObj.value("waveform").toArray().toVariantList();
@@ -386,13 +413,56 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
                 }
             }
         }
+        if (packetObj.contains("avatarData")) {
+            QString avatarBase64 = packetObj.value("avatarData").toString().trimmed();
+            if (!avatarBase64.isEmpty() && !sender.isEmpty() && sender != "Anonymous") {
+                QByteArray avBytes = QByteArray::fromBase64(avatarBase64.toLatin1());
+                if (!avBytes.isEmpty() && avBytes.size() <= 1024 * 1024) {
+                    QString profile = m_storage ? m_storage->profile() : "";
+                    QString avatarDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/avatars/peers/";
+                    QDir().mkpath(avatarDir);
+                    QString safeSender = sender.trimmed().toLower();
+                    QString peerAvatarPath = avatarDir + (profile.isEmpty() ? "" : profile + "_") + safeSender + "_avatar.jpg";
+                    QFile outFile(peerAvatarPath);
+                    if (outFile.open(QIODevice::WriteOnly)) {
+                        outFile.write(avBytes);
+                        outFile.close();
+                        QString peerUrl = QUrl::fromLocalFile(peerAvatarPath).toString();
+                        if (m_storage) {
+                            m_storage->setPeerAvatarUrl(safeSender, peerUrl);
+                        }
+                        emit peerAvatarUpdated(safeSender, peerUrl);
+                        qDebug() << "[RelayService] Successfully saved incoming peer avatar for:" << safeSender << "to:" << peerUrl;
+                    }
+                }
+            }
+        }
     }
 
     if (timestamp <= 0) {
         timestamp = QDateTime::currentMSecsSinceEpoch();
     }
 
-    qDebug() << "[RelayService] Decrypted packet from:" << sender << "type:" << type;
+    if (!displayName.isEmpty() && !sender.isEmpty() && sender != "Anonymous" && m_storage) {
+        m_storage->setPeerDisplayName(sender.toLower(), displayName);
+    }
+
+    qDebug() << "[RelayService] Decrypted packet from:" << sender << "type:" << type << "displayName:" << displayName;
+
+    if (type == "avatar_update") {
+        acknowledgeMessage(msgId);
+        return;
+    }
+
+    if (type == "profile_update" || type == "display_name_update") {
+        QString newDisplayName = textContent.trimmed();
+        if (!displayName.isEmpty()) newDisplayName = displayName;
+        if (!newDisplayName.isEmpty() && !sender.isEmpty() && sender != "Anonymous" && m_storage) {
+            m_storage->setPeerDisplayName(sender.toLower(), newDisplayName);
+        }
+        acknowledgeMessage(msgId);
+        return;
+    }
 
     if (type == "friend_request" || type == "friend_accept" || type == "friend_reject") {
         Domain::Message friendMsg;

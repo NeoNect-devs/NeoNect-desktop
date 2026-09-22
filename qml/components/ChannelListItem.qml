@@ -104,9 +104,17 @@ Rectangle {
                     border.color: itemRoot.isActive ? Qt.rgba(255, 255, 255, 0.2) : Qt.rgba(255, 255, 255, 0.08)
                     border.width: 1
 
+                    CircularImage {
+                        id: dmAvatarImg
+                        anchors.fill: parent
+                        source: itemRoot.isDM && (typeof NetworkManager !== "undefined" && NetworkManager) ? NetworkManager.getAvatarUrl(itemRoot.channelName) : ""
+                        cornerRadius: 8
+                    }
+
                     Text {
                         anchors.centerIn: parent
-                        text: itemRoot.channelName ? itemRoot.channelName.charAt(0).toUpperCase() : "@"
+                        visible: !dmAvatarImg.ready
+                        text: itemRoot.isDM && (typeof NetworkManager !== "undefined" && NetworkManager) ? NetworkManager.getDisplayName(itemRoot.channelName).charAt(0).toUpperCase() : (itemRoot.channelName ? itemRoot.channelName.charAt(0).toUpperCase() : "@")
                         color: "#FFFFFF"
                         font.bold: true
                         font.pixelSize: 15
@@ -138,7 +146,7 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignVCenter
-            text: itemRoot.isSpecialNav ? (itemRoot.specialType === "friends" ? "Friends" : "Saved Messages") : (itemRoot.isDM ? itemRoot.channelName.replace(/^\w/, c => c.toUpperCase()) : itemRoot.channelName)
+            text: itemRoot.isSpecialNav ? (itemRoot.specialType === "friends" ? "Friends" : "Saved Messages") : (itemRoot.isDM && (typeof NetworkManager !== "undefined" && NetworkManager) ? NetworkManager.getDisplayName(itemRoot.channelName) : (itemRoot.isDM ? itemRoot.channelName.replace(/^\w/, c => c.toUpperCase()) : itemRoot.channelName))
             color: itemRoot.isActive ? "#FFFFFF" : (mouseArea.containsMouse ? "#FFFFFF" : ThemeData.textSecondary)
             font.family: "Segoe UI"
             font.pixelSize: 14

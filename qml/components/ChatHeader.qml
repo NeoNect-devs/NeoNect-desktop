@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import QtQuick.Controls.impl
+import NeoNect.Core 1.0
 
 Rectangle {
     id: headerRoot
@@ -9,7 +10,31 @@ Rectangle {
     property string activeChannel: ""
     property bool membersPanelExpanded: false
     property string contactStatus: "offline"
+    property int updateRevision: 0
+
     signal toggleMembersPanel()
+
+    readonly property string contactDisplayName: {
+        headerRoot.updateRevision;
+        if (selectedServer === "dms") {
+            if (activeChannel === "saved-messages") return "Saved Messages";
+            if (typeof NetworkManager !== "undefined" && NetworkManager && activeChannel) {
+                return NetworkManager.getDisplayName(activeChannel);
+            }
+            return activeChannel ? activeChannel.replace(/^\w/, c => c.toUpperCase()) : "";
+        }
+        return activeChannel;
+    }
+
+    readonly property string contactAvatarUrl: {
+        headerRoot.updateRevision;
+        if (selectedServer === "dms" && activeChannel && activeChannel !== "saved-messages") {
+            if (typeof NetworkManager !== "undefined" && NetworkManager) {
+                return NetworkManager.getAvatarUrl(activeChannel);
+            }
+        }
+        return "";
+    }
 
     function getStatusLabel(st) {
         var s = (st || "offline").toLowerCase();
@@ -29,15 +54,25 @@ Rectangle {
 
     function updateContactStatus() {
         if (selectedServer === "dms" && activeChannel && activeChannel !== "saved-messages" && activeChannel !== "friends") {
-            headerRoot.contactStatus = "offline";
+            if (typeof NetworkManager !== "undefined" && NetworkManager && NetworkManager.getFriendStatus) {
+                headerRoot.contactStatus = NetworkManager.getFriendStatus(activeChannel.toLowerCase());
+            } else {
+                headerRoot.contactStatus = "offline";
+            }
             if (typeof NetworkManager !== "undefined" && NetworkManager) {
                 NetworkManager.checkUserStatus(activeChannel.toLowerCase());
             }
         }
     }
 
-    onActiveChannelChanged: updateContactStatus()
-    onSelectedServerChanged: updateContactStatus()
+    onActiveChannelChanged: {
+        headerRoot.updateRevision++;
+        updateContactStatus();
+    }
+    onSelectedServerChanged: {
+        headerRoot.updateRevision++;
+        updateContactStatus();
+    }
     Component.onCompleted: updateContactStatus()
 
     Connections {
@@ -47,6 +82,28 @@ Rectangle {
             if (headerRoot.selectedServer === "dms" && headerRoot.activeChannel.toLowerCase() === (username || "").toLowerCase()) {
                 headerRoot.contactStatus = status;
             }
+        }
+        function onPeerDisplayNameUpdated(username, displayName) {
+            if (headerRoot.selectedServer === "dms" && headerRoot.activeChannel.toLowerCase() === (username || "").toLowerCase()) {
+                headerRoot.updateRevision++;
+            }
+        }
+        function onDisplayNameChanged() {
+            headerRoot.updateRevision++;
+        }
+        function onPeerAvatarUpdated(username, avatarUrl) {
+            if (headerRoot.selectedServer === "dms" && headerRoot.activeChannel.toLowerCase() === (username || "").toLowerCase()) {
+                headerRoot.updateRevision++;
+            }
+        }
+        function onAvatarUrlChanged() {
+            headerRoot.updateRevision++;
+        }
+        function onOpenConversationsChanged() {
+            headerRoot.updateRevision++;
+        }
+        function onFriendsChanged() {
+            headerRoot.updateRevision++;
         }
         function onIsConnectedChanged() {
             if (NetworkManager && !NetworkManager.isConnected) {
@@ -87,25 +144,38 @@ Rectangle {
             Layout.alignment: Qt.AlignVCenter
         }
 
-        // DM Contact @ Prefix
-        Text {
-            visible: selectedServer === "dms" && activeChannel !== "saved-messages"
-            text: "@"
-            color: ThemeData.textSecondary
-            font.family: "Segoe UI"
-            font.pixelSize: 20
-            font.weight: Font.Light
+        // DM Contact Avatar (Squircle with 1:1 image & initial letter fallback)
+        Item {
+            visible: selectedServer === "dms" && activeChannel !== "saved-messages" && activeChannel !== "friends" && activeChannel !== ""
+            width: 28; height: 28
+            Layout.alignment: Qt.AlignVCenter
+
+            Rectangle {
+                anchors.fill: parent
+                radius: 7
+                color: ThemeData.accentColor
+
+                CircularImage {
+                    id: headerAvatarImg
+                    anchors.fill: parent
+                    source: headerRoot.contactAvatarUrl
+                    cornerRadius: 7
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: !headerAvatarImg.ready
+                    text: headerRoot.contactDisplayName ? headerRoot.contactDisplayName.charAt(0).toUpperCase() : (headerRoot.activeChannel ? headerRoot.activeChannel.charAt(0).toUpperCase() : "@")
+                    color: "#FFFFFF"
+                    font.bold: true
+                    font.pixelSize: 13
+                }
+            }
         }
 
         // Channel / Contact Title
         Text {
-            text: {
-                if (selectedServer === "dms") {
-                    if (activeChannel === "saved-messages") return "Saved Messages";
-                    return activeChannel.replace(/^\w/, c => c.toUpperCase());
-                }
-                return activeChannel;
-            }
+            text: headerRoot.contactDisplayName
             color: ThemeData.textPrimary
             font.family: "Segoe UI"
             font.pixelSize: 15
@@ -141,7 +211,7 @@ Rectangle {
                 if (selectedServer === "dms") {
                     if (activeChannel === "saved-messages") return "Your Personal Cloud Storage & Notes";
                     var label = headerRoot.getStatusLabel(headerRoot.contactStatus);
-                    return label + " • NeoNect Zero-Knowledge E2EE Direct Messages";
+                    return "@" + activeChannel + " • " + label + " • NeoNect Zero-Knowledge E2EE";
                 }
                 return "Secure Workspace Channel";
             }

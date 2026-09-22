@@ -32,7 +32,13 @@ int main(int argc, char *argv[]) {
     }
     {
         TestStorage ts;
-        int res = QTest::qExec(&ts);
+        int res = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "-o" << "storage_log.txt,txt");
+        if (res != 0) {
+            QFile f("storage_log.txt");
+            if (f.open(QIODevice::ReadOnly)) {
+                std::cout << f.readAll().toStdString() << std::endl;
+            }
+        }
         std::cout << "[TestStorage Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
@@ -178,7 +184,27 @@ int main(int argc, char *argv[]) {
         int r21 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRealtimeChatPresenceExchange");
         std::cout << "    Result: " << (r21 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20 | r21);
+        std::cout << "--> Testing testDisplayNameResolutionAndSync..." << std::endl;
+        int r22 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testDisplayNameResolutionAndSync" << "-o" << "dn_log.txt,txt");
+        if (r22 != 0) {
+            QFile f("dn_log.txt");
+            if (f.open(QIODevice::ReadOnly)) {
+                std::cout << f.readAll().toStdString() << std::endl;
+            }
+        }
+        std::cout << "    Result: " << (r22 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        std::cout << "--> Testing testAvatarProcessingAndPeerSync..." << std::endl;
+        int r23 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testAvatarProcessingAndPeerSync" << "-o" << "av_log.txt,txt");
+        if (r23 != 0) {
+            QFile f("av_log.txt");
+            if (f.open(QIODevice::ReadOnly)) {
+                std::cout << f.readAll().toStdString() << std::endl;
+            }
+        }
+        std::cout << "    Result: " << (r23 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20 | r21 | r22 | r23);
     }
 
     {

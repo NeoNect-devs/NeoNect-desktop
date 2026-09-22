@@ -41,9 +41,20 @@ public:
     virtual void addBookmark(const QVariantMap &bookmark) = 0;
     virtual void updateBookmark(const QVariantMap &bookmark) = 0;
     virtual void removeBookmark(const QString &id) = 0;
-
     virtual QVariantList openConversations() const = 0;
     virtual void setOpenConversations(const QVariantList &conversations) = 0;
+
+    virtual QString displayName() const = 0;
+    virtual void setDisplayName(const QString &displayName) = 0;
+
+    virtual QString peerDisplayName(const QString &username) const = 0;
+    virtual void setPeerDisplayName(const QString &username, const QString &displayName) = 0;
+
+    virtual QString avatarUrl() const = 0;
+    virtual void setAvatarUrl(const QString &url) = 0;
+
+    virtual QString peerAvatarUrl(const QString &username) const = 0;
+    virtual void setPeerAvatarUrl(const QString &username, const QString &url) = 0;
 
     virtual void clearSession() = 0;
 };

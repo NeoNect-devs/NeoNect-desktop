@@ -360,41 +360,18 @@ Rectangle {
                 }
             }
 
-            // Sticker Button
+            // Emoji / Sticker Picker Toggle Button
             Rectangle {
                 width: 32; height: 32
                 radius: 6
-                color: inputRoot.showStickerPicker ? Qt.rgba(88, 101, 242, 0.3) : (stickerMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent")
-                Layout.alignment: Qt.AlignBottom
-
-                IconImage {
-                    anchors.centerIn: parent
-                    source: "qrc:/qt/qml/NeoNect/assets/icons/sticker.svg"
-                    width: 20; height: 20
-                    color: inputRoot.showStickerPicker ? ThemeData.accentColor : (stickerMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary)
-                }
-
-                MouseArea {
-                    id: stickerMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: inputRoot.showStickerPicker = !inputRoot.showStickerPicker
-                }
-            }
-
-            // Emoji / Smile Button
-            Rectangle {
-                width: 32; height: 32
-                radius: 6
-                color: emojiMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
+                color: inputRoot.showStickerPicker ? Qt.rgba(88, 101, 242, 0.3) : (emojiMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent")
                 Layout.alignment: Qt.AlignBottom
 
                 IconImage {
                     anchors.centerIn: parent
                     source: "qrc:/qt/qml/NeoNect/assets/icons/smile.svg"
                     width: 20; height: 20
-                    color: emojiMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary
+                    color: inputRoot.showStickerPicker ? ThemeData.accentColor : (emojiMouse.containsMouse ? ThemeData.textPrimary : ThemeData.textSecondary)
                 }
 
                 MouseArea {
@@ -403,7 +380,7 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: {
-                        inputRoot.showStickerPicker = true;
+                        inputRoot.showStickerPicker = !inputRoot.showStickerPicker;
                     }
                 }
             }
@@ -487,26 +464,29 @@ Rectangle {
         }
     }
 
-    // Floating Telegram-style Sticker Picker Panel
-    StickerPickerPanel {
-        id: stickerPicker
+    // Lazy Loader for Sticker & Emoji Picker Panel (Instantiated on-demand only when opened)
+    Loader {
+        id: stickerPickerLoader
+        active: inputRoot.showStickerPicker
         anchors.bottom: inputRoot.top
         anchors.right: inputRoot.right
         anchors.bottomMargin: 8
-        visible: inputRoot.showStickerPicker
         z: 99999
+        sourceComponent: Component {
+            StickerPickerPanel {
+                onStickerSelected: function(url, pack, name) {
+                    inputRoot.showStickerPicker = false;
+                    inputRoot.stickerSent(url, pack, name);
+                }
 
-        onStickerSelected: function(url, pack, name) {
-            inputRoot.showStickerPicker = false;
-            inputRoot.stickerSent(url, pack, name);
-        }
+                onEmojiSelected: function(emoji) {
+                    inputArea.insert(inputArea.cursorPosition, emoji);
+                }
 
-        onEmojiSelected: function(emoji) {
-            inputArea.insert(inputArea.cursorPosition, emoji);
-        }
-
-        onCloseRequested: {
-            inputRoot.showStickerPicker = false;
+                onCloseRequested: {
+                    inputRoot.showStickerPicker = false;
+                }
+            }
         }
     }
 
@@ -523,24 +503,6 @@ Rectangle {
         ]
         onAccepted: {
             inputRoot.handleSelectedFileUrl(selectedFile.toString());
-        }
-    }
-
-    // Drag & Drop Area on Input Box
-    DropArea {
-        id: inputDropArea
-        anchors.fill: parent
-        keys: ["text/uri-list"]
-        onEntered: (drag) => {
-            if (drag.hasUrls) {
-                drag.acceptProposedAction();
-            }
-        }
-        onDropped: (drop) => {
-            if (drop.hasUrls && drop.urls.length > 0) {
-                inputRoot.handleSelectedFileUrl(drop.urls[0].toString());
-                drop.acceptProposedAction();
-            }
         }
     }
 }

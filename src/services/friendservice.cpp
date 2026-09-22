@@ -79,6 +79,22 @@ void FriendService::setPeerStatus(const QString &username, const QString &status
     emit friendStatusUpdated(target, st);
 }
 
+QString FriendService::getPeerStatus(const QString &username) const {
+    QString target = username.trimmed().toLower();
+    if (target.isEmpty()) return QStringLiteral("offline");
+    std::lock_guard<std::mutex> lock(m_presenceMutex);
+    return m_peerStatuses.value(target, QStringLiteral("offline"));
+}
+
+QVariantMap FriendService::allPeerStatuses() const {
+    std::lock_guard<std::mutex> lock(m_presenceMutex);
+    QVariantMap map;
+    for (auto it = m_peerStatuses.begin(); it != m_peerStatuses.end(); ++it) {
+        map.insert(it.key(), it.value());
+    }
+    return map;
+}
+
 void FriendService::updateLastSeen(const QString &username) {
     QString target = username.trimmed().toLower();
     if (target.isEmpty()) return;

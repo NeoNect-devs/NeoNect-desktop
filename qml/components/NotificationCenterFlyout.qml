@@ -287,10 +287,18 @@ Popup {
                                 border.color: Qt.rgba(255, 255, 255, 0.15)
                                 border.width: 1
 
+                                CircularImage {
+                                    id: flyoutAvatarImg
+                                    anchors.fill: parent
+                                    source: (typeof NetworkManager !== "undefined" && NetworkManager && modelData.channel && (!modelData.type || modelData.type === "message")) ? NetworkManager.getAvatarUrl(modelData.channel) : ""
+                                    cornerRadius: 17
+                                }
+
                                 Text {
-                                    visible: !modelData.type || modelData.type === "message"
+                                    visible: !flyoutAvatarImg.ready && (!modelData.type || modelData.type === "message")
                                     anchors.centerIn: parent
                                     text: {
+                                        if (modelData.channel && typeof NetworkManager !== "undefined" && NetworkManager && (!modelData.type || modelData.type === "message")) return NetworkManager.getDisplayName(modelData.channel).charAt(0).toUpperCase();
                                         if (modelData.avatar && modelData.avatar.length > 0) return modelData.avatar.charAt(0).toUpperCase();
                                         if (modelData.title && modelData.title.length > 0) return modelData.title.charAt(0).toUpperCase();
                                         return "@";
@@ -302,7 +310,7 @@ Popup {
                                 }
 
                                 IconImage {
-                                    visible: modelData.type && modelData.type !== "message"
+                                    visible: !flyoutAvatarImg.ready && modelData.type && modelData.type !== "message"
                                     anchors.centerIn: parent
                                     source: {
                                         if (modelData.type === "security") return "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg";
@@ -340,7 +348,7 @@ Popup {
                                 spacing: 6
 
                                 Text {
-                                    text: modelData.title || "NeoNect"
+                                    text: (modelData.channel && typeof NetworkManager !== "undefined" && NetworkManager && (!modelData.type || modelData.type === "message")) ? NetworkManager.getDisplayName(modelData.channel) : (modelData.title || "NeoNect")
                                     color: ThemeData.textPrimary
                                     font.family: "Segoe UI"
                                     font.bold: true
