@@ -58,16 +58,20 @@ jobs:
           }
           echo "OPENSSL_ROOT_DIR=$FoundDir" >> $env:GITHUB_ENV
 
-      - name: Install Qt 6 & MinGW Toolchain
+      - name: Setup MSVC 2022 Developer Environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Qt 6 (MSVC 2022)
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.0'
           host: 'windows'
           target: 'desktop'
-          arch: 'win64_mingw'
-          tools: 'tools_mingw qt.tools.win64_mingw1310'
+          arch: 'win64_msvc2022_64'
 
-      - name: Setup Ninja & GCC (MinGW)
+      - name: Setup Ninja
         uses: seanmiddleditch/gha-setup-ninja@master
 
       - name: Set Release Version Env
@@ -115,7 +119,7 @@ jobs:
 
       - name: Package Windows Artifacts
         run: |
-          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;C:\mingw64\bin;$env:PATH"
+          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;$env:PATH"
           powershell -ExecutionPolicy Bypass -File scripts/package_windows.ps1 -BuildDir build -Config Release -QtDir "${{ env.QT_ROOT_DIR }}" -OutputDir dist
 
       - name: Upload Windows Artifact
