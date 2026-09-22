@@ -235,6 +235,13 @@
                     btnFullscreen.textContent = "⛶ Fullscreen";
                 }
             };
+            document.addEventListener("fullscreenchange", () => {
+                if (!document.fullscreenElement) {
+                    btnFullscreen.textContent = "⛶ Fullscreen";
+                }
+            });
+        }
+
         [btnIn, btnOut, btnReset, btnFullscreen].forEach((btn) => {
             if (btn) {
                 btn.addEventListener("keydown", (e) => {
