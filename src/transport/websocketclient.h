@@ -14,6 +14,15 @@
  * - <b>State Machine Pattern</b>: Tracks connection progression through `WebSocketState`.
  * - <b>Observer Pattern</b>: Emits signals on frame arrival, state changes, and socket errors.
  * - <b>Protocol Engine / Adapter</b>: Adapts low-level TCP/SSL byte streams into discrete WebSocket frames.
+ *
+ * @par RFC 6455 Protocol Constraints & Invariants:
+ * - <b>Client Masking</b>: All frames sent from client to server MUST have the MASK bit set (1)
+ *   and provide a 4-byte pseudo-random masking key generated via `QRandomGenerator`.
+ * - <b>Inbound Validation</b>: Server-to-client frames MUST NOT be masked.
+ * - <b>Control Frames</b>: Ping (0x9), Pong (0xA), and Close (0x8) frames MUST NOT exceed 125 bytes payload length.
+ * - <b>Reconnection Backoff Bounds</b>: Backoff delay starts at 1,000 ms, doubles each retry ($2^n \times 1000$),
+ *   and is capped at a maximum ceiling of 30,000 ms (30 seconds).
+ * - <b>State Guard</b>: Outgoing frames can only be sent when state is `WebSocketState::Connected`.
  */
 
 #pragma once
@@ -32,6 +41,10 @@ namespace Transport {
 /**
  * @enum WebSocketState
  * @brief Represents the lifecycle states of the RFC 6455 WebSocket client.
+ *
+ * @par State Machine Invariant:
+ * State transitions must follow the valid directed DAG:
+ * `Disconnected -> Connecting -> Handshaking -> Connected -> Closing -> Disconnected`.
  */
 enum class WebSocketState {
     Disconnected, /**< Socket is closed and inactive. */
@@ -44,6 +57,11 @@ enum class WebSocketState {
 /**
  * @class WebSocketClient
  * @brief Real-time bidirectional streaming client for relay push notifications and signaling.
+ *
+ * @par Operational Bounds:
+ * - Maximum frame payload size: 65,536 bytes (64 KB).
+ * - Maximum control frame size: 125 bytes.
+ * - Maximum reconnection backoff: 30,000 ms.
  */
 class WebSocketClient : public QObject {
     Q_OBJECT
@@ -56,6 +74,7 @@ public:
 
     /**
      * @brief Destructor. Closes active socket and stops reconnection timers.
+     * @post Underlying socket is disconnected, SSL session closed, and timers terminated.
      */
     ~WebSocketClient() override;
 
@@ -64,11 +83,16 @@ public:
      * @param serverUrl Server base address (e.g. `"http://localhost:8080"` or `"wss://relay.neonect.chat"`).
      * @param deviceId Client device UUID sent in headers/query.
      * @param token Authentication bearer token.
+     * @pre `serverUrl` must be non-empty and parseable as a valid QUrl.
+     * @pre `deviceId` must be non-empty.
+     * @post State transitions to `WebSocketState::Connecting`.
      */
     void open(const QString &serverUrl, const QString &deviceId, const QString &token);
 
     /**
      * @brief Closes the WebSocket connection gracefully using close frame.
+     * @post State transitions to `WebSocketState::Closing` and subsequently `Disconnected`.
+     * @post Automatic reconnection is suppressed.
      */
     void close();
 
@@ -80,28 +104,37 @@ public:
 
     /**
      * @brief Retrieves the current state machine state.
+     * @return Current `WebSocketState`.
      */
     WebSocketState state() const { return m_state; }
 
     /**
      * @brief Retrieves the registered device ID.
+     * @return Device UUID string.
      */
     QString deviceId() const { return m_deviceId; }
 
     /**
      * @brief Retrieves the session token used for authentication.
+     * @return Authentication token.
      */
     QString token() const { return m_token; }
 
     /**
      * @brief Sends a text frame (opcode 0x1) masked according to RFC 6455.
      * @param text UTF-8 string payload.
+     * @pre Client state must be `WebSocketState::Connected`.
+     * @pre Byte size of `text.toUtf8()` must be <= 65,536 bytes (64 KB).
+     * @post 4-byte mask is generated and XOR-applied; frame is queued to socket output buffer.
      */
     void sendTextMessage(const QString &text);
 
     /**
      * @brief Sends a ping control frame (opcode 0x9) for keepalive heartbeat.
      * @param data Optional heartbeat payload.
+     * @pre `data.size() <= 125` bytes (RFC 6455 control frame payload limit).
+     * @pre State must be `WebSocketState::Connected`.
+     * @post Ping frame is transmitted with mask bit set.
      */
     void sendPing(const QByteArray &data = QByteArray());
 

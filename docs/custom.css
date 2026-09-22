@@ -1,12 +1,42 @@
-/* Custom Doxygen styling for NeoNect Desktop Documentation */
+/* Custom Doxygen Modern Styling for NeoNect Desktop Documentation */
 
+:root {
+    --primary-color: #2563eb;
+    --primary-dark-color: #1d4ed8;
+    --primary-light-color: #60a5fa;
+    --on-primary-color: #ffffff;
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-family-monospace: "Cascadia Code", "Fira Code", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --border-radius-large: 10px;
+    --border-radius-medium: 6px;
+    --border-radius-small: 4px;
+}
+
+html.dark-mode {
+    --primary-color: #38bdf8;
+    --primary-dark-color: #0284c7;
+    --primary-light-color: #7dd3fc;
+    --page-background-color: #0d1117;
+    --page-foreground-color: #e6edf3;
+    --page-secondary-foreground-color: #8b949e;
+    --side-nav-background: #161b22;
+    --header-background: #161b22;
+    --header-foreground: #e6edf3;
+    --separator-color: #30363d;
+    --blockquote-background: #161b22;
+    --blockquote-foreground: #8b949e;
+    --tablehead-background: #161b22;
+    --code-background: #161b22;
+}
+
+/* Header & Logo Constraints */
 #projectlogo {
     padding: 8px 16px 8px 12px;
     vertical-align: middle;
 }
 
 #projectlogo img {
-    max-height: 48px;
+    max-height: 44px;
     max-width: 140px;
     height: auto;
     width: auto;
@@ -16,41 +46,75 @@
 }
 
 #titlearea {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    background-color: #1a1d24;
-    padding: 2px 0;
+    border-bottom: 1px solid var(--separator-color);
+    padding: 4px 0;
 }
 
 #projectname {
-    font-size: 130%;
+    font-size: 135%;
     font-weight: 700;
     letter-spacing: -0.02em;
 }
 
 #projectbrief {
-    font-size: 85%;
-    opacity: 0.75;
+    font-size: 88%;
+    opacity: 0.85;
     margin-top: 2px;
 }
 
-/* Constrain any images embedded in document body */
+/* Constrain embedded images */
 .contents img {
     max-width: 100%;
     height: auto;
+    border-radius: 6px;
 }
 
-/* Graphviz diagram container styling */
+/* Graphviz Interactive Diagram Container */
 div.dotgraph {
     text-align: center;
-    margin: 24px 0;
+    margin: 28px 0;
     overflow-x: auto;
-    background: #181a1f;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 8px;
-    padding: 16px;
+    background: rgba(125, 125, 125, 0.05);
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-large);
+    padding: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 div.dotgraph svg {
     max-width: 100%;
     height: auto;
+}
+
+/* Enhanced Code Blocks & Preformatted Text */
+div.fragment {
+    border-radius: var(--border-radius-medium);
+    border: 1px solid var(--separator-color);
+    font-size: 0.9em;
+}
+
+/* Badges for Preconditions, Postconditions, Invariants */
+dl.section.pre, dl.section.post, dl.section.invariant {
+    margin: 14px 0;
+    padding: 10px 14px;
+    border-radius: var(--border-radius-medium);
+    border-left: 4px solid var(--primary-color);
+    background: rgba(37, 99, 235, 0.06);
+}
+
+dl.section.pre dt, dl.section.post dt, dl.section.invariant dt {
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+}
+
+dl.section.warning dt {
+    color: #eab308;
+}
+
+dl.section.note dt {
+    color: #3b82f6;
 }

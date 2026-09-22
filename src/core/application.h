@@ -15,6 +15,16 @@
  * - <b>Composition Root Pattern</b>: The single location in the codebase where all service dependencies and infrastructure repositories are instantiated and wired together.
  * - <b>Event Filter / Decorator Pattern</b>: Installs a global GUI event filter (`m_activityFilter`) to intercept user input and report presence activity.
  * - <b>RAII Lifetime Management</b>: Uses `std::unique_ptr` and `std::shared_ptr` to ensure deterministic destruction of threads and network sockets.
+ *
+ * @par Lifecycle & Concurrency Invariants:
+ * - <b>Main Thread Exclusivity</b>: Must be constructed, initialized, and executed on the primary process thread (GUI thread).
+ *   Qt GUI objects and `QQmlApplicationEngine` cannot be accessed or migrated to worker threads.
+ * - <b>Single Instance Guarantee</b>: Only one `Application` instance may exist per process. Copy and move operations are deleted.
+ * - <b>Deterministic Teardown Sequence</b>: Upon application exit, QML visual trees are destroyed first,
+ *   followed by high-level business services, then background transport and storage worker threads, and finally
+ *   cryptographic resources, ensuring zero resource leakage or race conditions during exit.
+ * - <b>Fail-Safe Bootstrap</b>: If `Main.qml` fails to compile or instantiate, `run()` immediately terminates with exit code -1
+ *   without starting the event loop.
  */
 
 #pragma once
@@ -41,11 +51,9 @@ namespace Services { class RelayService; }
  * @class Application
  * @brief Application bootstrap and lifecycle controller acting as the Composition Root.
  *
- * @details
- * The `Application` class owns the lifecycle of the entire client process. It instantiates
- * infrastructure components (transport, crypto, persistent repositories), business services
- * (auth, friends, devices, messages, relay), and QML facades (NetworkManager, CryptoManager,
- * AudioManager, NotificationManager), exposing them as contextual singletons to the QML engine.
+ * @par Architectural Constraints:
+ * - Composition wiring must follow strict DAG: Infrastructure -> Repositories -> Services -> UI Facades.
+ * - No service layer component may depend directly on QML or UI types.
  */
 class Application {
 public:
@@ -53,11 +61,15 @@ public:
      * @brief Constructs the application bootstrap controller.
      * @param argc Reference to command-line argument count.
      * @param argv Pointer to command-line argument strings.
+     * @pre `argc > 0 && argv != nullptr`.
+     * @pre Must be called from the process entry point (`main()`) on the primary thread.
+     * @post Underlying `QGuiApplication` instance is created and DPI scaling policies configured.
      */
     explicit Application(int &argc, char **argv);
 
     /**
      * @brief Destructor. Ensures graceful teardown of worker threads, network sockets, and database connections.
+     * @post Subsystems are unwound in reverse order of initialization.
      */
     ~Application();
 
@@ -69,7 +81,9 @@ public:
 
     /**
      * @brief Executes application bootstrap, initializes services, loads QML, and runs the Qt event loop.
-     * @return Process exit code returned by `QGuiApplication::exec()`.
+     * @return Process exit code returned by `QGuiApplication::exec()` (0 on success, -1 on startup failure).
+     * @pre Subsystems must not have been previously initialized in the same process.
+     * @post Blocks until the user closes the application or `QCoreApplication::exit()` is triggered.
      */
     int run();
 
@@ -81,22 +95,27 @@ private:
 
     /**
      * @brief Parses CLI options (e.g. `--profile`, `--mock`, `--server`, `--dev`).
+     * @post Configures `m_profile` and sets active operational mode flags.
      */
     void parseCommandLine();
 
     /**
      * @brief Composition Root wiring: instantiates repositories, crypto, transport, services, and managers.
+     * @post All shared instances (`m_cryptoService`, `m_transport`, `m_storage`, `m_messageRepo`, `m_relayService`)
+     *       are valid and interconnected.
      */
     void initializeServices();
 
     /**
      * @brief Registers custom C++ models and facades with the QML type system.
+     * @post QML singletons and types (`ChatMessageModel`, `ThemeData`, `NetworkManager`, `AudioManager`)
+     *       are registered in the `"NeoNect"` QML namespace.
      */
     void registerQmlTypes();
 
     /**
      * @brief Loads `Main.qml` into the QQmlApplicationEngine and connects root window signals.
-     * @return True if QML root objects were successfully instantiated.
+     * @return True if QML root objects were successfully instantiated; false on syntax or component error.
      */
     bool loadMainUi();
 
@@ -104,6 +123,8 @@ private:
      * @brief Resolves the user-specific SQLite database file path in AppData/Local.
      * @param username Active profile username.
      * @return Absolute file path to user SQLite database.
+     * @pre `username` must not contain path traversal characters.
+     * @post Target directory is verified to exist on disk.
      */
     QString getUserDatabasePath(const QString &username) const;
 

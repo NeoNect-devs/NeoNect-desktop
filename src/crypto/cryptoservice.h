@@ -47,12 +47,21 @@ public:
     /**
      * @brief Stores the master encryption key securely using exclusive lock.
      * @param key 32-byte master key.
+     *
+     * @pre `key.size() == 32`
+     * @post Acquires exclusive lock (`std::unique_lock<std::shared_mutex>`). Replaces @ref m_masterKey and zeroizes previous key.
+     * @par Thread-Safety Constraints:
+     * - Blocks all concurrent readers and writers until the key update finishes.
      */
     void setMasterKey(const QByteArray &key) override;
 
     /**
      * @brief Retrieves a copy of the current master key under shared lock.
      * @return 32-byte key copy.
+     *
+     * @post Acquires non-blocking shared lock (`std::shared_lock<std::shared_mutex>`).
+     * @par Concurrency Guarantee:
+     * - Safe for simultaneous invocation by multiple concurrent reader threads.
      */
     QByteArray getMasterKey() const override;
 
@@ -61,6 +70,11 @@ public:
      * @param passphrase Password or secret passphrase string.
      * @param salt Optional cryptographic salt (defaults to application salt if empty).
      * @return True if derivation succeeded, false otherwise.
+     *
+     * @pre `!passphrase.isEmpty()`
+     * @post On success, acquires exclusive lock and securely assigns derived 32-byte key.
+     * @par Performance Constraint:
+     * - PBKDF2 executes 100,000 iterations of HMAC-SHA256; may take 10-30ms of CPU time.
      */
     bool deriveKeyFromPassphrase(const QString &passphrase, const QByteArray &salt = QByteArray()) override;
 
@@ -69,6 +83,12 @@ public:
      * @param plainData Plaintext buffer to encrypt.
      * @param keyOverride Optional custom key to use instead of master key.
      * @return EncryptedPayload with ciphertext, IV, and 16-byte authentication tag.
+     *
+     * @pre If keyOverride is empty, master key must be set.
+     * @post Employs RAII wrapper `EvpCipherCtxPtr` guaranteeing context cleanup on exception or return.
+     * @par Concurrency & Performance Constraints:
+     * - Acquires shared lock during cipher execution if reading master key.
+     * - Pure function: no mutable state modified.
      */
     EncryptedPayload encryptAesGcm(const QByteArray &plainData, const QByteArray &keyOverride = QByteArray()) override;
 
@@ -78,6 +98,10 @@ public:
      * @param nonce 12-byte initialization vector.
      * @param keyOverride Optional custom key to use instead of master key.
      * @return Decrypted plaintext, or empty byte array if tag verification fails.
+     *
+     * @pre `nonce.size() == 12`
+     * @par Failure Mode:
+     * - Returns empty byte array if MAC verification fails.
      */
     QByteArray decryptAesGcm(const QByteArray &cipherWithTag, const QByteArray &nonce, const QByteArray &keyOverride = QByteArray()) override;
 
@@ -86,6 +110,8 @@ public:
      * @param envelope Serialized byte stream (IV + Tag + Ciphertext).
      * @param keyOverride Optional custom key to use instead of master key.
      * @return Decrypted plaintext, or empty byte array on corruption/authentication failure.
+     *
+     * @pre `envelope.size() >= 28`
      */
     QByteArray decryptAesGcmEnvelope(const QByteArray &envelope, const QByteArray &keyOverride = QByteArray()) override;
 
@@ -93,6 +119,8 @@ public:
      * @brief Generates cryptographically strong random bytes via `RAND_bytes`.
      * @param count Desired byte count.
      * @return Byte array containing high-entropy random bytes.
+     *
+     * @pre `count > 0`
      */
     QByteArray generateRandomBytes(std::size_t count) override;
 

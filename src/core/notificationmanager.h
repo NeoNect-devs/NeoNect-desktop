@@ -13,6 +13,17 @@
  * - <b>Mediator / Notification Manager</b>: Centralizes OS and in-app toast display and unread telemetry.
  * - <b>Observer / Hook Pattern</b>: Subscribes to `MessageService` signals via `setupMessageServiceHook`.
  * - <b>Thread-Safe Monitor</b>: Mutex synchronization protects active notifications list across threads.
+ *
+ * @par Notification Constraints & Behavioral Invariants:
+ * - <b>Do-Not-Disturb (DND) Invariant</b>: When `dndEnabled == true`, both audio chimes and visual toast popups
+ *   are strictly suppressed. Unread message counters continue incrementing in the background.
+ * - <b>Maximum Active Toasts Bound</b>: Maximum concurrent visible toast notifications is bounded to 5.
+ *   Older notifications are automatically displaced when newer high-priority toasts arrive.
+ * - <b>Toast Display Duration</b>: Auto-dismiss duration is bounded to $[1000, 30000]$ ms (defaults to 4500 ms).
+ * - <b>Privacy Preview Constraint</b>: When `previewEnabled == false`, message body text is obfuscated
+ *   with generic placeholder text ("New Message Received") to prevent shoulder surfing.
+ * - <b>Screen Corner Invariant</b>: Must be one of `{"top-left", "top-right", "bottom-left", "bottom-right"}`.
+ * - <b>Thread Safety</b>: Access to the active notifications queue is guarded by `m_mutex`.
  */
 
 #pragma once
@@ -31,6 +42,12 @@ namespace Core {
 /**
  * @class NotificationManager
  * @brief Manages desktop notification toasts, sound chimes, badge counters, and overlay geometry.
+ *
+ * @par Operational Bounds:
+ * - Max concurrent visible toasts: 5.
+ * - Auto-dismiss timeout: [1000, 30000] ms.
+ * - Max title length: 128 characters.
+ * - Max body preview length: 512 characters.
  */
 class NotificationManager : public QObject {
     Q_OBJECT
@@ -100,8 +117,10 @@ public:
      * @param type Notification category (`"message"`, `"friend"`, `"call"`, `"system"`).
      * @param channel Optional conversation channel identifier.
      * @param avatar Optional sender avatar URL or icon path.
-     * @param durationMs Auto-dismiss duration in milliseconds.
+     * @param durationMs Auto-dismiss duration in milliseconds (clamped to $[1000, 30000]$).
      * @param requestId Optional action request ID for interactive toasts.
+     * @pre If `dndEnabled() == true` or `notificationsEnabled() == false`, toast display is suppressed.
+     * @post Active notification is pushed onto stack, capped at max 5 elements.
      */
     Q_INVOKABLE void showNotification(const QString &title,
                                      const QString &body,
@@ -118,6 +137,7 @@ public:
      * @param channel Conversation channel ID.
      * @param avatar Sender avatar URL.
      * @param messageType Content discriminator tag (`"text"`, `"voice"`, `"file"`).
+     * @pre If `previewEnabled() == false`, `text` content is sanitized before presentation.
      */
     Q_INVOKABLE void showMessageNotification(const QString &sender,
                                             const QString &text,
@@ -128,6 +148,8 @@ public:
     /**
      * @brief Dismisses an active notification toast by UUID.
      * @param id Notification UUID.
+     * @pre `id` must be non-empty.
+     * @post If found, notification is removed from `m_activeNotifications` and dismissed signal emitted.
      */
     Q_INVOKABLE void dismissNotification(const QString &id);
 
@@ -140,41 +162,49 @@ public:
 
     /**
      * @brief Clears and dismisses all active notification toasts.
+     * @post `activeNotifications().isEmpty() == true`.
      */
     Q_INVOKABLE void clearAll();
 
     /**
      * @brief Plays the configured incoming message notification chime sound.
+     * @pre Suppressed if `soundEnabled() == false` or `dndEnabled() == true`.
      */
     Q_INVOKABLE void playNotificationSound();
 
     /**
      * @brief Enables or disables desktop notification popups.
      * @param enabled Active flag.
+     * @post Setting persisted to QSettings.
      */
     Q_INVOKABLE void setNotificationsEnabled(bool enabled);
 
     /**
      * @brief Enables or disables audio alert sounds.
      * @param enabled Sound flag.
+     * @post Setting persisted to QSettings.
      */
     Q_INVOKABLE void setSoundEnabled(bool enabled);
 
     /**
      * @brief Enables or disables text previews in notification toasts.
      * @param enabled Preview flag.
+     * @post Setting persisted to QSettings.
      */
     Q_INVOKABLE void setPreviewEnabled(bool enabled);
 
     /**
      * @brief Enables or disables Do-Not-Disturb (DND) silent mode.
      * @param enabled DND flag.
+     * @post Setting persisted to QSettings.
      */
     Q_INVOKABLE void setDndEnabled(bool enabled);
 
     /**
      * @brief Configures desktop screen corner anchor for notifications.
      * @param corner Screen corner identifier (`"top-left"`, `"top-right"`, `"bottom-left"`, `"bottom-right"`).
+     * @pre `corner` must match one of the four cardinal display corners.
+     * @post Setting persisted to QSettings.
      */
     Q_INVOKABLE void setScreenCorner(const QString &corner);
 
@@ -186,12 +216,14 @@ public:
 
     /**
      * @brief Clears global unread counter to zero.
+     * @post `unreadCount() == 0`.
      */
     Q_INVOKABLE void resetUnreadCount();
 
     /**
      * @brief Configures platform window flags for transparent, frameless, click-through toast overlays.
      * @param window Pointer to QQuickWindow / QWindow instance.
+     * @pre `window != nullptr`.
      */
     Q_INVOKABLE void setupFramelessTransparentWindow(QObject *window);
 
@@ -229,6 +261,7 @@ public:
     /**
      * @brief Connects event listeners to MessageService for automatic notification trigger on new messages.
      * @param ms Pointer to active MessageService instance.
+     * @pre `ms != nullptr`.
      */
     void setupMessageServiceHook(Services::MessageService* ms);
 
@@ -236,7 +269,7 @@ private:
     /** @brief Flushes current notification preferences to QSettings. */
     void saveSettings();
 
-    /** @brief Mutex protecting active notification array. */
+    /** @brief Mutex protecting active notification array across threads. */
     mutable std::mutex m_mutex;
     bool m_notificationsEnabled{true};
     bool m_soundEnabled{true};

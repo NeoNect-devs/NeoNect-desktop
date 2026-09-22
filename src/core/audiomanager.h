@@ -14,6 +14,18 @@
  * - <b>Facade Pattern</b>: Presents a high-level API over low-level platform audio drivers (waveIn, waveOut, MCI).
  * - <b>Active Object / Multithreaded Worker</b>: Audio streaming and microphone capture run on independent `std::thread` instances with atomic flags.
  * - <b>Observer Pattern</b>: Notifies QML views of playback progress, duration changes, and live waveform telemetry.
+ *
+ * @par Audio Engine Constraints & Invariants:
+ * - <b>Volume Range</b>: Master volume $v \in [0.0, 1.0]$. Values outside are strictly clamped.
+ * - <b>Playback Speed Multiplier</b>: $s \in [0.25, 3.0]$. Values outside are clamped.
+ * - <b>Seek Range</b>: Progress fraction $p \in [0.0, 1.0]$.
+ * - <b>Audio Formats</b>: 16-bit signed linear PCM, mono (1 channel) or stereo (2 channels),
+ *   sample rates: 16,000 Hz (voice/telephony standard), 44,100 Hz (CD standard), 48,000 Hz (broadcast).
+ * - <b>Recording Duration Bound</b>: Voice notes are bounded to a maximum of 600 seconds (10 minutes)
+ *   to avoid unbounded memory growth in internal PCM sample buffers.
+ * - <b>Thread Safety Invariants</b>: Microphone capture and PCM audio playback execute on dedicated
+ *   background OS threads (`m_recordThread`, `m_audioThread`). Buffer access is protected via `m_recordMutex`
+ *   and `m_audioMutex`. State changes and UI notifications are marshalled to the GUI thread via Qt signals.
  */
 
 #pragma once
@@ -30,6 +42,11 @@
 /**
  * @class AudioManager
  * @brief Full-featured audio subsystem for voice notes, file playback, and waveform visualization.
+ *
+ * @par Operational Bounds:
+ * - Maximum recording length: 600 seconds.
+ * - Volume bounds: [0.0, 1.0].
+ * - Playback rate: [0.25, 3.0].
  */
 class AudioManager : public QObject {
     Q_OBJECT
@@ -67,6 +84,7 @@ public:
 
     /**
      * @brief Destructor. Gracefully terminates audio capture and playback threads.
+     * @post Background threads are stopped and joined, waveIn/waveOut handles closed.
      */
     ~AudioManager() override;
 
@@ -96,17 +114,22 @@ public:
 
     /**
      * @brief Starts microphone capture on a background thread and begins recording.
+     * @pre `isRecording() == false`.
+     * @post `isRecording() == true`, `recordingDuration() == 0`, worker capture thread starts.
      */
     Q_INVOKABLE void startRecording();
 
     /**
      * @brief Stops microphone capture, writes encoded WAV to disk, and returns metadata.
      * @return QVariantMap containing `filePath`, `duration`, and `waveform`.
+     * @pre `isRecording() == true`.
+     * @post Microphone input is stopped, WAV header and PCM data written, temporary file generated.
      */
     Q_INVOKABLE QVariantMap stopRecording();
 
     /**
      * @brief Aborts active recording and discards audio buffers without saving.
+     * @post Recording thread stops, allocated PCM buffer is freed, no disk write occurs.
      */
     Q_INVOKABLE void cancelRecording();
 
@@ -115,11 +138,14 @@ public:
      * @param messageId Unique message ID associated with track.
      * @param audioUrl Local file URL or path to audio source.
      * @param duration Optional hint duration in milliseconds.
+     * @pre `audioUrl` must point to an accessible audio file on disk.
+     * @post If previous track was playing, it is stopped. Playback begins for new track.
      */
     Q_INVOKABLE void playAudio(const QString &messageId, const QString &audioUrl, int duration = 0);
 
     /**
      * @brief Pauses active audio playback.
+     * @post If currently playing, playback halts while retaining current position.
      */
     Q_INVOKABLE void pauseAudio();
 
@@ -134,25 +160,30 @@ public:
     /**
      * @brief Seeks to a relative position within the current track.
      * @param messageId Target message ID.
-     * @param progress Desired target progress [0.0 - 1.0].
+     * @param progress Desired target progress fraction.
+     * @pre `progress` is clamped to $[0.0, 1.0]$.
+     * @post Playhead position is updated in stream.
      */
     Q_INVOKABLE void seek(const QString &messageId, qreal progress);
 
     /**
      * @brief Adjusts playback speed multiplier.
-     * @param speed Speed multiplier (typically 1.0 to 2.0).
+     * @param speed Speed multiplier (clamped to $[0.25, 3.0]$).
+     * @post Playback engine updates output pitch/speed parameters.
      */
     Q_INVOKABLE void setPlaybackSpeed(qreal speed);
 
     /**
      * @brief Sets master audio output volume.
-     * @param vol Volume level [0.0 - 1.0].
+     * @param vol Volume level (clamped to $[0.0, 1.0]$).
+     * @post Hardware or software volume gain is updated immediately.
      */
     Q_INVOKABLE void setVolume(qreal vol);
 
     /**
      * @brief Sets or clears the audio mute state.
      * @param muted Mute flag.
+     * @post If muted, volume is effectively set to 0.0 while preserving previous volume level.
      */
     Q_INVOKABLE void setMuted(bool muted);
 
@@ -183,8 +214,8 @@ public:
 
     /**
      * @brief Generates a low-latency UI acoustic beep tone.
-     * @param freqHz Tone frequency in Hertz.
-     * @param durationMs Tone duration in milliseconds.
+     * @param freqHz Tone frequency in Hertz (bounded to $[100, 10000]$).
+     * @param durationMs Tone duration in milliseconds (bounded to $[10, 5000]$).
      */
     void playUiBeep(int freqHz, int durationMs);
 
