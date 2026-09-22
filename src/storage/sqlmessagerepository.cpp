@@ -90,7 +90,7 @@ public slots:
         );
         query.addBindValue(msg.id);
         query.addBindValue(msg.serverId);
-        query.addBindValue(msg.conversationId);
+        query.addBindValue(msg.conversationId.trimmed().toLower());
         query.addBindValue(msg.senderId);
         query.addBindValue(msg.type);
         query.addBindValue(msg.text);
@@ -129,7 +129,7 @@ public slots:
         for (const auto& msg : msgs) {
             query.bindValue(0, msg.id);
             query.bindValue(1, msg.serverId);
-            query.bindValue(2, msg.conversationId);
+            query.bindValue(2, msg.conversationId.trimmed().toLower());
             query.bindValue(3, msg.senderId);
             query.bindValue(4, msg.type);
             query.bindValue(5, msg.text);
@@ -182,15 +182,15 @@ public slots:
 
         QSqlQuery query(m_db);
         if (!senderId.isEmpty()) {
-            query.prepare("UPDATE messages SET status = ? WHERE conversation_id = ? AND sender_id = ? AND status != ?");
+            query.prepare("UPDATE messages SET status = ? WHERE LOWER(conversation_id) = LOWER(?) AND sender_id = ? AND status != ?");
             query.addBindValue(static_cast<int>(Domain::MessageStatus::Seen));
-            query.addBindValue(conversationId);
+            query.addBindValue(conversationId.trimmed().toLower());
             query.addBindValue(senderId);
             query.addBindValue(static_cast<int>(Domain::MessageStatus::Seen));
         } else {
-            query.prepare("UPDATE messages SET status = ? WHERE conversation_id = ? AND status != ?");
+            query.prepare("UPDATE messages SET status = ? WHERE LOWER(conversation_id) = LOWER(?) AND status != ?");
             query.addBindValue(static_cast<int>(Domain::MessageStatus::Seen));
-            query.addBindValue(conversationId);
+            query.addBindValue(conversationId.trimmed().toLower());
             query.addBindValue(static_cast<int>(Domain::MessageStatus::Seen));
         }
 
@@ -222,14 +222,14 @@ public slots:
         QSqlQuery query(m_db);
         if (beforeTimestamp > 0) {
             query.prepare("SELECT id, server_id, sender_id, type, text, media_url, file_name, file_size, duration, waveform, status, error_text, timestamp "
-                          "FROM messages WHERE conversation_id = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?");
-            query.addBindValue(conversationId);
+                          "FROM messages WHERE LOWER(conversation_id) = LOWER(?) AND timestamp < ? ORDER BY timestamp DESC LIMIT ?");
+            query.addBindValue(conversationId.trimmed().toLower());
             query.addBindValue(beforeTimestamp);
             query.addBindValue(limit);
         } else {
             query.prepare("SELECT id, server_id, sender_id, type, text, media_url, file_name, file_size, duration, waveform, status, error_text, timestamp "
-                          "FROM messages WHERE conversation_id = ? ORDER BY timestamp DESC LIMIT ?");
-            query.addBindValue(conversationId);
+                          "FROM messages WHERE LOWER(conversation_id) = LOWER(?) ORDER BY timestamp DESC LIMIT ?");
+            query.addBindValue(conversationId.trimmed().toLower());
             query.addBindValue(limit);
         }
 

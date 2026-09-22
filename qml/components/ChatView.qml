@@ -34,8 +34,8 @@ ColumnLayout {
     spacing: 0
 
     function saveCurrentScrollPosition() {
-        if (!currentConvKey) return;
-        if (messageListView.atYEnd) {
+        if (!currentConvKey || !chatViewRoot.visible || !hasInitialPositioned || !messageModel || messageModel.count === 0) return;
+        if (messageListView.atYEnd || (messageListView.contentItem && messageListView.contentItem.height <= messageListView.height)) {
             savedScrollPositions[currentConvKey] = "BOTTOM";
         } else {
             savedScrollPositions[currentConvKey] = messageListView.contentY;
@@ -43,7 +43,8 @@ ColumnLayout {
     }
 
     function restoreScrollPosition() {
-        var key = selectedServer + ":" + activeChannel;
+        if (!chatViewRoot.visible) return;
+        var key = (selectedServer + ":" + activeChannel).toLowerCase();
         var saved = savedScrollPositions[key];
         if (saved === undefined || saved === "BOTTOM") {
             scrollToBottomCompletely();
@@ -53,7 +54,9 @@ ColumnLayout {
                 if (messageListView.contentItem && messageListView.contentItem.height > messageListView.height) {
                     messageListView.contentY = Math.max(0, Math.min(saved, messageListView.contentItem.height - messageListView.height));
                 }
-                chatViewRoot.hasInitialPositioned = true;
+                if (messageModel && messageModel.count > 0) {
+                    chatViewRoot.hasInitialPositioned = true;
+                }
             });
         }
     }
@@ -64,15 +67,28 @@ ColumnLayout {
             messageListView.positionViewAtEnd();
             Qt.callLater(function() {
                 messageListView.positionViewAtEnd();
-                chatViewRoot.hasInitialPositioned = true;
+                if (messageModel && messageModel.count > 0) {
+                    chatViewRoot.hasInitialPositioned = true;
+                }
             });
         });
+    }
+
+    function onConversationLoaded(convId, messages) {
+        var currentConv = (selectedServer + ":" + (activeChannel ? activeChannel.trim() : "")).toLowerCase();
+        if (convId && convId.toLowerCase() === currentConv) {
+            hasInitialPositioned = false;
+            Qt.callLater(function() {
+                chatViewRoot.restoreScrollPosition();
+                chatViewRoot.checkAndSendSeenReceipt();
+            });
+        }
     }
 
     onActiveChannelChanged: {
         saveCurrentScrollPosition();
         if (messageModel) messageModel.clearFirstUnread();
-        currentConvKey = selectedServer + ":" + activeChannel;
+        currentConvKey = (selectedServer + ":" + activeChannel).toLowerCase();
         hasInitialPositioned = false;
         isFetchingMore = false;
         if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
@@ -84,7 +100,7 @@ ColumnLayout {
     onSelectedServerChanged: {
         saveCurrentScrollPosition();
         if (messageModel) messageModel.clearFirstUnread();
-        currentConvKey = selectedServer + ":" + activeChannel;
+        currentConvKey = (selectedServer + ":" + activeChannel).toLowerCase();
         hasInitialPositioned = false;
         isFetchingMore = false;
         if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
@@ -106,18 +122,20 @@ ColumnLayout {
     Connections {
         target: messageModel
         function onCountChanged() {
-            if (messageModel && messageModel.count > 0 && !chatViewRoot.hasInitialPositioned) {
-                // If opening a channel with unread messages, mark first unread for visual separator
-                if (selectedServer === "dms" && typeof NetworkManager !== "undefined" && NetworkManager) {
-                    var unread = NetworkManager.unreadCount(activeChannel);
-                    if (unread > 0) {
-                        var unreadIdx = Math.max(0, messageModel.count - unread);
-                        messageModel.setFirstUnreadIndex(unreadIdx);
+            if (messageModel && messageModel.count > 0) {
+                if (!chatViewRoot.hasInitialPositioned) {
+                    // If opening a channel with unread messages, mark first unread for visual separator
+                    if (selectedServer === "dms" && typeof NetworkManager !== "undefined" && NetworkManager) {
+                        var unread = NetworkManager.unreadCount(activeChannel);
+                        if (unread > 0) {
+                            var unreadIdx = Math.max(0, messageModel.count - unread);
+                            messageModel.setFirstUnreadIndex(unreadIdx);
+                        }
                     }
-                }
 
-                chatViewRoot.restoreScrollPosition();
-                chatViewRoot.checkAndSendSeenReceipt();
+                    chatViewRoot.restoreScrollPosition();
+                    chatViewRoot.checkAndSendSeenReceipt();
+                }
             }
         }
     }

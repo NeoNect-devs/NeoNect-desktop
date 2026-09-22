@@ -37,6 +37,7 @@ Item {
         target: MessageService
         function onConversationLoaded(convId, messages) {
             nativeMessageModel.onConversationLoaded(convId, messages);
+            chatView.onConversationLoaded(convId, messages);
         }
         function onMoreMessagesLoaded(convId, messages) {
             nativeMessageModel.onMoreMessagesLoaded(convId, messages);
@@ -46,7 +47,7 @@ Item {
             nativeMessageModel.onMessageAdded(convId, message);
 
             var currentConvId = root.selectedServer + ":" + (root.activeChannel ? root.activeChannel.trim() : "");
-            if (convId === currentConvId) {
+            if (convId && currentConvId && convId.toLowerCase() === currentConvId.toLowerCase()) {
                 var isMsgFromMe = message && (message.fromMe || (NetworkManager && NetworkManager.currentUsername && message.senderId && message.senderId.toLowerCase() === NetworkManager.currentUsername.toLowerCase()));
                 var msgId = (message && (message.id || message.messageId)) ? (message.id || message.messageId) : "all";
                 chatView.handleIncomingMessage(isMsgFromMe, msgId);
@@ -114,9 +115,9 @@ Item {
             return;
         }
 
-        var chan = root.activeChannel ? root.activeChannel.trim() : "";
+        var chan = root.activeChannel ? root.activeChannel.trim().toLowerCase() : "";
         if (!chan) return;
-        var key = root.selectedServer + ":" + chan;
+        var key = (root.selectedServer + ":" + chan).toLowerCase();
         nativeMessageModel.setActiveConversation(key);
         MessageService.loadConversation(key);
         if (typeof NotificationManager !== "undefined" && NotificationManager) {

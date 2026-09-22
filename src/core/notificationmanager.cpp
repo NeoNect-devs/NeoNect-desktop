@@ -141,7 +141,7 @@ void NotificationManager::showNotification(const QString &title,
                                            const QString &avatar,
                                            int durationMs,
                                            const QString &requestId) {
-    if (!m_notificationsEnabled || m_dndEnabled) {
+    if (!m_notificationsEnabled) {
         return;
     }
 
@@ -169,12 +169,15 @@ void NotificationManager::showNotification(const QString &title,
         m_unreadCount++;
     }
 
-    qDebug() << "--> [NotificationManager] showNotification triggered: title=" << notif["title"].toString() << "body=" << notif["body"].toString();
-    emit notificationTriggered(notif);
     emit unreadCountChanged();
     emit activeNotificationsChanged();
 
-    playNotificationSound();
+    // In DND mode, suppress floating screen toast pill and sound, keeping it in notification center
+    if (!m_dndEnabled) {
+        qDebug() << "--> [NotificationManager] showNotification triggered: title=" << notif["title"].toString() << "body=" << notif["body"].toString();
+        emit notificationTriggered(notif);
+        playNotificationSound();
+    }
 }
 
 void NotificationManager::showMessageNotification(const QString &sender,

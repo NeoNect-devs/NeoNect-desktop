@@ -673,10 +673,12 @@ void TestServices::testNotificationManagerFlow() {
     QCOMPARE(spyDismiss.takeFirst().at(0).toString(), notifId);
     QCOMPARE(notifMgr->activeNotifications().size(), 1);
 
-    // 4. Test DND mode disables notification dispatch
+    // 4. Test DND mode disables notification toast/sound dispatch, but records in Notification Center
     notifMgr->setDndEnabled(true);
     notifMgr->showNotification("Charlie", "Muted message", "message");
-    QCOMPARE(spyTrigger.count(), 0); // Blocked by DND
+    QCOMPARE(spyTrigger.count(), 0); // Blocked pill trigger
+    QCOMPARE(notifMgr->activeNotifications().size(), 2); // Recorded in Notification Center (Charlie + Beatrice)
+    QCOMPARE(notifMgr->activeNotifications().first().toMap().value("title").toString(), QString("Charlie"));
 
     // 5. Test clearAll
     notifMgr->clearAll();
@@ -1687,10 +1689,11 @@ void TestServices::testFunctionalOnlineIdleDndInvisibleStates() {
     QCOMPARE(netMgr.effectiveStatus(), QString("dnd"));
     QCOMPARE(notifMgr.dndEnabled(), true);
 
-    // In DND mode: incoming notifications & sounds must be suppressed!
+    // In DND mode: incoming notifications pill & sounds must be suppressed, but recorded in notification center!
     notifMgr.showNotification("bob", "Hey are you busy?", "message", "bob", "B", 5000);
     QCOMPARE(spyNotifTriggered.count(), 0);
-    QCOMPARE(notifMgr.unreadCount(), 0);
+    QCOMPARE(notifMgr.activeNotifications().size(), 1);
+    QCOMPARE(notifMgr.unreadCount(), 1);
 
     // 4. Invisible / Offline state
     auto msgRepo = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
