@@ -956,9 +956,9 @@ void TestServices::testStaleLocalFriendsDoNotOverrideBackend() {
 void TestServices::testAddFriendSendsRealRequest() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_add");
     storage->clearSession();
+    storage->setUsername("alice");
     storage->setFriends({});
     storage->setPendingRequests({});
-    storage->setUsername("alice");
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     mockTransport->seedUser("alice", "password123!");
     mockTransport->seedUser("bob", "password123!");

@@ -249,6 +249,7 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     QJsonObject payload;
     payload["from_device_id"] = deviceId;
     payload["to_username"] = targetUser;
+    payload["protocol_version"] = 1;
     payload["ciphertext"] = QString::fromLatin1(encrypted.envelope.toBase64());
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
 
