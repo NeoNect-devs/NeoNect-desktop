@@ -81,6 +81,10 @@ Window {
                     if (target === myUser || target === "saved-messages") {
                         target = "saved-messages";
                     }
+                    if (target !== "saved-messages" && typeof NetworkManager !== "undefined" && NetworkManager) {
+                        NetworkManager.openDirectConversation(target);
+                        NetworkManager.markConversationAsRead(target);
+                    }
                     root.currentActiveChannel = target;
                     if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {
                         channelsPanel.openDirectMessage(target);
@@ -323,6 +327,10 @@ Window {
                 var target = channel.toLowerCase();
                 if (target === myUser || target === "saved-messages") {
                     target = "saved-messages";
+                }
+                if (target !== "saved-messages" && typeof NetworkManager !== "undefined" && NetworkManager) {
+                    NetworkManager.openDirectConversation(target);
+                    NetworkManager.markConversationAsRead(target);
                 }
                 root.currentActiveChannel = target;
                 if (typeof channelsPanel !== "undefined" && channelsPanel && channelsPanel.openDirectMessage) {

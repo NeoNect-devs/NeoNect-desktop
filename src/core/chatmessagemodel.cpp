@@ -129,7 +129,11 @@ void ChatMessageModel::insertMessage(const QString &text, bool fromMe, const QSt
     if (item.errorText.isEmpty() && item.messageType == "media_request") {
         item.errorText = detectMediaType(mediaUrl, fileName, "file");
     }
-    item.timestamp = timestamp > 0 ? timestamp : QDateTime::currentSecsSinceEpoch();
+    qint64 finalTs = timestamp;
+    if (finalTs > 0 && finalTs < 100000000000LL) {
+        finalTs *= 1000LL;
+    }
+    item.timestamp = finalTs > 0 ? finalTs : QDateTime::currentMSecsSinceEpoch();
     item.isFirstInBlock = isFirst;
     item.isLastInBlock = true;
 
@@ -366,7 +370,11 @@ MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {
     if (item.errorText.isEmpty() && item.messageType == "media_request") {
         item.errorText = detectMediaType(item.mediaUrl, item.fileName, "file");
     }
-    item.timestamp = map.value("timestamp").toLongLong();
+    qint64 t = map.value("timestamp").toLongLong();
+    if (t > 0 && t < 100000000000LL) {
+        t *= 1000LL;
+    }
+    item.timestamp = t > 0 ? t : QDateTime::currentMSecsSinceEpoch();
     item.transferProgress = map.value("transferProgress", 0.0).toReal();
     item.transferBytes = map.value("transferBytes", 0).toLongLong();
     return item;

@@ -1,9 +1,10 @@
 
 .pragma library
 
-function formatTime(secs) {
-    if (!secs || secs <= 0) return Qt.formatTime(new Date(), "hh:mm AP");
-    var d = new Date(secs * 1000);
+function formatTime(val) {
+    if (!val || val <= 0) return Qt.formatTime(new Date(), "hh:mm AP");
+    var ms = (val > 100000000000) ? val : (val * 1000);
+    var d = new Date(ms);
     return Qt.formatTime(d, "hh:mm AP");
 }
 

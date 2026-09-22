@@ -82,6 +82,14 @@ public slots:
             return;
         }
 
+        qint64 ts = msg.timestamp;
+        if (ts > 0 && ts < 100000000000LL) {
+            ts *= 1000LL;
+        }
+        if (ts <= 0) {
+            ts = QDateTime::currentMSecsSinceEpoch();
+        }
+
         QSqlQuery query(m_db);
         query.prepare(
             "INSERT OR REPLACE INTO messages "
@@ -101,7 +109,7 @@ public slots:
         query.addBindValue(msg.waveform);
         query.addBindValue(static_cast<int>(msg.status));
         query.addBindValue(msg.errorText);
-        query.addBindValue(msg.timestamp);
+        query.addBindValue(ts);
 
         bool success = query.exec();
         if (!success) {
@@ -127,6 +135,14 @@ public slots:
         
         bool success = true;
         for (const auto& msg : msgs) {
+            qint64 ts = msg.timestamp;
+            if (ts > 0 && ts < 100000000000LL) {
+                ts *= 1000LL;
+            }
+            if (ts <= 0) {
+                ts = QDateTime::currentMSecsSinceEpoch();
+            }
+
             query.bindValue(0, msg.id);
             query.bindValue(1, msg.serverId);
             query.bindValue(2, msg.conversationId.trimmed().toLower());
@@ -140,7 +156,7 @@ public slots:
             query.bindValue(10, msg.waveform);
             query.bindValue(11, static_cast<int>(msg.status));
             query.bindValue(12, msg.errorText);
-            query.bindValue(13, msg.timestamp);
+            query.bindValue(13, ts);
 
             if (!query.exec()) {
                 qWarning() << "[SqlMessageRepository] Batch save failed for msg" << msg.id << ":" << query.lastError().text();
@@ -249,7 +265,11 @@ public slots:
                 msg.waveform = query.value(9).toByteArray();
                 msg.status = static_cast<Domain::MessageStatus>(query.value(10).toInt());
                 msg.errorText = query.value(11).toString();
-                msg.timestamp = query.value(12).toLongLong();
+                qint64 rawTs = query.value(12).toLongLong();
+                if (rawTs > 0 && rawTs < 100000000000LL) {
+                    rawTs *= 1000LL;
+                }
+                msg.timestamp = rawTs > 0 ? rawTs : QDateTime::currentMSecsSinceEpoch();
                 
                 results.push_back(msg);
             }
@@ -288,7 +308,11 @@ public slots:
             msg.waveform = query.value(10).toByteArray();
             msg.status = static_cast<Domain::MessageStatus>(query.value(11).toInt());
             msg.errorText = query.value(12).toString();
-            msg.timestamp = query.value(13).toLongLong();
+            qint64 rawTs = query.value(13).toLongLong();
+            if (rawTs > 0 && rawTs < 100000000000LL) {
+                rawTs *= 1000LL;
+            }
+            msg.timestamp = rawTs > 0 ? rawTs : QDateTime::currentMSecsSinceEpoch();
             result = msg;
         }
 

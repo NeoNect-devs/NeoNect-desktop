@@ -354,6 +354,12 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         if (packetObj.contains("waveform")) waveform = packetObj.value("waveform").toArray().toVariantList();
         if (packetObj.contains("messageId")) messageUuid = packetObj.value("messageId").toString();
         if (packetObj.contains("mediaType")) mediaCategory = packetObj.value("mediaType").toString();
+        if (packetObj.contains("timestamp")) {
+            timestamp = packetObj.value("timestamp").toVariant().toLongLong();
+            if (timestamp > 0 && timestamp < 100000000000LL) {
+                timestamp *= 1000LL;
+            }
+        }
         if (packetObj.contains("fileData")) {
             QByteArray rawBytes = QByteArray::fromBase64(packetObj.value("fileData").toString().toLatin1());
             if (!rawBytes.isEmpty()) {
@@ -382,6 +388,10 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         }
     }
 
+    if (timestamp <= 0) {
+        timestamp = QDateTime::currentMSecsSinceEpoch();
+    }
+
     qDebug() << "[RelayService] Decrypted packet from:" << sender << "type:" << type;
 
     if (type == "friend_request" || type == "friend_accept" || type == "friend_reject") {
@@ -391,7 +401,7 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         friendMsg.senderId = sender;
         friendMsg.type = type;
         friendMsg.text = textContent;
-        friendMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+        friendMsg.timestamp = timestamp;
         friendMsg.conversationId = "dms:" + sender.toLower();
 
         qDebug() << "[RelayService] Emitting incomingFriendPacket for:" << sender << "type:" << type;
@@ -407,7 +417,7 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         typingMsg.senderId = sender;
         typingMsg.conversationId = "dms:" + sender.toLower();
         typingMsg.type = type;
-        typingMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+        typingMsg.timestamp = timestamp;
 
         emit incomingDomainMessagesReceived({typingMsg});
         acknowledgeMessage(msgId);
@@ -422,7 +432,7 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         seenMsg.conversationId = "dms:" + sender.toLower();
         seenMsg.type = type;
         seenMsg.text = textContent;
-        seenMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+        seenMsg.timestamp = timestamp;
 
         emit incomingDomainMessagesReceived({seenMsg});
         acknowledgeMessage(msgId);
@@ -437,7 +447,7 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
         presenceMsg.conversationId = "dms:" + sender.toLower();
         presenceMsg.type = type;
         presenceMsg.text = textContent;
-        presenceMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+        presenceMsg.timestamp = timestamp;
 
         emit incomingDomainMessagesReceived({presenceMsg});
         acknowledgeMessage(msgId);
@@ -463,7 +473,7 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
     }
     
     domainMsg.status = (type == "media_request") ? Domain::MessageStatus::Pending : Domain::MessageStatus::Seen;
-    domainMsg.timestamp = (timestamp <= 0) ? QDateTime::currentSecsSinceEpoch() : timestamp;
+    domainMsg.timestamp = timestamp;
     
     domainMsg.conversationId = "dms:" + domainMsg.senderId.toLower();
 
