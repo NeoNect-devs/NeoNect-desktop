@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.neonect.NeoNect</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>NeoNect</name>
+  <summary>Decentralized End-to-End Encrypted Messenger</summary>
+  <description>
+    <p>
+      NeoNect is a next-generation desktop messenger built with Qt 6 and QML, featuring hardware-accelerated UI rendering, pervasive lazy loading, and uncompromising End-to-End Encryption (AES-256-GCM and Curve25519).
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>End-to-End Encryption for all direct messages, attachments, and media transfers.</li>
+      <li>Hardware-accelerated media lightbox for audio, video, and ultra-high-resolution images.</li>
+      <li>Low-latency real-time presence indicators and customizable status switcher.</li>
+      <li>Pervasive lazy loading architecture delivering up to 40% memory reduction.</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.neonect.NeoNect.desktop</launchable>
+  <url type="homepage">https://github.com/NeoNect-devs</url>
+  <url type="bugtracker">https://github.com/NeoNect-devs/NeoNect-desktop/issues</url>
+  <provides>
+    <binary>NeoNectApp</binary>
+  </provides>
+  <developer_name>NeoNect Devs</developer_name>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.0.0" date="2026-09-22">
+      <description>
+        <p>Production release with complete end-to-end encrypted media transfers, pervasive lazy loading, and full-screen video/audio lightbox capabilities.</p>
+      </description>
+    </release>
+  </releases>
+</component>

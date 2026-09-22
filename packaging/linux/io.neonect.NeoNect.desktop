@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=NeoNect
+GenericName=Decentralized E2EE Messenger
+Comment=Fast, secure, end-to-end encrypted desktop messenger
+Exec=NeoNectApp %u
+Icon=io.neonect.NeoNect
+Terminal=false
+Categories=Network;InstantMessaging;Chat;Qt;
+Keywords=chat;messaging;e2ee;encrypted;secure;matrix;xmpp;voice;video;
+MimeType=x-scheme-handler/neonect;
+StartupNotify=true
+StartupWMClass=NeoNect
+SingleMainWindow=true
+Actions=OpenDirectMessages;
+
+[Desktop Action OpenDirectMessages]
+Name=Open Direct Messages
+Exec=NeoNectApp

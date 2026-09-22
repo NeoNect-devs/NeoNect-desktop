@@ -4,6 +4,17 @@ set(CMAKE_AUTOMOC_COMPILER_PREDEFS OFF)
 
 project(NeoNect VERSION 1.0 LANGUAGES CXX)
 
+# =====================================================================
+# Automated Semantic Versioning & Metadata Extraction
+# =====================================================================
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Version.cmake)
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/src/version.h
+    @ONLY
+)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -93,7 +104,12 @@ endif()
 # =====================================================================
 set(APP_ICON_RESOURCE "")
 if(WIN32)
-    set(APP_ICON_RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/NeoNect.rc")
+    configure_file(
+        ${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/NeoNect.rc.in
+        ${CMAKE_CURRENT_BINARY_DIR}/NeoNect.rc
+        @ONLY
+    )
+    set(APP_ICON_RESOURCE "${CMAKE_CURRENT_BINARY_DIR}/NeoNect.rc")
 endif()
 
 qt_add_executable(NeoNectApp
@@ -130,6 +146,7 @@ qt_add_executable(NeoNectApp
 
     # Core & Facade
     src/core/application.h src/core/application.cpp
+    src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
@@ -254,10 +271,12 @@ qt_add_qml_module(NeoNectApp
         assets/stickers/pepe/pepe_smart.svg
         assets/stickers/pepe/pepe_gamer.svg
         assets/stickers/pepe/pepe_cry.svg
+        # In-App Release Notes
+        assets/patch_notes.json
 )
 
 set_target_properties(NeoNectApp PROPERTIES AUTOMOC_COMPILER_PREDEFS OFF)
-target_include_directories(NeoNectApp PRIVATE src tests)
+target_include_directories(NeoNectApp PRIVATE src tests ${CMAKE_CURRENT_BINARY_DIR}/src)
 
 # =====================================================================
 # 6. Pipeline Linking Operations
@@ -351,6 +370,7 @@ add_executable(NeoNectTests
     src/services/friendservice.h src/services/friendservice.cpp
 
     # Core & Facade
+    src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
@@ -359,7 +379,7 @@ add_executable(NeoNectTests
 )
 
 set_target_properties(NeoNectTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
-target_include_directories(NeoNectTests PRIVATE src tests)
+target_include_directories(NeoNectTests PRIVATE src tests ${CMAKE_CURRENT_BINARY_DIR}/src)
 target_link_libraries(NeoNectTests PRIVATE
     Qt6::Core
     Qt6::Concurrent
@@ -411,6 +431,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/services/deviceservice.h src/services/deviceservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/friendservice.h src/services/friendservice.cpp
+    src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
@@ -418,7 +439,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/core/notificationmanager.h src/core/notificationmanager.cpp
 )
 set_target_properties(NeoNectStressTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
-target_include_directories(NeoNectStressTests PRIVATE src tests)
+target_include_directories(NeoNectStressTests PRIVATE src tests ${CMAKE_CURRENT_BINARY_DIR}/src)
 target_link_libraries(NeoNectStressTests PRIVATE
     Qt6::Core
     Qt6::Network
@@ -461,6 +482,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/services/deviceservice.h src/services/deviceservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/friendservice.h src/services/friendservice.cpp
+    src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/cryptomanager.h src/core/cryptomanager.cpp
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
@@ -468,7 +490,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/core/notificationmanager.h src/core/notificationmanager.cpp
 )
 set_target_properties(NeoNectBenchmarks PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
-target_include_directories(NeoNectBenchmarks PRIVATE src tests)
+target_include_directories(NeoNectBenchmarks PRIVATE src tests ${CMAKE_CURRENT_BINARY_DIR}/src)
 target_link_libraries(NeoNectBenchmarks PRIVATE
     Qt6::Core
     Qt6::Concurrent
@@ -488,3 +510,50 @@ endif()
 if(WIN32)
     set_tests_properties(NeoNectTestSuite PROPERTIES ENVIRONMENT "PATH=C:/Qt/6.11.2/mingw_64/bin;C:/Qt/Tools/mingw1310_64/bin;${OPENSSL_ROOT_DIR}/bin;$ENV{PATH}")
 endif()
+
+# ==============================================================================
+# 9. Installation & CPack Distribution Packaging
+# ==============================================================================
+include(GNUInstallDirs)
+
+install(TARGETS NeoNectApp
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    BUNDLE DESTINATION .
+)
+
+if(UNIX AND NOT APPLE)
+    install(FILES packaging/linux/io.neonect.NeoNect.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+    )
+    install(FILES packaging/linux/io.neonect.NeoNect.metainfo.xml
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
+    )
+    install(FILES assets/NeoNect/icon.png
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+        RENAME io.neonect.NeoNect.png
+    )
+endif()
+
+set(CPACK_PACKAGE_NAME "NeoNect")
+set(CPACK_PACKAGE_VENDOR "NeoNect Devs")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Decentralized E2EE Messenger")
+set(CPACK_PACKAGE_VERSION_MAJOR ${NEONECT_VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${NEONECT_VERSION_MINOR})
+set(CPACK_PACKAGE_VERSION_PATCH ${NEONECT_VERSION_PATCH})
+set(CPACK_PACKAGE_VERSION "${NEONECT_VERSION_STRING}")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "NeoNect")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP;NSIS")
+    set(CPACK_NSIS_DISPLAY_NAME "NeoNect")
+    set(CPACK_NSIS_PACKAGE_NAME "NeoNect")
+    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/NeoNect/icon.ico")
+    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/NeoNect/icon.ico")
+elseif(UNIX AND NOT APPLE)
+    set(CPACK_GENERATOR "TGZ;DEB;RPM")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "NeoNect Devs <contact@neonect.io>")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "net")
+endif()
+
+include(CPack)

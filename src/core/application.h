@@ -17,7 +17,7 @@ namespace Storage { class SettingsRepository; }
 namespace Crypto { class ICryptoService; }
 namespace Transport { class IHttpTransport; }
 
-namespace Core { class NotificationManager; }
+    namespace Core { class NotificationManager; class VersionInfo; }
 namespace Services { class RelayService; }
 
 /**
@@ -58,6 +58,7 @@ private:
     std::unique_ptr<::NetworkManager> m_networkManager;
     std::unique_ptr<::AudioManager> m_audioManager;
     std::unique_ptr<Core::NotificationManager> m_notificationManager;
+    std::unique_ptr<Core::VersionInfo> m_versionInfo;
     std::unique_ptr<Services::MessageService> m_messageService;
     std::shared_ptr<Services::RelayService> m_relayService;
     std::unique_ptr<QObject> m_activityFilter;

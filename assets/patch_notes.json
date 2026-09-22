@@ -1,0 +1,26 @@
+[
+  {
+    "version": "1.0.0",
+    "tag": "v1.0.0",
+    "date": "2026-09-22",
+    "commit": "017baea",
+    "title": "NeoNect v1.0.0 Production Release",
+    "highlights": [
+      "ensure end-to-end encryption for all media transmissions",
+      "implement complete Danisa API E2EE relay messaging, background poll/ack sync, device key retrieval, and friends DM system",
+      "lazy load fullscreen video and image components in MediaLightboxModal",
+      "synchronize and update user online status in chat in real-time",
+      "implement functional idle, DND, invisible presence states and UI cleanups",
+      "show transfer progress on sender client with standard units (KB, MB, GB)",
+      "sync authoritative friends list from server on login and update",
+      "transfer binary payload for media files across isolated environments and platforms",
+      "add multi-client dockerized desktop environment with Qt 6.7 and noVNC",
+      "support native media rendering, direct transmission, and message retry",
+      "overhaul entry brand header, integrate NeoNect assets, and remove gateway window controls",
+      "hide members panel for direct messages and implement seen checkmark read receipts",
+      "restore pill-shaped online status indicator and add unread message count badges",
+      "implement real-time typing indicators and message sending states",
+      "determine user online status by server connectivity via native WebSocket"
+    ]
+  }
+]

@@ -186,6 +186,12 @@ Rectangle {
                             tabIconSource: "qrc:/qt/qml/NeoNect/assets/icons/lock.svg"
                         }
 
+                        NavTabButton {
+                            tabId: "about"
+                            tabTitle: "About & Updates"
+                            tabIconSource: "qrc:/qt/qml/NeoNect/assets/icons/alert-circle.svg"
+                        }
+
                         Item {
                             width: 1
                             height: 16
@@ -899,6 +905,247 @@ Rectangle {
                                             modalRoot.close();
                                             modalRoot.logoutRequested();
                                         }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ══════════════════════════════════════════════════════
+                        // VIEW 6: ABOUT & PATCH NOTES
+                        // ══════════════════════════════════════════════════════
+                        ColumnLayout {
+                            visible: modalRoot.currentTab === "about"
+                            width: parent.width - 24
+                            spacing: 18
+
+                            // Header Card
+                            Rectangle {
+                                Layout.fillWidth: true
+                                height: 100
+                                radius: 12
+                                color: "#14161A"
+                                border.color: Qt.rgba(255, 255, 255, 0.1)
+                                border.width: 1
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 16
+                                    spacing: 16
+
+                                    Image {
+                                        source: "qrc:/qt/qml/NeoNect/assets/NeoNect/icon.png"
+                                        Layout.preferredWidth: 56
+                                        Layout.preferredHeight: 56
+                                        fillMode: Image.PreserveAspectFit
+                                        smooth: true
+                                        mipmap: true
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 4
+
+                                        RowLayout {
+                                            spacing: 8
+                                            Text {
+                                                text: (typeof VersionInfo !== "undefined" && VersionInfo) ? VersionInfo.appName : "NeoNect"
+                                                color: "#FFFFFF"
+                                                font.family: "Segoe UI"
+                                                font.pixelSize: 18
+                                                font.bold: true
+                                            }
+
+                                            Rectangle {
+                                                height: 20
+                                                width: verText.implicitWidth + 12
+                                                radius: 10
+                                                color: Qt.rgba(10, 132, 255, 0.2)
+                                                border.color: ThemeData.accentColor
+                                                border.width: 1
+
+                                                Text {
+                                                    id: verText
+                                                    anchors.centerIn: parent
+                                                    text: "v" + ((typeof VersionInfo !== "undefined" && VersionInfo) ? VersionInfo.version : "1.0.0")
+                                                    color: "#00E5FF"
+                                                    font.family: "Segoe UI"
+                                                    font.pixelSize: 11
+                                                    font.bold: true
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            text: "Build: " + ((typeof VersionInfo !== "undefined" && VersionInfo) ? (VersionInfo.gitHash + " • " + VersionInfo.platform) : "Production")
+                                            color: "#949BA4"
+                                            font.family: "Segoe UI"
+                                            font.pixelSize: 12
+                                        }
+
+                                        Text {
+                                            text: (typeof VersionInfo !== "undefined" && VersionInfo) ? VersionInfo.copyright : "Copyright (C) 2026 NeoNect Devs"
+                                            color: "#5865F2"
+                                            font.family: "Segoe UI"
+                                            font.pixelSize: 11
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Security & Performance Spec Badges
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 54
+                                    radius: 8
+                                    color: "#121417"
+                                    border.color: Qt.rgba(255, 255, 255, 0.08)
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        spacing: 8
+
+                                        IconImage {
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/lock.svg"
+                                            width: 18; height: 18
+                                            color: "#23A55A"
+                                        }
+
+                                        ColumnLayout {
+                                            spacing: 1
+                                            Text { text: "End-to-End Encrypted"; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true }
+                                            Text { text: "AES-256-GCM / Zero-Knowledge"; color: "#949BA4"; font.pixelSize: 10 }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    height: 54
+                                    radius: 8
+                                    color: "#121417"
+                                    border.color: Qt.rgba(255, 255, 255, 0.08)
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        spacing: 8
+
+                                        IconImage {
+                                            source: "qrc:/qt/qml/NeoNect/assets/icons/shield.svg"
+                                            width: 18; height: 18
+                                            color: "#00E5FF"
+                                        }
+
+                                        ColumnLayout {
+                                            spacing: 1
+                                            Text { text: "Optimized Memory Engine"; color: "#FFFFFF"; font.pixelSize: 11; font.bold: true }
+                                            Text { text: "Pervasive Lazy-Loading Viewports"; color: "#949BA4"; font.pixelSize: 10 }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Patch Notes & Release Highlights
+                            Text {
+                                text: "Release Patch Notes"
+                                color: "#FFFFFF"
+                                font.family: "Segoe UI"
+                                font.pixelSize: 14
+                                font.bold: true
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: patchCol.implicitHeight + 24
+                                radius: 10
+                                color: "#14161A"
+                                border.color: Qt.rgba(255, 255, 255, 0.08)
+                                border.width: 1
+
+                                ColumnLayout {
+                                    id: patchCol
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    spacing: 10
+
+                                    Repeater {
+                                        model: (typeof VersionInfo !== "undefined" && VersionInfo) ? VersionInfo.patchNotes : []
+                                        delegate: ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
+
+                                            RowLayout {
+                                                spacing: 8
+                                                Text {
+                                                    text: modelData.title || ("Version " + modelData.version)
+                                                    color: "#00E5FF"
+                                                    font.family: "Segoe UI"
+                                                    font.pixelSize: 13
+                                                    font.bold: true
+                                                }
+                                                Text {
+                                                    text: "(" + (modelData.date || "") + ")"
+                                                    color: "#949BA4"
+                                                    font.family: "Segoe UI"
+                                                    font.pixelSize: 11
+                                                }
+                                            }
+
+                                            Repeater {
+                                                model: modelData.highlights || []
+                                                delegate: RowLayout {
+                                                    Layout.fillWidth: true
+                                                    spacing: 8
+                                                    Text { text: "•"; color: ThemeData.accentColor; font.pixelSize: 12 }
+                                                    Text {
+                                                        text: modelData
+                                                        color: "#DBDEE1"
+                                                        font.family: "Segoe UI"
+                                                        font.pixelSize: 12
+                                                        wrapMode: Text.Wrap
+                                                        Layout.fillWidth: true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // GitHub Link Button
+                            Rectangle {
+                                Layout.alignment: Qt.AlignRight
+                                width: 170; height: 34
+                                radius: 6
+                                color: ghMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.15) : Qt.rgba(255, 255, 255, 0.08)
+                                border.color: Qt.rgba(255, 255, 255, 0.15)
+                                border.width: 1
+
+                                RowLayout {
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    Text {
+                                        text: "GitHub Repository ↗"
+                                        color: "#FFFFFF"
+                                        font.family: "Segoe UI"
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: ghMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        var url = (typeof VersionInfo !== "undefined" && VersionInfo) ? VersionInfo.website : "https://github.com/NeoNect-devs";
+                                        Qt.openUrlExternally(url);
                                     }
                                 }
                             }

@@ -9,6 +9,8 @@
 #include "chatmessagemodel.h"
 #include "audiomanager.h"
 #include "notificationmanager.h"
+#include "versioninfo.h"
+#include "version.h"
 #include "../themedata.h"
 #include "../storage/settingsrepository.h"
 #include "../../tests/mocks/mockhttptransport.h"
@@ -82,8 +84,10 @@ Application::Application(int &argc, char **argv) {
 
     m_app = std::make_unique<QGuiApplication>(argc, argv);
     m_app->setWindowIcon(QIcon(":/qt/qml/NeoNect/assets/NeoNect/icon.png"));
-    QGuiApplication::setApplicationName("NeoNect");
-    QGuiApplication::setApplicationVersion("1.0");
+    QGuiApplication::setApplicationName(QStringLiteral(NEONECT_APP_NAME));
+    QGuiApplication::setOrganizationName(QStringLiteral(NEONECT_ORGANIZATION_NAME));
+    QGuiApplication::setOrganizationDomain(QStringLiteral(NEONECT_ORGANIZATION_DOMAIN));
+    QGuiApplication::setApplicationVersion(QStringLiteral(NEONECT_VERSION_STRING));
     QGuiApplication::setQuitOnLastWindowClosed(true);
 
     parseCommandLine();
@@ -221,6 +225,7 @@ void Application::initializeServices() {
     m_audioManager = std::make_unique<AudioManager>();
     m_notificationManager = std::make_unique<Core::NotificationManager>();
     m_notificationManager->setupMessageServiceHook(m_messageService.get());
+    m_versionInfo = std::make_unique<Core::VersionInfo>();
 
     // RelayService <-> FriendService
     QObject::connect(m_relayService.get(), &Services::RelayService::incomingFriendPacket,
@@ -351,6 +356,7 @@ void Application::registerQmlTypes() {
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "AudioManager", m_audioManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", m_notificationManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "MessageService", m_messageService.get());
+    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "VersionInfo", m_versionInfo.get());
     qmlRegisterType<ChatMessageModel>("NeoNect.Core", 1, 0, "ChatMessageModel");
 }
 
