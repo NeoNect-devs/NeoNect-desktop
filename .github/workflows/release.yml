@@ -88,13 +88,11 @@ jobs:
           cmake --build build --config Release --target NeoNectApp NeoNectTests
 
       - name: Deploy Test Dependencies & Run Test Suites
-        env:
-          QT_QPA_PLATFORM: offscreen
         run: |
           # 1. Deploy Qt & MinGW compiler runtime DLLs to build directory
           $WinDeployQt = "${{ env.QT_ROOT_DIR }}\bin\windeployqt.exe"
           if (Test-Path $WinDeployQt) {
-            & $WinDeployQt --qmldir qml --compiler-runtime .\build\NeoNectTests.exe
+            & $WinDeployQt --qmldir qml --release --no-translations --compiler-runtime .\build\NeoNectTests.exe
           }
           
           # 2. Copy OpenSSL runtime DLLs to build directory
@@ -108,10 +106,8 @@ jobs:
           .\build\NeoNectTests.exe
 
       - name: Package Windows Artifacts
-        env:
-          QT_QPA_PLATFORM: offscreen
         run: |
-          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;$env:PATH"
+          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;C:\mingw64\bin;$env:PATH"
           powershell -ExecutionPolicy Bypass -File scripts/package_windows.ps1 -BuildDir build -Config Release -QtDir "${{ env.QT_ROOT_DIR }}" -OutputDir dist
 
       - name: Upload Windows Artifact

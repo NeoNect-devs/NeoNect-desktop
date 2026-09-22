@@ -14,7 +14,6 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
 
-    qputenv("QT_QPA_PLATFORM", "offscreen");
     QCoreApplication app(argc, argv);
     app.setOrganizationName("NeoNect");
     app.setApplicationName("NeoNect");
