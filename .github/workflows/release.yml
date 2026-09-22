@@ -88,12 +88,18 @@ jobs:
           cmake --build build --config Release --target NeoNectApp NeoNectTests
 
       - name: Run Desktop Test Suites
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
+          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;$env:PATH"
           .\build\NeoNectTests.exe
 
       - name: Package Windows Artifacts
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
-          powershell -ExecutionPolicy Bypass -File scripts/package_windows.ps1 -BuildDir build -Config Release -QtDir $env:QT_ROOT_DIR -OutputDir dist
+          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;$env:PATH"
+          powershell -ExecutionPolicy Bypass -File scripts/package_windows.ps1 -BuildDir build -Config Release -QtDir "${{ env.QT_ROOT_DIR }}" -OutputDir dist
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
@@ -145,11 +151,19 @@ jobs:
           cmake --build build --config Release --target NeoNectApp NeoNectTests
 
       - name: Run Desktop Test Suites
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
+          export LD_LIBRARY_PATH="${{ env.QT_ROOT_DIR }}/lib:${LD_LIBRARY_PATH:-}"
+          export PATH="${{ env.QT_ROOT_DIR }}/bin:${PATH}"
           ./build/NeoNectTests
 
       - name: Package Linux Artifacts
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
+          export LD_LIBRARY_PATH="${{ env.QT_ROOT_DIR }}/lib:${LD_LIBRARY_PATH:-}"
+          export PATH="${{ env.QT_ROOT_DIR }}/bin:${PATH}"
           chmod +x scripts/package_linux.sh
           ./scripts/package_linux.sh build Release dist
 

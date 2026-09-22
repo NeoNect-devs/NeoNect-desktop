@@ -33,6 +33,13 @@ cmake --build $BuildDir --config $Config --target NeoNectApp NeoNectTests
 Write-Host "[3/6] Running All Test Suites..." -ForegroundColor Yellow
 $TestExe = Join-Path $BuildDir "NeoNectTests.exe"
 if (Test-Path $TestExe) {
+    if ($QtDir) {
+        $env:PATH = "$QtDir\bin;$env:PATH"
+    }
+    if ($env:OPENSSL_ROOT_DIR) {
+        $env:PATH = "$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;$env:PATH"
+    }
+    $env:QT_QPA_PLATFORM = "offscreen"
     & $TestExe
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Tests failed with exit code $LASTEXITCODE! Aborting packaging."
