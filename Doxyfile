@@ -131,10 +131,12 @@ HTML_STYLESHEET        =
 HTML_EXTRA_STYLESHEET  = docs/doxygen-awesome.css \
                          docs/custom.css
 HTML_EXTRA_FILES       = docs/doxygen-awesome-darkmode-toggle.js \
-                         docs/doxygen-awesome-interactive-toc.js
-HTML_COLORSTYLE_HUE    = 215
-HTML_COLORSTYLE_SAT    = 130
-HTML_COLORSTYLE_GAMMA  = 85
+                         docs/doxygen-awesome-interactive-toc.js \
+                         docs/mermaid.min.js \
+                         docs/modern-graph-viewer.js
+HTML_COLORSTYLE_HUE    = 209
+HTML_COLORSTYLE_SAT    = 255
+HTML_COLORSTYLE_GAMMA  = 113
 HTML_DYNAMIC_MENUS     = YES
 HTML_DYNAMIC_SECTIONS  = YES
 HTML_CODE_FOLDING      = YES
@@ -190,7 +192,7 @@ EXTERNAL_GROUPS        = YES
 EXTERNAL_PAGES         = YES
 
 HAVE_DOT               = YES
-DOT_NUM_THREADS        = 4
+DOT_NUM_THREADS        = 0
 DOT_COMMON_ATTR        = "fontname=Helvetica,fontsize=10"
 DOT_EDGE_ATTR          = "labelfontname=Helvetica,labelfontsize=10"
 DOT_NODE_ATTR          = "shape=box,height=0.2,width=0.4"
@@ -211,7 +213,7 @@ GRAPHICAL_HIERARCHY    = YES
 DIRECTORY_GRAPH        = YES
 DIR_GRAPH_MAX_DEPTH    = 3
 DOT_IMAGE_FORMAT       = svg
-INTERACTIVE_SVG        = YES
+INTERACTIVE_SVG        = NO
 DOT_PATH               = C:/ProgramData/chocolatey/bin
 DOTFILE_DIRS           = 
 DIA_PATH               = 

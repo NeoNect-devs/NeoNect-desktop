@@ -20,7 +20,7 @@
  *   and provide a 4-byte pseudo-random masking key generated via `QRandomGenerator`.
  * - <b>Inbound Validation</b>: Server-to-client frames MUST NOT be masked.
  * - <b>Control Frames</b>: Ping (0x9), Pong (0xA), and Close (0x8) frames MUST NOT exceed 125 bytes payload length.
- * - <b>Reconnection Backoff Bounds</b>: Backoff delay starts at 1,000 ms, doubles each retry ($2^n \times 1000$),
+ * - <b>Reconnection Backoff Bounds</b>: Backoff delay starts at 1,000 ms, doubles each retry (\f$2^n \times 1000\f$),
  *   and is capped at a maximum ceiling of 30,000 ms (30 seconds).
  * - <b>State Guard</b>: Outgoing frames can only be sent when state is `WebSocketState::Connected`.
  */

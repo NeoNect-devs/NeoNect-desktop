@@ -4,7 +4,8 @@
  * @details Implements a centralized, reactive palette of design tokens (OLED black, soft dark,
  * accent gradients, typography sizes) exposed to QML via the Singleton pattern and Qt property system.
  * 
- * @pattern Singleton Pattern / Design Token Architecture
+ * @par Design Pattern:
+ * Singleton Pattern / Design Token Architecture
  * @author NeoNect Development Team
  * @version 1.0.0
  */

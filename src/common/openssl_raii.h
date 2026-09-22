@@ -5,7 +5,8 @@
  * within modern C++ `std::unique_ptr` wrappers and provides an automatic memory-cleansing
  * secure buffer to prevent heap-inspection attacks on cryptographic secrets.
  * 
- * @pattern Resource Acquisition Is Initialization (RAII)
+ * @par Design Pattern:
+ * Resource Acquisition Is Initialization (RAII)
  * @author NeoNect Development Team
  * @version 1.0.0
  */

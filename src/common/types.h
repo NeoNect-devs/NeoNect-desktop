@@ -4,7 +4,8 @@
  * @details Defines cross-layer common types used throughout the transport, service,
  * storage, and presentation layers.
  * 
- * @pattern Value Object / Monad (ServiceResult)
+ * @par Design Pattern:
+ * Value Object / Monad (ServiceResult)
  * @author NeoNect Development Team
  * @version 1.0.0
  */

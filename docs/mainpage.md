@@ -15,148 +15,28 @@ The NeoNect Desktop Client is engineered under strict zero-trust principles:
 
 ## 2. Architectural Layers
 
-The client is decomposed into seven primary architectural layers, visualized in the interactive Graphviz diagram below:
+The client is decomposed into seven primary architectural layers, visualized in the modern interactive topology viewer below. You can zoom with the mouse wheel or toolbar, drag to pan across layers, pinch-to-zoom on touch devices, expand to fullscreen, and toggle between Light and Dark themes seamlessly:
 
-\dot
-digraph ArchitectureLayers {
-    rankdir=TB;
-    compound=true;
-    fontname="Helvetica";
-    fontsize=12;
-    bgcolor="transparent";
-    node [shape=record, fontname="Helvetica", fontsize=10, style="filled,rounded", fillcolor="#2b2d30", fontcolor="#ffffff", color="#4e5157", penwidth=1.2];
-    edge [fontname="Helvetica", fontsize=9, color="#7c828d", fontcolor="#9aa0a6", penwidth=1.2];
-
-    subgraph cluster_presentation {
-        label = "Layer 1: Presentation Tier (Declarative QML & QtQuick)";
-        style = "filled,rounded";
-        fillcolor = "#1e222b";
-        color = "#3d71ff";
-        fontcolor = "#79a8ff";
-        fontsize = 11;
-
-        qml_ui [label="{ QML User Interface | Main.qml • ChatView.qml • FriendsHomePanel.qml\nWindowTitleBar.qml • MessageDelegate.qml • MediaLightboxModal }", fillcolor="#252a35"];
-    }
-
-    subgraph cluster_facade {
-        label = "Layer 2: Core Presentation Facades & ViewModels";
-        style = "filled,rounded";
-        fillcolor = "#1e222b";
-        color = "#20c997";
-        fontcolor = "#5eead4";
-        fontsize = 11;
-
-        net_mgr [label="{ NetworkManager | Master UI Facade & Inter-Service Coordinator }", fillcolor="#1f3b33"];
-        crypto_mgr [label="{ CryptoManager | Credential Provisioning & Passphrase PBKDF2 }", fillcolor="#1f3b33"];
-        audio_mgr [label="{ AudioManager | Audio Streaming, Voice Notes & Waveform DSP }", fillcolor="#1f3b33"];
-        model_chat [label="{ ChatMessageModel | QAbstractListModel • Bubble Clustering }", fillcolor="#1f3b33"];
-        notif_mgr [label="{ NotificationManager | Desktop Toasts & Unread Badges }", fillcolor="#1f3b33"];
-    }
-
-    subgraph cluster_app {
-        label = "Layer 3: Composition Root & Application Controller";
-        style = "filled,rounded";
-        fillcolor = "#1e222b";
-        color = "#a855f7";
-        fontcolor = "#c084fc";
-        fontsize = 11;
-
-        app_ctrl [label="{ NeoNect::Application | Bootstrap • CLI Parsing • Dependency Injection Container • Qt Event Loop }", fillcolor="#362247"];
-    }
-
-    subgraph cluster_services {
-        label = "Layer 4: Business Services Domain";
-        style = "filled,rounded";
-        fillcolor = "#1e222b";
-        color = "#f59e0b";
-        fontcolor = "#fcd34d";
-        fontsize = 11;
-
-        auth_svc [label="{ AuthService | Registration • Login • Profile Sync }", fillcolor="#3c2e17"];
-        device_svc [label="{ DeviceService | Device Identity • Multi-Device Key Query }", fillcolor="#3c2e17"];
-        friend_svc [label="{ FriendService | Social Graph • Presence Heartbeats }", fillcolor="#3c2e17"];
-        msg_svc [label="{ MessageService | Optimistic UI • Two-Phase Media Negotiator }", fillcolor="#3c2e17"];
-        relay_svc [label="{ RelayService | E2EE Ingress/Egress Gateway • Deduplication }", fillcolor="#3c2e17"];
-    }
-
-    subgraph cluster_domain {
-        label = "Layer 5: Pure Domain Models";
-        style = "filled,rounded";
-        fillcolor = "#1e222b";
-        color = "#ec4899";
-        fontcolor = "#f472b6";
-        fontsize = 11;
-
-        domain_msg [label="{ Domain::Message | UUID • ServerID • Encrypted Payload • Waveform }", fillcolor="#3b1d2e"];
-        domain_status [label="{ Domain::MessageStatus | Sending • Sent • Failed • Seen • Pending • Accepted }", fillcolor="#3b1d2e"];
-    }
-
-    subgraph cluster_storage {
-        label = "Layer 6: Persistence & Storage";
-        style = "filled,rounded";
-        fillcolor = "#1e222b";
-        color = "#3b82f6";
-        fontcolor = "#93c5fd";
-        fontsize = 11;
-
-        settings_repo [label="{ SettingsRepository | QSettings • Profile Isolation • Cache-Aside }", fillcolor="#1d2e47"];
-        sql_repo [label="{ SqlMessageRepository | Active Object • Worker QThread • SQLite WAL }", fillcolor="#1d2e47"];
-    }
-
-    subgraph cluster_infra {
-        label = "Layer 7: Cryptography & Network Infrastructure";
-        style = "filled,rounded";
-        fillcolor = "#1e222b";
-        color = "#ef4444";
-        fontcolor = "#fca5a5";
-        fontsize = 11;
-
-        crypto_svc [label="{ CryptoService (OpenSSL) | AES-256-GCM • PBKDF2 • CSPRNG • RAII }", fillcolor="#3f1c1c"];
-        http_trans [label="{ HttpTransport | QNetworkAccessManager • TLS REST API }", fillcolor="#3f1c1c"];
-        ws_client [label="{ WebSocketClient | RFC 6455 Client • SSL Frame Engine }", fillcolor="#3f1c1c"];
-    }
-
-    // Inter-layer relationships
-    qml_ui -> net_mgr [label="Q_PROPERTY / Q_INVOKABLE"];
-    qml_ui -> crypto_mgr;
-    qml_ui -> audio_mgr;
-    qml_ui -> model_chat;
-    qml_ui -> notif_mgr;
-
-    app_ctrl -> net_mgr [style="dashed", label="instantiates & wires"];
-    app_ctrl -> crypto_mgr [style="dashed"];
-    app_ctrl -> audio_mgr [style="dashed"];
-    app_ctrl -> notif_mgr [style="dashed"];
-    app_ctrl -> auth_svc [style="dashed"];
-    app_ctrl -> settings_repo [style="dashed"];
-    app_ctrl -> sql_repo [style="dashed"];
-
-    net_mgr -> auth_svc [label="delegates"];
-    net_mgr -> device_svc;
-    net_mgr -> friend_svc;
-    net_mgr -> relay_svc;
-
-    model_chat -> msg_svc [label="observes"];
-    msg_svc -> sql_repo [label="async I/O"];
-    msg_svc -> relay_svc [label="transmits domain msg"];
-    friend_svc -> relay_svc [label="p2p signaling"];
-
-    relay_svc -> crypto_svc [label="encrypt / decrypt"];
-    relay_svc -> http_trans [label="REST poll"];
-    relay_svc -> ws_client [label="push stream"];
-
-    auth_svc -> http_trans;
-    device_svc -> http_trans;
-    friend_svc -> http_trans;
-
-    auth_svc -> settings_repo [label="persists token"];
-    crypto_mgr -> crypto_svc;
-    crypto_mgr -> settings_repo;
-
-    msg_svc -> domain_msg [label="operates on"];
-    domain_msg -> domain_status;
-}
-\enddot
+<div class="modern-graph-card">
+    <div class="graph-toolbar">
+        <div class="graph-title">
+            <span class="graph-icon">🏛️</span>
+            <span>Interactive Architectural Topology</span>
+        </div>
+        <div class="graph-controls">
+            <span id="btnZoomIn" class="graph-btn" role="button" tabindex="0" title="Zoom In">➕ Zoom In</span>
+            <span id="btnZoomOut" class="graph-btn" role="button" tabindex="0" title="Zoom Out">➖ Zoom Out</span>
+            <span id="btnReset" class="graph-btn" role="button" tabindex="0" title="Reset View">↺ Reset</span>
+            <span id="btnFullscreen" class="graph-btn" role="button" tabindex="0" title="Toggle Fullscreen">⛶ Fullscreen</span>
+        </div>
+    </div>
+    <div id="graphViewport" class="graph-viewport">
+        <div id="architectureMermaid" class="mermaid"></div>
+    </div>
+    <div class="graph-footer">
+        <span class="graph-tip">💡 <b>Interactive Topology:</b> Click &amp; drag to pan • Mouse wheel to zoom • Touch pinch/pan on mobile • Toggle light/dark theme anytime.</span>
+    </div>
+</div>
 
 ### Layer Responsibilities
 - **Presentation Layer (QML / QtQuick)**: Purely declarative, reactive UI written in QML, adhering to Discord/Telegram-inspired high-productivity aesthetics with fluid animations, virtualized list views, and responsive layouting.

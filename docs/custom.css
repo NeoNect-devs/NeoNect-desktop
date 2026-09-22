@@ -1,14 +1,53 @@
 /* =========================================================================
    NeoNect Desktop Client - Modern Responsive Documentation Theme
-   Augmented on top of doxygen-awesome-css
+   Augmented on top of doxygen-awesome-css with Full Dual-Theme Support
    ========================================================================= */
 
+/* -------------------------------------------------------------------------
+   1. Theme Variables: Light Mode (Default)
+   ------------------------------------------------------------------------- */
 :root {
     /* Brand Accent Colors */
     --primary-color: #2563eb;
     --primary-dark-color: #1d4ed8;
     --primary-light-color: #60a5fa;
     --on-primary-color: #ffffff;
+    --link-color: #2563eb;
+
+    /* Crisp High-Contrast Light Theme Palette */
+    --page-background-color: #ffffff;
+    --page-foreground-color: #0f172a;
+    --page-secondary-foreground-color: #475569;
+    --side-nav-background: #f8fafc;
+    --header-background: #ffffff;
+    --header-foreground: #0f172a;
+    --separator-color: #e2e8f0;
+    --blockquote-background: #f8fafc;
+    --blockquote-foreground: #475569;
+    --tablehead-background: #f1f5f9;
+    --tablehead-foreground: #0f172a;
+    --code-background: #f8fafc;
+    --code-foreground: #0f172a;
+    --odd-color: #f8fafc;
+    --searchbar-background: #f1f5f9;
+    --searchbar-foreground: #0f172a;
+
+    /* Light Theme Callouts & Invariant Badges */
+    --warning-color: #fefce8;
+    --warning-color-dark: #ca8a04;
+    --warning-color-darker: #854d0e;
+    --note-color: #eff6ff;
+    --note-color-dark: #2563eb;
+    --note-color-darker: #1e40af;
+    --todo-color: #faf5ff;
+    --todo-color-dark: #9333ea;
+    --todo-color-darker: #6b21a8;
+    --bug-color: #fef2f2;
+    --bug-color-dark: #dc2626;
+    --bug-color-darker: #991b1b;
+    --invariant-color: #f0fdf4;
+    --invariant-color-dark: #16a34a;
+    --invariant-color-darker: #166534;
 
     /* Typography & Font Stacks */
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -18,23 +57,30 @@
     --code-font-size: 13.5px;
 
     /* Responsive Layout Widths */
-    --content-maxwidth: min(1360px, 94vw);
+    --content-maxwidth: min(1380px, 95vw);
     --toc-width: 240px;
 
     /* Border Radii */
     --border-radius-large: 12px;
     --border-radius-medium: 8px;
-    --border-radius-small: 5px;
+    --border-radius-small: 6px;
 
     /* Shadows & Transitions */
-    --box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+    --box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
     --theme-transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* -------------------------------------------------------------------------
+   2. Theme Variables: Dark Mode
+   ------------------------------------------------------------------------- */
 html.dark-mode {
     --primary-color: #38bdf8;
     --primary-dark-color: #0284c7;
     --primary-light-color: #7dd3fc;
+    --on-primary-color: #0f172a;
+    --link-color: #38bdf8;
+
+    /* Deep Slate / GitHub-Dark Mode Palette */
     --page-background-color: #0d1117;
     --page-foreground-color: #e6edf3;
     --page-secondary-foreground-color: #8b949e;
@@ -45,19 +91,53 @@ html.dark-mode {
     --blockquote-background: #161b22;
     --blockquote-foreground: #8b949e;
     --tablehead-background: #161b22;
+    --tablehead-foreground: #e6edf3;
     --code-background: #161b22;
-    --box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    --code-foreground: #e6edf3;
+    --odd-color: #161b22;
+    --searchbar-background: #21262d;
+    --searchbar-foreground: #e6edf3;
+
+    /* Dark Theme Callouts & Invariant Badges */
+    --warning-color: #2b2512;
+    --warning-color-dark: #eab308;
+    --warning-color-darker: #fef08a;
+    --note-color: #112240;
+    --note-color-dark: #38bdf8;
+    --note-color-darker: #bae6fd;
+    --todo-color: #2e1065;
+    --todo-color-dark: #c084fc;
+    --todo-color-darker: #f3e8ff;
+    --bug-color: #450a0a;
+    --bug-color-dark: #f87171;
+    --bug-color-darker: #fecaca;
+    --invariant-color: #052e16;
+    --invariant-color-dark: #4ade80;
+    --invariant-color-darker: #bbf7d0;
+
+    --box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
 }
 
-/* =========================================================================
-   1. Header, Branding & Prominent Responsive Logo
-   ========================================================================= */
+/* Base Body & Layout Sync */
+body {
+    background-color: var(--page-background-color) !important;
+    color: var(--page-foreground-color) !important;
+    font-family: var(--font-family);
+}
 
+#doc-content {
+    background-color: var(--page-background-color) !important;
+}
+
+/* -------------------------------------------------------------------------
+   3. Header, Branding & Prominent Responsive Logo
+   ------------------------------------------------------------------------- */
 #top {
     border-bottom: 1px solid var(--separator-color);
     background: var(--header-background);
     padding: 4px 0;
     box-shadow: var(--box-shadow);
+    color: var(--header-foreground);
 }
 
 #titlearea {
@@ -90,16 +170,16 @@ html.dark-mode {
     align-items: center;
 }
 
-/* Prominent, enlarged branding logo with smooth micro-interaction */
+/* Prominent branding logo */
 #projectlogo img {
-    max-height: 72px;
-    max-width: 240px;
+    max-height: 74px;
+    max-width: 250px;
     height: auto;
     width: auto;
     object-fit: contain;
     display: inline-block;
     vertical-align: middle;
-    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.1));
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.08));
     transition: transform 0.25s ease, filter 0.25s ease;
 }
 
@@ -141,17 +221,62 @@ html.dark-mode {
 
 #projectbrief {
     font-size: 0.90rem;
-    opacity: 0.85;
+    opacity: 0.88;
     margin-top: 4px;
     color: var(--page-secondary-foreground-color);
     line-height: 1.4;
 }
 
-/* =========================================================================
-   2. Responsive Breakpoints & Viewport Adaptations
-   ========================================================================= */
+/* -------------------------------------------------------------------------
+   4. Sidebar, Navigation Tree & Search Box Theme Harmonization
+   ------------------------------------------------------------------------- */
+#side-nav {
+    background-color: var(--side-nav-background) !important;
+    border-right: 1px solid var(--separator-color) !important;
+}
 
-/* Tablets and medium screens */
+#nav-tree {
+    background-color: var(--side-nav-background) !important;
+}
+
+#nav-tree .selected {
+    background-color: rgba(37, 99, 235, 0.12) !important;
+    color: var(--primary-color) !important;
+    font-weight: 600;
+}
+
+#nav-sync {
+    background-color: var(--side-nav-background) !important;
+    border-bottom: 1px solid var(--separator-color) !important;
+}
+
+#splitbar {
+    background: var(--separator-color) !important;
+}
+
+/* Search engine input bar */
+#MSearchBox {
+    background: var(--searchbar-background) !important;
+    border: 1px solid var(--separator-color) !important;
+    border-radius: 9999px !important;
+    box-shadow: none !important;
+    color: var(--searchbar-foreground) !important;
+}
+
+#MSearchField {
+    background: transparent !important;
+    color: var(--searchbar-foreground) !important;
+    font-family: var(--font-family) !important;
+    font-size: 0.88rem !important;
+}
+
+#MSearchSelect {
+    filter: opacity(0.7);
+}
+
+/* -------------------------------------------------------------------------
+   5. Responsive Breakpoints & Viewport Adaptations
+   ------------------------------------------------------------------------- */
 @media screen and (max-width: 992px) {
     #projectlogo img {
         max-height: 60px;
@@ -168,7 +293,6 @@ html.dark-mode {
     }
 }
 
-/* Mobile phones and small viewports */
 @media screen and (max-width: 640px) {
     #projectrow {
         gap: 12px;
@@ -188,21 +312,19 @@ html.dark-mode {
     }
 }
 
-/* Ultra small devices */
 @media screen and (max-width: 420px) {
     #projectlogo img {
         max-height: 42px;
         max-width: 130px;
     }
     #projectbrief {
-        display: none; /* Hide subtitle on tiny screens to preserve vertical space */
+        display: none;
     }
 }
 
-/* =========================================================================
-   3. Content Container & Layout Fluidity
-   ========================================================================= */
-
+/* -------------------------------------------------------------------------
+   6. Content Layout & Fluidity
+   ------------------------------------------------------------------------- */
 .contents {
     padding: 0 16px;
     box-sizing: border-box;
@@ -220,10 +342,9 @@ html.dark-mode {
     border-radius: var(--border-radius-medium);
 }
 
-/* =========================================================================
-   4. Responsive Tables with Horizontal Touch Scrolling
-   ========================================================================= */
-
+/* -------------------------------------------------------------------------
+   7. Responsive Tables with Smooth Touch Scrolling
+   ------------------------------------------------------------------------- */
 .contents table.markdownTable,
 .contents table.fieldtable {
     width: 100%;
@@ -233,13 +354,15 @@ html.dark-mode {
     border: 1px solid var(--separator-color);
     border-radius: var(--border-radius-medium);
     overflow: hidden;
+    background: var(--page-background-color);
 }
 
 .contents table.markdownTable th,
 .contents table.fieldtable th {
-    background: var(--tablehead-background);
+    background: var(--tablehead-background) !important;
+    color: var(--tablehead-foreground) !important;
     padding: 12px 16px;
-    font-weight: 600;
+    font-weight: 650;
     font-size: 0.90rem;
     border-bottom: 2px solid var(--separator-color);
     text-align: left;
@@ -251,13 +374,13 @@ html.dark-mode {
     border-bottom: 1px solid var(--separator-color);
     font-size: 0.90rem;
     line-height: 1.5;
+    color: var(--page-foreground-color);
 }
 
 .contents table.markdownTable tr:last-child td {
     border-bottom: none;
 }
 
-/* Wrap wide markdown tables in smooth horizontal scrolling on mobile */
 @media screen and (max-width: 860px) {
     .contents table.markdownTable {
         display: block;
@@ -275,11 +398,24 @@ html.dark-mode {
     }
 }
 
-/* Directory listing table responsiveness */
+/* Directory listing tables */
 table.directory {
     width: 100%;
     max-width: 100%;
     margin: 16px 0;
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-medium);
+    border-collapse: separate;
+    border-spacing: 0;
+    overflow: hidden;
+}
+
+table.directory tr.even {
+    background-color: var(--page-background-color);
+}
+
+table.directory tr.odd {
+    background-color: var(--odd-color);
 }
 
 table.directory td.entry {
@@ -293,38 +429,171 @@ table.directory td.desc {
     color: var(--page-secondary-foreground-color);
 }
 
-/* =========================================================================
-   5. Interactive Graphviz Diagram (.dotgraph) Responsive Container
-   ========================================================================= */
-
-div.dotgraph {
-    text-align: center;
-    margin: 28px auto;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    background: rgba(125, 125, 125, 0.04);
+/* -------------------------------------------------------------------------
+   8. Modern Interactive Graph Viewer (.modern-graph-card)
+   ------------------------------------------------------------------------- */
+.modern-graph-card {
+    margin: 28px 0;
     border: 1px solid var(--separator-color);
     border-radius: var(--border-radius-large);
-    padding: 24px 16px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
-    max-width: 100%;
+    background: var(--page-background-color);
+    box-shadow: var(--box-shadow);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.modern-graph-card:fullscreen {
+    background: var(--page-background-color);
+    padding: 16px;
+    border-radius: 0;
+    width: 100vw;
+    height: 100vh;
     box-sizing: border-box;
 }
 
-div.dotgraph svg {
-    max-width: 100%;
-    height: auto;
-    display: inline-block;
-    vertical-align: middle;
+.graph-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 12px 18px;
+    background: var(--tablehead-background);
+    border-bottom: 1px solid var(--separator-color);
 }
 
-/* =========================================================================
-   6. Member Items, Function Signatures & Code Blocks
-   ========================================================================= */
+.graph-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+    font-weight: 650;
+    color: var(--page-foreground-color);
+}
 
+.graph-icon {
+    font-size: 1.15rem;
+}
+
+.graph-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.graph-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
+    font-size: 0.82rem;
+    font-weight: 550;
+    color: var(--page-foreground-color);
+    background: var(--page-background-color);
+    border: 1px solid var(--separator-color);
+    border-radius: var(--border-radius-small);
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.graph-btn:hover {
+    background: var(--primary-color);
+    color: var(--on-primary-color);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.graph-btn:active {
+    transform: translateY(0);
+}
+
+.graph-viewport {
+    position: relative;
+    width: 100%;
+    min-height: 520px;
+    height: 640px;
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--page-background-color);
+}
+
+.modern-graph-card:fullscreen .graph-viewport {
+    height: calc(100vh - 110px);
+}
+
+.graph-viewport:active {
+    cursor: grabbing;
+}
+
+#architectureMermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform-origin: center center;
+}
+
+#architectureMermaid svg {
+    max-width: none !important;
+    height: auto !important;
+    pointer-events: none;
+}
+
+/* Mermaid SVG node and cluster aesthetics */
+.graph-viewport svg .cluster rect {
+    rx: 10px !important;
+    ry: 10px !important;
+    stroke-width: 1.5px !important;
+}
+
+.graph-viewport svg .node rect,
+.graph-viewport svg .node polygon,
+.graph-viewport svg .node circle {
+    rx: 8px !important;
+    ry: 8px !important;
+    stroke-width: 1.5px !important;
+}
+
+.graph-viewport svg .edgePath path.path {
+    stroke-width: 1.8px !important;
+}
+
+.graph-viewport svg .edgeLabel {
+    font-size: 11px !important;
+    font-weight: 500 !important;
+}
+
+.graph-footer {
+    padding: 10px 18px;
+    background: var(--tablehead-background);
+    border-top: 1px solid var(--separator-color);
+    font-size: 0.82rem;
+    color: var(--page-secondary-foreground-color);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.graph-tip {
+    line-height: 1.4;
+}
+
+/* -------------------------------------------------------------------------
+   9. Member Items, Function Signatures & Code Blocks
+   ------------------------------------------------------------------------- */
 .memitem {
     border-radius: var(--border-radius-large);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    box-shadow: var(--box-shadow);
     margin-bottom: 24px;
     border: 1px solid var(--separator-color);
     overflow: hidden;
@@ -339,13 +608,20 @@ div.dotgraph svg {
     font-size: 0.88rem;
     background: var(--odd-color);
     border-bottom: 1px solid var(--separator-color);
+    color: var(--page-foreground-color);
+}
+
+.memname {
+    color: var(--primary-color) !important;
+    font-weight: 700;
 }
 
 .memdoc {
     padding: 16px 22px;
+    background: var(--page-background-color);
+    color: var(--page-foreground-color);
 }
 
-/* Code fragment boxes */
 div.fragment {
     border-radius: var(--border-radius-medium);
     border: 1px solid var(--separator-color);
@@ -354,18 +630,19 @@ div.fragment {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
     margin: 14px 0;
+    background: var(--code-background);
+    color: var(--code-foreground);
 }
 
-/* =========================================================================
-   7. Badges for Preconditions, Postconditions & Invariants
-   ========================================================================= */
-
+/* -------------------------------------------------------------------------
+   10. Badges for Preconditions, Postconditions & Invariants
+   ------------------------------------------------------------------------- */
 dl.section.pre, dl.section.post, dl.section.invariant {
     margin: 14px 0;
     padding: 12px 16px;
     border-radius: var(--border-radius-medium);
     border-left: 4px solid var(--primary-color);
-    background: rgba(37, 99, 235, 0.06);
+    background: rgba(37, 99, 235, 0.08);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
 }
 
@@ -380,26 +657,33 @@ dl.section.pre dt, dl.section.post dt, dl.section.invariant dt {
 
 dl.section.warning {
     border-left: 4px solid #eab308;
-    background: rgba(234, 179, 8, 0.07);
+    background: rgba(234, 179, 8, 0.09);
 }
 
 dl.section.warning dt {
+    color: #ca8a04;
+}
+
+html.dark-mode dl.section.warning dt {
     color: #eab308;
 }
 
 dl.section.note {
     border-left: 4px solid #3b82f6;
-    background: rgba(59, 130, 246, 0.07);
+    background: rgba(59, 130, 246, 0.09);
 }
 
 dl.section.note dt {
-    color: #3b82f6;
+    color: #2563eb;
 }
 
-/* =========================================================================
-   8. Sleek Custom Scrollbars
-   ========================================================================= */
+html.dark-mode dl.section.note dt {
+    color: #38bdf8;
+}
 
+/* -------------------------------------------------------------------------
+   11. Sleek Custom Scrollbars
+   ------------------------------------------------------------------------- */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;

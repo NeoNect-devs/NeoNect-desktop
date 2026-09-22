@@ -16,9 +16,9 @@
  * - <b>Observer Pattern</b>: Notifies QML views of playback progress, duration changes, and live waveform telemetry.
  *
  * @par Audio Engine Constraints & Invariants:
- * - <b>Volume Range</b>: Master volume $v \in [0.0, 1.0]$. Values outside are strictly clamped.
- * - <b>Playback Speed Multiplier</b>: $s \in [0.25, 3.0]$. Values outside are clamped.
- * - <b>Seek Range</b>: Progress fraction $p \in [0.0, 1.0]$.
+ * - <b>Volume Range</b>: Master volume \f$v \in [0.0, 1.0]\f$. Values outside are strictly clamped.
+ * - <b>Playback Speed Multiplier</b>: \f$s \in [0.25, 3.0]\f$. Values outside are clamped.
+ * - <b>Seek Range</b>: Progress fraction \f$p \in [0.0, 1.0]\f$.
  * - <b>Audio Formats</b>: 16-bit signed linear PCM, mono (1 channel) or stereo (2 channels),
  *   sample rates: 16,000 Hz (voice/telephony standard), 44,100 Hz (CD standard), 48,000 Hz (broadcast).
  * - <b>Recording Duration Bound</b>: Voice notes are bounded to a maximum of 600 seconds (10 minutes)

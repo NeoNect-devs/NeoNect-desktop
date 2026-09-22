@@ -6,7 +6,7 @@
  *
  * @details
  * Handles dispatching asynchronous HTTP requests (GET, POST, DELETE) over SSL/TLS.
- * Features URL normalization via @ref cleanUrl, automatic Bearer authentication header
+ * Features URL normalization via @ref NeoNect::Transport::HttpTransport::cleanUrl, automatic Bearer authentication header
  * injection, thread-safe configuration mutation via `std::mutex`, and object-lifetime-guarded
  * completion callbacks.
  *
