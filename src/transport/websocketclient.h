@@ -1,4 +1,21 @@
-// src/transport/websocketclient.h
+/**
+ * @file websocketclient.h
+ * @brief Native RFC 6455 WebSocket protocol implementation with SSL/TLS and auto-reconnection.
+ * @author NeoNect Development Team
+ * @date 2026
+ *
+ * @details
+ * Implements a lightweight, RFC 6455 compliant WebSocket client over `QSslSocket`.
+ * It provides custom HTTP upgrade handshaking, Sec-WebSocket-Key generation and validation,
+ * 4-byte client masking, frame fragmentation handling, ping/pong keepalives, and automatic
+ * exponential backoff reconnection.
+ *
+ * @par Design Patterns:
+ * - <b>State Machine Pattern</b>: Tracks connection progression through `WebSocketState`.
+ * - <b>Observer Pattern</b>: Emits signals on frame arrival, state changes, and socket errors.
+ * - <b>Protocol Engine / Adapter</b>: Adapts low-level TCP/SSL byte streams into discrete WebSocket frames.
+ */
+
 #pragma once
 
 #include <QObject>
@@ -12,66 +29,153 @@
 namespace NeoNect {
 namespace Transport {
 
+/**
+ * @enum WebSocketState
+ * @brief Represents the lifecycle states of the RFC 6455 WebSocket client.
+ */
 enum class WebSocketState {
-    Disconnected,
-    Connecting,
-    Handshaking,
-    Connected,
-    Closing
+    Disconnected, /**< Socket is closed and inactive. */
+    Connecting,   /**< TCP/SSL connection establishment in progress. */
+    Handshaking,  /**< HTTP 101 Switching Protocols upgrade request sent, awaiting server response. */
+    Connected,    /**< Handshake verified; bi-directional WebSocket frames can be exchanged. */
+    Closing       /**< Close control frame sent or received, closing socket. */
 };
 
+/**
+ * @class WebSocketClient
+ * @brief Real-time bidirectional streaming client for relay push notifications and signaling.
+ */
 class WebSocketClient : public QObject {
     Q_OBJECT
 public:
+    /**
+     * @brief Constructs the WebSocket client.
+     * @param parent Optional parent QObject for Qt tree ownership.
+     */
     explicit WebSocketClient(QObject *parent = nullptr);
+
+    /**
+     * @brief Destructor. Closes active socket and stops reconnection timers.
+     */
     ~WebSocketClient() override;
 
+    /**
+     * @brief Initiates connection to the remote WebSocket relay endpoint.
+     * @param serverUrl Server base address (e.g. `"http://localhost:8080"` or `"wss://relay.neonect.chat"`).
+     * @param deviceId Client device UUID sent in headers/query.
+     * @param token Authentication bearer token.
+     */
     void open(const QString &serverUrl, const QString &deviceId, const QString &token);
+
+    /**
+     * @brief Closes the WebSocket connection gracefully using close frame.
+     */
     void close();
 
+    /**
+     * @brief Checks if the client is currently connected and handshaked.
+     * @return True if state is `WebSocketState::Connected`.
+     */
     bool isConnected() const { return m_state == WebSocketState::Connected; }
+
+    /**
+     * @brief Retrieves the current state machine state.
+     */
     WebSocketState state() const { return m_state; }
+
+    /**
+     * @brief Retrieves the registered device ID.
+     */
     QString deviceId() const { return m_deviceId; }
+
+    /**
+     * @brief Retrieves the session token used for authentication.
+     */
     QString token() const { return m_token; }
 
+    /**
+     * @brief Sends a text frame (opcode 0x1) masked according to RFC 6455.
+     * @param text UTF-8 string payload.
+     */
     void sendTextMessage(const QString &text);
+
+    /**
+     * @brief Sends a ping control frame (opcode 0x9) for keepalive heartbeat.
+     * @param data Optional heartbeat payload.
+     */
     void sendPing(const QByteArray &data = QByteArray());
 
 signals:
+    /** @brief Emitted upon successful completion of the HTTP 101 WebSocket upgrade handshake. */
     void connected();
+
+    /** @brief Emitted when the socket disconnects or closes. */
     void disconnected();
+
+    /**
+     * @brief Emitted when a complete unmasked text frame is received from the server.
+     * @param message Text payload string.
+     */
     void textMessageReceived(const QString &message);
+
+    /**
+     * @brief Emitted on network socket errors or protocol validation failures.
+     * @param error Descriptive error message.
+     */
     void errorOccurred(const QString &error);
+
+    /**
+     * @brief Emitted whenever the internal state machine transitions to a new state.
+     * @param newState Target state.
+     */
     void stateChanged(WebSocketState newState);
 
 private slots:
+    /** @brief Socket connected slot: triggers handshake transmission. */
     void onSocketConnected();
+    /** @brief Socket disconnected slot: initiates exponential backoff reconnect if requested. */
     void onSocketDisconnected();
+    /** @brief Inbound data ready slot: processes handshake or binary frames. */
     void onSocketReadyRead();
+    /** @brief Socket error slot. */
     void onSocketError(QAbstractSocket::SocketError socketError);
+    /** @brief Reconnection timer tick slot. */
     void onReconnectTimer();
 
 private:
+    /** @brief Transitions connection state and emits @ref stateChanged. */
     void setState(WebSocketState newState);
+    /** @brief Sends HTTP GET upgrade request with Sec-WebSocket-Key and headers. */
     void performHandshake();
+    /** @brief Parses incoming HTTP 101 upgrade handshake response. */
     void processIncomingData();
+    /** @brief Parses raw RFC 6455 frames from incoming buffer. */
     void processFrames();
+    /** @brief Sends pong frame (opcode 0xA) in response to server ping. */
     void sendPong(const QByteArray &data);
+    /** @brief Encodes, masks, and writes an RFC 6455 frame to the underlying socket. */
     void sendFrame(quint8 opcode, const QByteArray &data);
 
+    /** @brief Underlying SSL/TCP socket. */
     QSslSocket *m_socket = nullptr;
+    /** @brief Timer for managing exponential backoff reconnect attempts. */
     QTimer *m_reconnectTimer = nullptr;
 
     QString m_serverUrl;
     QString m_deviceId;
     QString m_token;
+    /** @brief Base64 expected accept key computed from client nonce. */
     QString m_expectedAcceptKey;
 
     WebSocketState m_state{WebSocketState::Disconnected};
+    /** @brief Indicates whether the user desires to maintain an active connection. */
     bool m_shouldBeConnected{false};
+    /** @brief Number of consecutive failed reconnection attempts. */
     int m_reconnectAttempts{0};
 
+    /** @brief Buffer accumulating raw incoming TCP bytes. */
     QByteArray m_readBuffer;
+    /** @brief Flag indicating whether handshake negotiation succeeded. */
     bool m_handshakeComplete{false};
 };
 

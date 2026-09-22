@@ -556,4 +556,18 @@ elseif(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_PACKAGE_SECTION "net")
 endif()
 
-include(CPack)
+include(CPack)
+
+# ==============================================================================
+# 10. Doxygen Documentation Target
+# ==============================================================================
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Generating authentic HTML Doxygen documentation for NeoNect"
+        VERBATIM
+    )
+endif()
+

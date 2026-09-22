@@ -1,79 +1,133 @@
-// src/themedata.h
+/**
+ * @file themedata.h
+ * @brief Dynamic design token system and reactive UI theme manager for NeoNect.
+ * @details Implements a centralized, reactive palette of design tokens (OLED black, soft dark,
+ * accent gradients, typography sizes) exposed to QML via the Singleton pattern and Qt property system.
+ * 
+ * @pattern Singleton Pattern / Design Token Architecture
+ * @author NeoNect Development Team
+ * @version 1.0.0
+ */
+
 #pragma once
 #include <QColor>
 #include <QObject>
 
+/**
+ * @struct ThemeTokens
+ * @brief Plain Old Data (POD) struct encapsulating the raw visual design tokens.
+ * @details Stores color values for surfaces, borders, text contrast levels, status indicators,
+ * input fields, and typographic font scales.
+ */
 struct ThemeTokens {
-    QColor windowBackground{"#0e0f12"};
-    QColor panelBackground{"#08080a"};
-    QColor headerBackground{"#0d0e11"};
-    QColor sidebarBackground{"#000000"};
-    QColor accentColor{"#0A84FF"};
-    QColor accentHover{"#0066CC"};
-    QColor textPrimary{"#f2f3f5"};
-    QColor textSecondary{"#949ba4"};
-    QColor textMuted{"#6d6f78"};
+    QColor windowBackground{"#0e0f12"};        ///< Base window background color.
+    QColor panelBackground{"#08080a"};         ///< Secondary content panel surface color.
+    QColor headerBackground{"#0d0e11"};        ///< Top navigation header bar surface color.
+    QColor sidebarBackground{"#000000"};       ///< Channel/server navigation sidebar background.
+    QColor accentColor{"#0A84FF"};             ///< Primary neon accent brand color.
+    QColor accentHover{"#0066CC"};             ///< Interactive hover state for accent controls.
+    QColor textPrimary{"#f2f3f5"};             ///< High-contrast primary text color.
+    QColor textSecondary{"#949ba4"};           ///< Medium-contrast descriptive label text.
+    QColor textMuted{"#6d6f78"};               ///< Low-contrast subtle placeholder/timestamp text.
 
-    QColor borderColor{"#18191d"};
-    QColor itemHoverBackground{"#141518"};
-    QColor itemSelectedBackground{"#1e1f24"};
+    QColor borderColor{"#18191d"};             ///< Structural dividing line and border color.
+    QColor itemHoverBackground{"#141518"};      ///< Background highlight when hovering interactive items.
+    QColor itemSelectedBackground{"#1e1f24"};   ///< Background fill for selected/active list delegates.
 
-    QColor scrollBarThumb{"#2b2d31"};
-    QColor scrollBarThumbHover{"#3f4248"};
-    QColor statusOnline{"#23a55a"};
-    QColor statusOffline{"#80848e"};
+    QColor scrollBarThumb{"#2b2d31"};          ///< Idle scrollbar thumb handle color.
+    QColor scrollBarThumbHover{"#3f4248"};     ///< Active/dragged scrollbar thumb handle color.
+    QColor statusOnline{"#23a55a"};            ///< Green status badge for online peers.
+    QColor statusOffline{"#80848e"};           ///< Neutral grey status badge for offline peers.
 
-    QColor inputGradientStart{"#0A84FF"};
-    QColor inputGradientEnd{"#00B4D8"};
-    QColor inputSolidBorder{"#18191d"};
-    QColor inputBackgroundActive{"#000000"};
-    QColor inputBackgroundInactive{"#08080a"};
-    QColor placeholderColor{"#6d6f78"};
+    QColor inputGradientStart{"#0A84FF"};      ///< Accent gradient starting color for input borders.
+    QColor inputGradientEnd{"#00B4D8"};        ///< Accent gradient ending color for input borders.
+    QColor inputSolidBorder{"#18191d"};        ///< Inactive solid input border color.
+    QColor inputBackgroundActive{"#000000"};   ///< Focused text field background color.
+    QColor inputBackgroundInactive{"#08080a"}; ///< Unfocused text field background color.
+    QColor placeholderColor{"#6d6f78"};        ///< Input placeholder text color.
 
-    int fontSizeNormal{14};
-    int fontSizeHeader{18};
-    int fontSizeSmall{11};
+    int fontSizeNormal{14};                    ///< Default body typography size in points.
+    int fontSizeHeader{18};                    ///< Section header typography size in points.
+    int fontSizeSmall{11};                     ///< Metadata/badge small typography size in points.
 };
 
+/**
+ * @class ThemeData
+ * @brief Singleton theme engine exposing reactive styling properties to QML.
+ * @details Manages active design presets (`OLED Black`, `Soft Charcoal`), notifies QML
+ * bindings on theme modification via the `themeChanged()` signal, and provides dynamic
+ * runtime color overrides.
+ * 
+ * @pattern Singleton Pattern
+ */
 class ThemeData : public QObject {
     Q_OBJECT
 
     // ─── CORE UI TOKENS ───────────────────────────────────────────────
+    /** @brief Base background color for the main application window surface. */
     Q_PROPERTY(QColor windowBackground READ windowBackground WRITE setWindowBackground NOTIFY themeChanged)
+    /** @brief Background color for intermediate panels, cards, and container views. */
     Q_PROPERTY(QColor panelBackground READ panelBackground WRITE setPanelBackground NOTIFY themeChanged)
+    /** @brief Background color for title bars, headers, and conversation top banners. */
     Q_PROPERTY(QColor headerBackground READ headerBackground WRITE setHeaderBackground NOTIFY themeChanged)
+    /** @brief Background color for navigation sidebars and server lists. */
     Q_PROPERTY(QColor sidebarBackground READ sidebarBackground WRITE setSidebarBackground NOTIFY themeChanged)
+    /** @brief Primary brand accent color used for buttons, links, and highlights. */
     Q_PROPERTY(QColor accentColor READ accentColor WRITE setAccentColor NOTIFY themeChanged)
+    /** @brief Darkened accent tint applied during mouse hover and press states. */
     Q_PROPERTY(QColor accentHover READ accentHover WRITE setAccentHover NOTIFY themeChanged)
+    /** @brief Primary typography color ensuring optimal readability against dark surfaces. */
     Q_PROPERTY(QColor textPrimary READ textPrimary WRITE setTextPrimary NOTIFY themeChanged)
+    /** @brief Secondary typography color for subtitles, handles, and metadata. */
     Q_PROPERTY(QColor textSecondary READ textSecondary WRITE setTextSecondary NOTIFY themeChanged)
+    /** @brief Muted typography color for timestamps, disabled states, and hints. */
     Q_PROPERTY(QColor textMuted READ textMuted WRITE setTextMuted NOTIFY themeChanged)
 
     // ─── BORDERS & SEPARATORS ─────────────────────────────────────────
+    /** @brief Subtle border color separating adjacent layout panels and containers. */
     Q_PROPERTY(QColor borderColor READ borderColor WRITE setBorderColor NOTIFY themeChanged)
+    /** @brief Hover background highlight for list rows, buttons, and icons. */
     Q_PROPERTY(QColor itemHoverBackground READ itemHoverBackground WRITE setItemHoverBackground NOTIFY themeChanged)
+    /** @brief Selection background highlight for active conversation channels. */
     Q_PROPERTY(QColor itemSelectedBackground READ itemSelectedBackground WRITE setItemSelectedBackground NOTIFY themeChanged)
 
     // ─── SCROLLBAR & STATUS TOKENS ────────────────────────────────────
+    /** @brief Normal idle color of virtualized scrollbar thumb handles. */
     Q_PROPERTY(QColor scrollBarThumb READ scrollBarThumb WRITE setScrollBarThumb NOTIFY themeChanged)
+    /** @brief Highlighted color of scrollbar thumb handles during interaction. */
     Q_PROPERTY(QColor scrollBarThumbHover READ scrollBarThumbHover WRITE setScrollBarThumbHover NOTIFY themeChanged)
+    /** @brief Green indicator color signifying an online/active peer status. */
     Q_PROPERTY(QColor statusOnline READ statusOnline WRITE setStatusOnline NOTIFY themeChanged)
+    /** @brief Grey indicator color signifying an offline/disconnected peer status. */
     Q_PROPERTY(QColor statusOffline READ statusOffline WRITE setStatusOffline NOTIFY themeChanged)
 
     // ─── INPUT TEXTFIELD TOKENS ───────────────────────────────────────
+    /** @brief Starting color for focused text input border gradient. */
     Q_PROPERTY(QColor inputGradientStart READ inputGradientStart WRITE setInputGradientStart NOTIFY themeChanged)
+    /** @brief Ending color for focused text input border gradient. */
     Q_PROPERTY(QColor inputGradientEnd READ inputGradientEnd WRITE setInputGradientEnd NOTIFY themeChanged)
+    /** @brief Solid inactive border color for text input fields. */
     Q_PROPERTY(QColor inputSolidBorder READ inputSolidBorder WRITE setInputSolidBorder NOTIFY themeChanged)
+    /** @brief Background color of text input field when focused. */
     Q_PROPERTY(QColor inputBackgroundActive READ inputBackgroundActive WRITE setInputBackgroundActive NOTIFY themeChanged)
+    /** @brief Background color of text input field when idle/unfocused. */
     Q_PROPERTY(QColor inputBackgroundInactive READ inputBackgroundInactive WRITE setInputBackgroundInactive NOTIFY themeChanged)
+    /** @brief Placeholder text color in empty input fields. */
     Q_PROPERTY(QColor placeholderColor READ placeholderColor WRITE setPlaceholderColor NOTIFY themeChanged)
 
     // ─── TYPOGRAPHY ───────────────────────────────────────────────────
+    /** @brief Standard body text font size in points. */
     Q_PROPERTY(int fontSizeNormal READ fontSizeNormal WRITE setFontSizeNormal NOTIFY themeChanged)
+    /** @brief Section header and modal title font size in points. */
     Q_PROPERTY(int fontSizeHeader READ fontSizeHeader WRITE setFontSizeHeader NOTIFY themeChanged)
+    /** @brief Timestamp and status badge small font size in points. */
     Q_PROPERTY(int fontSizeSmall READ fontSizeSmall WRITE setFontSizeSmall NOTIFY themeChanged)
 
 public:
+    /**
+     * @brief Accesses the singleton instance of the theme manager.
+     * @return Pointer to global `ThemeData` instance.
+     */
     static ThemeData *instance() {
         static ThemeData m_instance;
         return &m_instance;
@@ -146,7 +200,10 @@ public:
     void setFontSizeHeader(int s) { updateInt(m_tokens.fontSizeHeader, s); }
     void setFontSizeSmall(int s) { updateInt(m_tokens.fontSizeSmall, s); }
 
-    // ─── OLED BLACK PRESET ────────────────────────────────────────────
+    /**
+     * @brief Loads the high-contrast true black OLED preset theme.
+     * @details Optimizes battery usage on OLED panels and provides a modern cyberpunk contrast.
+     */
     Q_INVOKABLE void loadOledPreset() {
         m_tokens.windowBackground = QColor("#0e0f12");
         m_tokens.panelBackground = QColor("#08080a");
@@ -177,7 +234,10 @@ public:
         emit themeChanged();
     }
 
-    // ─── SOFT CHARCOAL PRESET ─────────────────────────────────────────
+    /**
+     * @brief Loads the soft dark charcoal preset theme (Discord/Slack aesthetic).
+     * @details Employs warm slate-gray tones to reduce eye strain during extended messaging sessions.
+     */
     Q_INVOKABLE void loadSoftDarkPreset() {
         m_tokens.windowBackground = QColor("#1e1f22");
         m_tokens.panelBackground = QColor("#2b2d31");
@@ -209,6 +269,10 @@ public:
     }
 
 signals:
+    /**
+     * @brief Emitted whenever any visual design token or color preset is modified.
+     * @details Automatically invalidates and updates all active QML bindings across the UI.
+     */
     void themeChanged();
 
 private:

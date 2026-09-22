@@ -33,6 +33,6 @@ __pycache__/
 .env
 
 # Documentation
-docs/
+docs/doxygen/
 compile_commands.json
 test_*.txt
