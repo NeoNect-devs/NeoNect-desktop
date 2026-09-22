@@ -21,6 +21,13 @@
 #include <QVariantList>
 
 namespace NeoNect {
+
+/**
+ * @namespace NeoNect::Domain
+ * @brief Pure domain entities, business models, and delivery status enumerations.
+ * @details Represents core messaging abstractions, message lifecycles, waveform telemetry,
+ * and delivery states decoupled from UI and persistence frameworks.
+ */
 namespace Domain {
 
 /**

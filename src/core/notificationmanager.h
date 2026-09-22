@@ -37,6 +37,13 @@
 
 namespace NeoNect {
 namespace Services { class MessageService; }
+
+/**
+ * @namespace NeoNect::Core
+ * @brief Core application lifecycle management, presentation facades, notifications, and telemetry.
+ * @details Encapsulates platform window positioning, desktop notification toasts, audio managers,
+ * and system version information.
+ */
 namespace Core {
 
 /**

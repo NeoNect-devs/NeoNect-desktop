@@ -28,6 +28,13 @@
 #include <QVariantMap>
 
 namespace NeoNect {
+
+/**
+ * @namespace NeoNect::Storage
+ * @brief Persistent storage layer, repository abstractions, and relational database managers.
+ * @details Manages encrypted QSettings profile stores, asynchronous SQLite WAL history databases,
+ * and user configuration persistence.
+ */
 namespace Storage {
 
 /**

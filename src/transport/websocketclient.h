@@ -36,6 +36,13 @@
 #include <QRandomGenerator>
 
 namespace NeoNect {
+
+/**
+ * @namespace NeoNect::Transport
+ * @brief Low-level networking protocols, TLS transports, and WebSocket streaming clients.
+ * @details Implements RFC 6455 full-duplex WebSocket framing with client masking, TLS REST transports,
+ * and automatic exponential backoff reconnection engines.
+ */
 namespace Transport {
 
 /**

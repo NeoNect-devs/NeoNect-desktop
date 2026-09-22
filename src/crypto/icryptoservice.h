@@ -27,6 +27,13 @@
 #include "../common/types.h"
 
 namespace NeoNect {
+
+/**
+ * @namespace NeoNect::Crypto
+ * @brief Cryptographic services, OpenSSL 3.x/4.x primitives, and RAII security wrappers.
+ * @details Implements AES-256-GCM authenticated encryption/decryption, PBKDF2 key derivation,
+ * CSPRNG random generation, and secure zeroization of private keys and credentials.
+ */
 namespace Crypto {
 
 /**

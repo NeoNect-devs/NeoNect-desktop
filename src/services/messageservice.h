@@ -27,6 +27,13 @@
 class QTimer;
 
 namespace NeoNect {
+
+/**
+ * @namespace NeoNect::Services
+ * @brief Application business domain services orchestrating high-level client workflows.
+ * @details Encompasses user authentication, device provisioning, mutual friendship management,
+ * message delivery coordination, and encrypted packet relay gateways.
+ */
 namespace Services {
 
 /**

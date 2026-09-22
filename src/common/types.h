@@ -17,6 +17,12 @@
 #include <functional>
 #include <variant>
 
+/**
+ * @namespace NeoNect
+ * @brief Primary root namespace for the NeoNect Secure Communication Platform.
+ * @details Encompasses all core client subsystems, business services, domain models, storage engines,
+ * cryptographic primitives, and transport protocols.
+ */
 namespace NeoNect {
 
 /**

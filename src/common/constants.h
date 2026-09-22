@@ -14,8 +14,9 @@
 namespace NeoNect {
 
 /**
- * @namespace Constants
- * @brief Global constants governing networking, security policies, storage, and validation.
+ * @namespace NeoNect::Constants
+ * @brief Global architectural constants, REST API routes, cryptographic parameters, and storage keys.
+ * @details Central source of truth for protocol specifications, API v1 contracts, and client-side policies.
  */
 namespace Constants {
 
