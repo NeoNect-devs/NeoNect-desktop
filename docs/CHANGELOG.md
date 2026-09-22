@@ -1,11 +1,9 @@
-# Changelog & Release Notes
+# Changelog & Release Notes {#changelog}
 
 All notable changes to the **NeoNect Desktop Client** will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-For the interactive documentation site version, see [docs/CHANGELOG.md](docs/CHANGELOG.md) or visit the [Online Documentation](https://neonect-devs.github.io/NeoNect-desktop/changelog.html).
 
 ---
 

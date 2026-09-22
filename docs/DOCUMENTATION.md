@@ -16,6 +16,7 @@ docs/
 ├── BUILDING.md                 # CMake toolchain, compilation, and unit test guide
 ├── DOCKER.md                   # Containerized virtual display & noVNC web streaming
 ├── DOCUMENTATION.md            # Documentation ecosystem & GitHub Pages workflow
+├── CHANGELOG.md                # Release history, patch notes, and version roadmap
 ├── doxygen-awesome.css         # Modern responsive base stylesheet
 ├── custom.css                  # Dual-theme tokens (Light & Dark) & visual styling
 ├── mermaid.min.js              # Standalone offline Mermaid.js diagram engine
@@ -61,7 +62,7 @@ Start-Process "docs/doxygen/html/index.html"
 
 ## 3. Automated GitHub Pages Static Hosting Workflow
 
-NeoNect includes an automated GitHub Actions workflow (`.github/workflows/docs.yml`) that compiles and publishes the documentation to GitHub Pages whenever changes are pushed to `dev` or `main`.
+NeoNect includes an automated GitHub Actions workflow (`.github/workflows/docs.yml`) that compiles and publishes the documentation to GitHub Pages whenever a new version release is published or a version tag (e.g. `v1.0.0`) is pushed to `main`. This prevents unnecessary documentation rebuilds during routine incremental development pushes.
 
 ### Workflow Definition (`.github/workflows/docs.yml`)
 
@@ -69,15 +70,12 @@ NeoNect includes an automated GitHub Actions workflow (`.github/workflows/docs.y
 name: Deploy Documentation to GitHub Pages
 
 on:
+  release:
+    types: [published]
   push:
-    branches:
-      - dev
-      - main
-    paths:
-      - 'docs/**'
-      - 'src/**'
-      - 'Doxyfile'
-      - '.github/workflows/docs.yml'
+    tags:
+      - 'v*.*.*'
+      - 'v*'
   workflow_dispatch:
 
 permissions:

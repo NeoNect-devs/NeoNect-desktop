@@ -12,7 +12,7 @@
 [![Database](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57?style=for-the-badge&logo=sqlite)](https://www.sqlite.org/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker)](https://www.docker.com/)
 [![Documentation](https://img.shields.io/badge/Docs-Doxygen%20%26%20Mermaid-2563EB?style=for-the-badge&logo=read-the-docs)](https://neonect-devs.github.io/NeoNect-desktop/)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge&logo=apache)](LICENSE)
 
 <p align="center">
   <a href="#-visual-showcase">Visual Showcase</a> •
@@ -20,6 +20,7 @@
   <a href="#-documentation-manuals">Documentation Manuals</a> •
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-docker-web-streaming">Docker</a> •
+  <a href="CHANGELOG.md">Changelog</a> •
   <a href="https://neonect-devs.github.io/NeoNect-desktop/">Online Docs Site</a>
 </p>
 
@@ -75,6 +76,7 @@ The documentation is modularized into dedicated guides:
 | 🛠️ **Compiling & Testing** | CMake configuration, building test suites, and running benchmarks. | [Read Guide](docs/BUILDING.md) |
 | 🐳 **Docker Deployment** | Containerized virtual display and noVNC web streaming setup. | [Read Guide](docs/DOCKER.md) |
 | 🌐 **Documentation Site** | Doxygen architecture, interactive graph viewer, and GitHub Pages. | [Read Guide](docs/DOCUMENTATION.md) |
+| 📜 **Changelog & Patch Notes** | Semantic versioning release history, security fixes, and features. | [Read Changelog](CHANGELOG.md) |
 
 ### 🌐 Official Online Documentation Site
 Explore the full architecture, API references, design patterns catalog, and interactive graph topology at:
@@ -164,5 +166,5 @@ For the comprehensive interactive architecture diagram with zoom and pan control
 ---
 
 ## 📄 License
-
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+ 
+This project is licensed under the **Apache License 2.0**. See the [LICENSE](LICENSE) file for complete terms and conditions.
