@@ -3,24 +3,24 @@
     "version": "1.0.0",
     "tag": "v1.0.0",
     "date": "2026-09-22",
-    "commit": "017baea",
+    "commit": "30a54e5",
     "title": "NeoNect v1.0.0 Production Release",
     "highlights": [
       "ensure end-to-end encryption for all media transmissions",
-      "implement complete Danisa API E2EE relay messaging, background poll/ack sync, device key retrieval, and friends DM system",
+      "implement automated semantic versioning, patch notes engine, and cross-platform production packaging",
       "lazy load fullscreen video and image components in MediaLightboxModal",
-      "synchronize and update user online status in chat in real-time",
-      "implement functional idle, DND, invisible presence states and UI cleanups",
-      "show transfer progress on sender client with standard units (KB, MB, GB)",
-      "sync authoritative friends list from server on login and update",
-      "transfer binary payload for media files across isolated environments and platforms",
-      "add multi-client dockerized desktop environment with Qt 6.7 and noVNC",
-      "support native media rendering, direct transmission, and message retry",
-      "overhaul entry brand header, integrate NeoNect assets, and remove gateway window controls",
-      "hide members panel for direct messages and implement seen checkmark read receipts",
-      "restore pill-shaped online status indicator and add unread message count badges",
-      "implement real-time typing indicators and message sending states",
-      "determine user online status by server connectivity via native WebSocket"
+      "fix Windows test runner & windeployqt packaging, optimize scripts",
+      "implement pervasive UI lazy loading, reducing memory usage by approx. 40%",
+      "prevent windows.h min/max macro collision on MSVC with NOMINMAX",
+      "make Windows post-build DLL copy dynamic and remove hardcoded paths",
+      "resolve missing closing brace syntax error in modern-graph-viewer.js",
+      "resolve namespace duplication and add descriptions for all namespaces",
+      "register friendship via POST /api/v1/friends and prevent false 401 session resets on 403 forbidden relay errors",
+      "include required protocol_version in relay payload and fix unit test setup",
+      "synchronize friend retrieval with backend api and fix settings logout flow",
+      "switch Windows release pipeline to native MSVC 2022 and win64_msvc2022_64",
+      "install matching MinGW 13.1.0 toolchain to prevent 0xC0000139 entry point mismatch",
+      "enable unbuffered Out-Host test console streaming and stderr logging"
     ]
   }
 ]

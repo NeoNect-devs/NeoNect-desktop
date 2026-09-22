@@ -251,6 +251,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set Release Version Env
+        run: |
+          TAG="${{ github.ref_name }}"
+          if [[ ! "$TAG" =~ ^v[0-9] ]]; then TAG="v${{ github.event.inputs.version }}"; fi
+          echo "NEONECT_VERSION=$TAG" >> $GITHUB_ENV
+
+      - name: Generate Release Notes, Patch Notes & Sync Changelog
+        run: |
+          python3 scripts/generate_release_notes.py
+
       - name: Install Doxygen & Graphviz
         run: |
           sudo apt-get update

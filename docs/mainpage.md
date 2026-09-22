@@ -11,7 +11,8 @@ Welcome to the internal engineering documentation of the **NeoNect Desktop Clien
 * 🛠️ **@subpage building_guide "Compiling, Testing & Docs Guide"**: CMake build commands, automated test suites execution, and benchmarking.
 * 🐳 **@subpage docker_guide "Docker Deployment & Web Streaming"**: Containerized deployment with virtual display rendering (`Xvfb`) and HTML5 `noVNC` streaming.
 * 🌐 **@subpage documentation_guide "Documentation Ecosystem"**: Doxygen architecture, interactive graph viewer, and automated GitHub Pages static hosting.
-* 📜 **@subpage changelog "Changelog & Patch Notes"**: Semantic versioning history, release notes, security hardening, and feature updates.
+* 📝 **@subpage patch_notes "Patch Notes & Highlights"**: Release summary, security advisories, and feature highlights for production releases.
+* 📜 **@subpage changelog "Changelog & Version History"**: Semantic versioning history, commit logs, security hardening, and bug fix tracking.
 
 ---
 

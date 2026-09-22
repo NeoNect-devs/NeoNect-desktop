@@ -1,158 +1,87 @@
-# NeoNect v1.0.0 Release Notes
+# NeoNect v1.0.0 Release Notes & Changelog
 
 **Release Date**: 2026-09-22  
-**Commit**: `017baea`  
-**Platforms**: Windows x86_64, Linux x86_64
+**Commit**: `30a54e5`  
+**Supported Platforms**: Windows x86_64, Linux x86_64  
+**Documentation**: [https://neonect-devs.github.io/NeoNect-desktop/](https://neonect-devs.github.io/NeoNect-desktop/)
+
+## 🌟 Release Summary & Highlights
+
+NeoNect `v1.0.0` delivers production-ready decentralized, end-to-end encrypted (E2EE) real-time messaging with high-performance desktop client streaming.
 
 ### 🔒 Security & Cryptography (E2EE)
 - ensure end-to-end encryption for all media transmissions (`017baea`)
-- implement complete Danisa API E2EE relay messaging, background poll/ack sync, device key retrieval, and friends DM system (`f4dd635`)
 
-### 🚀 New Features & Enhancements
+### 🚀 New Features & Capabilities
+- implement automated semantic versioning, patch notes engine, and cross-platform production packaging (`0219f30`)
 - lazy load fullscreen video and image components in MediaLightboxModal (`333038a`)
-- synchronize and update user online status in chat in real-time (`d33c38e`)
-- implement functional idle, DND, invisible presence states and UI cleanups (`2769503`)
-- show transfer progress on sender client with standard units (KB, MB, GB) (`89a6de4`)
-- sync authoritative friends list from server on login and update (`94aaef7`)
-- transfer binary payload for media files across isolated environments and platforms (`8780949`)
-- add multi-client dockerized desktop environment with Qt 6.7 and noVNC (`15d52fa`)
-- support native media rendering, direct transmission, and message retry (`c94617c`)
-- overhaul entry brand header, integrate NeoNect assets, and remove gateway window controls (`fd328f3`)
-- hide members panel for direct messages and implement seen checkmark read receipts (`5d8b9f1`)
-- restore pill-shaped online status indicator and add unread message count badges (`9a2a85d`)
-- implement real-time typing indicators and message sending states (`8bd43de`)
-- determine user online status by server connectivity via native WebSocket (`485c1d4`)
-- integrate friend API endpoint and update mock transport tests (`14ab7a2`)
-- implement two-phase media requests, friend requests, and in-chat approval flows (`decd29e`)
-- finalize client production readiness (`e1846eb`)
-- align client with backend relay and secure message transport (`aad066f`)
-- add custom notification stack system and Telegram-inspired Avila Settings & Profile Center modal (`bbd0e4c`)
-- add Discord-like Friends dashboard, active DM filtering, Saved Messages, and real-time status/typing indicators (`a18f5e2`)
-- replace corner status dots with horizontal status pills under avatars for all members and DMs (`4ab0187`)
-- add horizontal status pill under profile picture with interactive status switcher (`fe1d6c1`)
-- stage dropped files into message bar for optional captioning and enhance drag-and-drop overlay to transparent frosted black (`82d611f`)
-- direct file picker on plus button with automatic content inspection, and drag-and-drop file sending (`adb6f2f`)
-- promote media lightbox to application-level root overlay and add true fullscreen toggle (`f681baa`)
-- hide central play button when playing, expand lightbox to full app viewport, and add true window fullscreen mode (`8b30f33`)
-- replace fullscreen text button with SVG icon, remove video filename overlay, and fix hover UI flickering with HoverHandler (`a83b3b1`)
-- gradient seek bars and electric blue/cyan theme overhaul (`5d6fde4`)
-- media playback, 0-100% volume control, stickers, voice notes, and file attachments (`51d3cf1`)
-- synchronize QML appState with NetworkManager authentication token and add Quick Connect fallback (`ef2a404`)
-- bind user profile footer to authenticated user and update online/offline status indicators (`67e2906`)
-- deploy MinGW C++ runtime DLLs (libstdc++-6, libgcc_s_seh-1, libwinpthread-1) in post-build step (`18d0688`)
-- add windeployqt post-build step to deploy standalone Qt 6 DLLs (`444a5bc`)
-- add CLI --profile argument support for running isolated side-by-side instances (`a716813`)
-- implement Danisa REST API registration, login, device registration, and entry UI polish (`c624899`)
 
-### ⚡ Performance & Resource Optimizations
+### ⚡ Performance & Memory Optimizations
+- fix Windows test runner & windeployqt packaging, optimize scripts (`2ca5e2d`)
 - implement pervasive UI lazy loading, reducing memory usage by approx. 40% (`53a36b3`)
 
 ### 🐛 Bug Fixes & Stability
-- enforce strict chronological ordering in chat message model and normalize timestamps (`4d748c0`)
-- migrate historical second-based timestamps and fix message order and scroll position (`829092d`)
-- preserve unread count for unread separator positioning and auto-scroll to new messages (`d7c914c`)
-- resolve message visibility on channel open and normalize timestamps to milliseconds (`9b08072`)
-- fix message display on navigating from friends and record DND notifications in notification center (`7c10c3c`)
-- synchronize peer presence in real-time and fix chat viewport loading bug (`ba998c8`)
-- implement device registration auto-recovery and resolve user2 offline & 401 errors (`2b87ca6`)
-- export accepted signal on NeoNectTextField wrapper (`278ff3d`)
-- enhance server verification feedback, return error details, and support onAccepted (`e10e2e3`)
-- support host.docker.internal and local dev endpoints in URL validation (`7c6e57c`)
-- resolve multi-user WebSocket reconnection and online presence (`aab0326`)
-- restore two-phase media transmission request and overhaul responsive card UI (`0c5a75f`)
-- hide members panel in direct messages and exclude saved-messages from DM list (`63dda75`)
-- resolve empty activeChannel on message send and guard ChatView visibility (`6d1a618`)
-- restore friendStatusMap and add null safety helpers in ChannelSidebarPanel (`5e6a484`)
-- correct friend request rejection flow and separate request from acceptance (`e9c80b0`)
-- Fix window titlebar dragging, resize hitboxes, and notification center bugs (`124c7cf`)
-- resolve qml import ambiguity and restore IconImage dependencies (`3e6be38`)
-- multiline message input scrollbar visibility using Flickable and implicitHeight capping (`6cecac8`)
-- enforce dynamic overflow-only visibility for message input and picker scrollbars (`71526b3`)
-- increase memberlist scrollbar width and set dynamic visibility on chat scrollbar (`a861472`)
-- set QT_QUICK_CONTROLS_STYLE to Basic to enforce transparent dark custom scrollbars and controls across Windows (`dbc638f`)
-- memberlist transparent scrollbar gutter and vector SVG icons across settings modal (`ed3a681`)
-- register search and chat SVG icons for complete resource asset completeness (`efdaaac`)
-- add import QtQuick.Controls.impl to NotificationStackView and SettingsProfileModal (`570a2d1`)
-- vector icons for sent/delivered/seen/error status, tightly aligned typing banner, and resolve self DM echo duplicate bug (`aaa3129`)
-- reactive scroll-tracking for floating avatars, deep obsidian frosted glass drop area, and rounded square profile avatars (`4d4e30f`)
-- white-grayish dark theme message bubbles and eliminate random audio playback on scroll (`9c9f9f5`)
-- media and file message bubble sizing and layout cycle prevention (`9e7ee5f`)
-- multiline text wrapping in message bubbles and server view (`121300d`)
-- prevent double message rendering when auto-adding friend on incoming message (`a14e3c0`)
-- eliminate duplicate message delivery by removing placeholder mock devices (`085dc97`)
-- auto-seed and auto-login custom profile users and deliver messages by recipient username (`6c0b078`)
-- differentiate channel vs direct messages and disable echo bot in live mock mode (`f69eefd`)
-- synchronize DM navigation routing and include peer users in default mock friend lists (`f5f398c`)
-- resolve Main.qml deprecated Connections warning and change default port to 8090 to avoid Adobe Connect conflicts (`4b8c7bc`)
-- resolve login/autologin UI transition failure, persist serverUrl, and fix default profile loading (`9d0f847`)
-- implement interaction timestamp presence tracking (m_lastSeen) for accurate online/offline friend status (`3e7a879`)
-- use compact JSON formatting in sendRelayMessage payload POST request (`d2ebcbf`)
-- implement checkFriendsStatus user availability polling and clarify password requirements on signup (`b6503f4`)
-- store pendingQuickConnectUser for seamless registration auto-login and fix devDeepLink type check (`ca3f3c4`)
-- guard root property evaluation in entry.qml to prevent undefined QString assignment (`19fe3c6`)
-- place onAppStateChanged handler on top-level Window in Main.qml (`c11813f`)
-- auto re-register device on poll 401 and ensure clean Loader reload on gateway transition (`19422f8`)
-- replace AvilaBrandButton with AvilaButton component in entry.qml (`d1df124`)
-- persist token per profile and handle 401 unauthorized session expiration (`a152b3e`)
-- sequence startPolling after device registration and enforce lowercase username SHA256 hashes (`c7c8937`)
-- restore sidebar navigation signals, default base URL to localhost:8080, and add dynamic friend online polling (`09d2989`)
-- Base64 encode relay ciphertext packets to conform with Go server base64 decoder (`c2c024b`)
-- structure relay payload format for cross-instance sender parsing and enforce clean process exit on window close (`de1623d`)
-- replace QCommandLineParser with non-blocking argument loop in main.cpp (`78e604b`)
+- prevent windows.h min/max macro collision on MSVC with NOMINMAX (`30a54e5`)
+- make Windows post-build DLL copy dynamic and remove hardcoded paths (`a565360`)
+- resolve missing closing brace syntax error in modern-graph-viewer.js (`4c54975`)
+- resolve namespace duplication and add descriptions for all namespaces (`2d25222`)
+- register friendship via POST /api/v1/friends and prevent false 401 session resets on 403 forbidden relay errors (`f2e7ba1`)
+- include required protocol_version in relay payload and fix unit test setup (`c68a6f3`)
+- synchronize friend retrieval with backend api and fix settings logout flow (`ce44ccf`)
 
-### 🛠️ General Improvements
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- add deterministic delay between activity timestamps in unread count test (`7a0e9ce`)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- 41NI (``)
-- ignore compile_commands.json (`ac498f2`)
-- stabilize and productionize NeoNect client foundation (`04106e8`)
-- 41NI (``)
-- Huge changes based on new backend API NotificationCenter, notification window added proper notification test added too. (`2f3969e`)
-- rename project from Avila to NeoNect and update brand button styling (`1defe41`)
-- replace emojis with vector bookmark/friends SVG icons and fix layout overlapping for top DM buttons (`e95bfd1`)
-- enlarge DM list items height to 48px with 34px squircle avatars and dual-line contact previews (`58f5d3c`)
-- increase height and prominence of status pills across user profile, members sidebar, and DM contacts (`d4f03f5`)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- M-U-T-E (``)
-- add two-client end-to-end chat exchange integration test and multi-process mock persistence (`ae1df46`)
-- M-U-T-E (``)
-- implement QtTest automated test suites, MockHttpTransport, and standalone --mock client mode (`c399b92`)
-- M-U-T-E (``)
-- implement SOLID architecture, OpenSSL RAII, and application bootstrap pattern (`79f301d`)
-- M-U-T-E (``)
-- restructure QML components and implement core C++ backend integration (`8a148c9`)
-- save point before the HUGE refactor 	modified:   CMakeLists.txt 	modified:   qml/MainSection/ChatView/ChatHandler.js 	modified:   qml/MainSection/ChatView/ChatboxCanvas.qml 	modified:   qml/MainSection/ChatView/CircularImage.qml 	modified:   qml/MainSection/ChatView/MessageBubble.qml 	modified:   qml/MainSection/ChatView/MessageInputCanvas.qml 	modified:   qml/MainSection/MemberListView/MemberItem.qml 	modified:   qml/MainSection/MemberListView/MemberListCanvas.qml 	modified:   qml/MainSection/TopView/TopbarCanvas.qml 	modified:   qml/modules/ThemeData/ThemeData.qml (`9475c3c`)
-- sidebar overhaul, new channel list, profile card + channel list (Dms, server channels) + sidebar server list and dms button 	modified:   CMakeLists.txt 	modified:   qml/Main.qml 	new file:   qml/SideSection/ChannelListItem.qml 	modified:   qml/SideSection/SidebarCanvas.qml (`581eed1`)
-- signup/login, titlebar overhaul, logo 	modified:   desktop-client/CMakeLists.txt 	new file:   desktop-client/assets/icons/arrow-back.svg 	new file:   desktop-client/assets/logo.png 	modified:   desktop-client/qml/Main.qml 	modified:   desktop-client/qml/MainSection/MainPanel.qml 	modified:   desktop-client/qml/MainSection/TopView/TopbarCanvas.qml 	modified:   desktop-client/qml/SideSection/SidebarCanvas.qml 	new file:   desktop-client/qml/entrypage/apiService.js 	new file:   desktop-client/qml/entrypage/entry.qml (`5d19ce4`)
-- bubble visual enhancement with gradient - tiny changes in theme singleton - bubbles use canvas to for gradient Bg modifications:   qml/MainSection/ChatView/ChatboxCanvas.qml   qml/MainSection/ChatView/MessageBubble.qml   qml/modules/ThemeData/ThemeData.qml (`82b9919`)
-- MemberList and memberItem implemented - loadmember() added into ChatHandler.js -  MemberItem.qml added 	modified:   CMakeLists.txt 	modified:   qml/Main.qml 	modified:   qml/MainSection/ChatView/ChatHandler.js 	modified:   qml/MainSection/ChatView/ChatboxCanvas.qml 	modified:   qml/MainSection/MainPanel.qml 	new file:   qml/MainSection/MemberListView/MemberItem.qml 	modified:   qml/MainSection/MemberListView/MemberListCanvas.qml 	modified:   qml/MainSection/TopView/TopbarCanvas.qml 	modified:   qml/SideSection/SidebarCanvas.qml 	modified:   qml/modules/ThemeData/ThemeData.qml (`7468cf9`)
-- Messageinput enhancement in MessageInputCanvas.qml:   - TextField Replaced by TextArea   - now text input has multi-line support   - text input expands   - when it reaches the max height scrollbar appears     for scrolling through TextArea modifications:   qml/MainSection/ChatView/ChatboxCanvas.qml   qml/MainSection/ChatView/MessageInputCanvas.qml (`9c78725`)
-- Major refactor and reimplement avatar and bubble - Logic of message bubbles and sticky avatar updated - Folder organization for source codes - ThemeData singleton added for theme config in future - ChatHandler.js added for keeping ChatboxCanvas.qml cleaner - positioning listview in chatbox at end while sending message has fixed 	modified:   CMakeLists.txt 	deleted:    ChatboxCanvas.qml 	deleted:    MessagesGroup.qml 	renamed:    Main.qml -> qml/Main.qml 	new file:   qml/MainSection/ChatView/ChatHandler.js 	new file:   qml/MainSection/ChatView/ChatboxCanvas.qml 	new file:   qml/MainSection/ChatView/CircularImage.qml 	renamed:    MessageBubble.qml -> qml/MainSection/ChatView/MessageBubble.qml 	renamed:    MessageInputCanvas.qml -> qml/MainSection/ChatView/MessageInputCanvas.qml 	renamed:    MainPanel.qml -> qml/MainSection/MainPanel.qml 	renamed:    MemberListCanvas.qml -> qml/MainSection/MemberListView/MemberListCanvas.qml 	renamed:    TopbarCanvas.qml -> qml/MainSection/TopView/TopbarCanvas.qml 	renamed:    SidebarCanvas.qml -> qml/SideSection/SidebarCanvas.qml 	new file:   qml/modules/ThemeData/ThemeData.qml (`4179c99`)
-- new avatar and Message behavior in ChatboxCanvas. - the messages from the same sender are placed in a same MessagesGroup. - for each MessagesGroup we have one simple avatar. - while scroling in chat, simple avatar will be replaced with sticky avatar so we can see avatar in the scrollview along messages. note: simple avatar get 0 opacity while sticky one is active - sender name can be seen in front of the avatar 	modified:   desktop-client/CMakeLists.txt 	modified:   desktop-client/ChatboxCanvas.qml 	modified:   desktop-client/Main.qml 	modified:   desktop-client/MemberListCanvas.qml 	modified:   desktop-client/MessageBubble.qml 	modified:   desktop-client/MessageInputCanvas.qml 	new file:   desktop-client/MessagesGroup.qml 	modified:   desktop-client/SidebarCanvas.qml 	modified:   desktop-client/TopbarCanvas.qml (`5663974`)
-- Simple avatar implemented on messagebubble 	modified:   CMakeLists.txt 	modified:   ChatboxCanvas.qml 	modified:   Main.qml 	modified:   MainPanel.qml 	modified:   MessageBubble.qml 	modified:   MessageInputCanvas.qml 	modified:   TopbarCanvas.qml (`98c2b96`)
-- MessageBubble added and some warning fixed. additions: now MessageBubble is usable in ChatboxCanvas modifications: some warning fixes related to MemberListCanvas Visibility and ChatboxCanvas anchors 	modified:   desktop-client/CMakeLists.txt 	modified:   desktop-client/ChatboxCanvas.qml 	modified:   desktop-client/Main.qml 	modified:   desktop-client/MainPanel.qml 	modified:   desktop-client/MemberListCanvas.qml 	new file:   desktop-client/MessageBubble.qml 	modified:   desktop-client/TopbarCanvas.qml (`f8c732a`)
-- Project changed from QtWidget to QtQuick because of the limitation and dificulties of Ui design in QtWidget we moved to QtQuick (`b61f99a`)
-- mute. (``)
-- CHANGE desktop-client structure slightly 	modified:   ../.gitignore 	modified:   CMakeLists.txt 	deleted:    src/CMakeLists.txt 	deleted:    src/lib/CMakeLists.txt 	modified:   src/main.cpp 	deleted:    src/ui/CMakeLists.txt 	new file:   src/ui/chatwindow.cpp 	new file:   src/ui/chatwindow.h 	new file:   src/ui/chatwindow.ui 	renamed:    src/ui/widgets/mainwindow.ui -> src/ui/mainwindow.ui 	deleted:    src/vendor/CMakeLists.txt (`f5fc646`)
-- START new QT Project and Setup CMake on folders 	new file:   ../.gitignore 	new file:   CMakeLists.txt 	new file:   src/CMakeLists.txt 	new file:   src/lib/CMakeLists.txt 	new file:   src/main.cpp 	new file:   src/ui/CMakeLists.txt 	new file:   src/ui/mainwindow.cpp 	new file:   src/ui/mainwindow.h 	new file:   src/ui/widgets/mainwindow.ui 	new file:   src/vendor/CMakeLists.txt (`4f5d8ee`)
-- new README file in certain directories 	new file:   desktop-client/README.md 	new file:   server/README.md 	new file:   shared/README.md 	new file:   web-client/README.md (`d650a26`)
+### 🛠️ General Improvements & Toolchain
+- switch Windows release pipeline to native MSVC 2022 and win64_msvc2022_64 (`b7d0de9`)
+- install matching MinGW 13.1.0 toolchain to prevent 0xC0000139 entry point mismatch (`a01a8af`)
+- enable unbuffered Out-Host test console streaming and stderr logging (`ac28054`)
+- stage OpenSSL and minimal QPA platform plugins for Windows test runner (`6a9a1c1`)
+- remove unnecessary windeployqt from test step and add error resilience to packager (`6345b13`)
+- deploy test dependencies with windeployqt and OpenSSL DLLs before running tests on Windows (`e5d9934`)
+- configure PATH and QT_QPA_PLATFORM for headless test execution on CI runners (`5384688`)
+- chain docs deployment after builds and improve windows openssl discovery (`c60b186`)
+- fix windres space parsing with 8.3 paths and set linux qt arch to linux_gcc_64 (`ebba39b`)
+- fix windows openssl detection and update linux qt6 installation in release workflow (`f2f4796`)
+- add Apache-2.0 license, changelog and patch notes, and release-triggered docs deployment workflow (`b30eb7e`)
+- create comprehensive modular documentation, readme showcase, and github pages workflow (`4e3da1c`)
+- modernize architectural layers graph viewer and fix light theme styling (`873995b`)
+- improve layout responsiveness and enlarge documentation logo (`5685142`)
+- modernize Doxygen UI, remove anonymous namespace, and add technical constraints (`daa0cf2`)
+- fix header logo scaling with custom CSS and render 7-layer architecture via Graphviz Dot (`3e13d70`)
+- implement enterprise-grade Doxygen documentation and architecture specification (`2d5b6f9`)
+- configure GitHub Actions to save releases as drafts for manual review (`89ffa33`)
+
+### 📜 Detailed Commit Changelog
+- `30a54e5` fix(windows): prevent windows.h min/max macro collision on MSVC with NOMINMAX - *M-U-T-E*
+- `b7d0de9` ci: switch Windows release pipeline to native MSVC 2022 and win64_msvc2022_64 - *M-U-T-E*
+- `a01a8af` ci: install matching MinGW 13.1.0 toolchain to prevent 0xC0000139 entry point mismatch - *M-U-T-E*
+- `ac28054` ci: enable unbuffered Out-Host test console streaming and stderr logging - *M-U-T-E*
+- `6a9a1c1` ci: stage OpenSSL and minimal QPA platform plugins for Windows test runner - *M-U-T-E*
+- `6345b13` ci: remove unnecessary windeployqt from test step and add error resilience to packager - *M-U-T-E*
+- `2ca5e2d` ci: fix Windows test runner & windeployqt packaging, optimize scripts - *M-U-T-E*
+- `e5d9934` ci: deploy test dependencies with windeployqt and OpenSSL DLLs before running tests on Windows - *M-U-T-E*
+- `5384688` ci: configure PATH and QT_QPA_PLATFORM for headless test execution on CI runners - *M-U-T-E*
+- `a565360` fix(build): make Windows post-build DLL copy dynamic and remove hardcoded paths - *M-U-T-E*
+- `c60b186` ci: chain docs deployment after builds and improve windows openssl discovery - *M-U-T-E*
+- `ebba39b` ci: fix windres space parsing with 8.3 paths and set linux qt arch to linux_gcc_64 - *M-U-T-E*
+- `f2f4796` ci: fix windows openssl detection and update linux qt6 installation in release workflow - *M-U-T-E*
+- `b30eb7e` docs: add Apache-2.0 license, changelog and patch notes, and release-triggered docs deployment workflow - *M-U-T-E*
+- `4e3da1c` docs: create comprehensive modular documentation, readme showcase, and github pages workflow - *M-U-T-E*
+- `4c54975` fix(docs): resolve missing closing brace syntax error in modern-graph-viewer.js - *M-U-T-E*
+- `873995b` docs: modernize architectural layers graph viewer and fix light theme styling - *M-U-T-E*
+- `5685142` docs: improve layout responsiveness and enlarge documentation logo - *M-U-T-E*
+- `2d25222` docs: resolve namespace duplication and add descriptions for all namespaces - *M-U-T-E*
+- `daa0cf2` docs: modernize Doxygen UI, remove anonymous namespace, and add technical constraints - *M-U-T-E*
+- `3e13d70` docs: fix header logo scaling with custom CSS and render 7-layer architecture via Graphviz Dot - *M-U-T-E*
+- `2d5b6f9` docs: implement enterprise-grade Doxygen documentation and architecture specification - **
+- `f2e7ba1` fix(friends): register friendship via POST /api/v1/friends and prevent false 401 session resets on 403 forbidden relay errors - *M-U-T-E*
+- `c68a6f3` fix(relay): include required protocol_version in relay payload and fix unit test setup - *M-U-T-E*
+- `ce44ccf` fix(client): synchronize friend retrieval with backend api and fix settings logout flow - *M-U-T-E*
+- `89ffa33` ci(release): configure GitHub Actions to save releases as drafts for manual review - **
+- `0219f30` feat(release): implement automated semantic versioning, patch notes engine, and cross-platform production packaging - **
+- `017baea` feat(security): ensure end-to-end encryption for all media transmissions - **
+- `333038a` feat(ui): lazy load fullscreen video and image components in MediaLightboxModal - **
+- `53a36b3` perf: implement pervasive UI lazy loading, reducing memory usage by approx. 40% - **
+
+---
+### 📦 Asset Checksums & Verification
+- All Windows `.zip` and Linux `.tar.gz` distribution packages contain full standalone runtimes and OpenSSL cryptographic libraries.
+- For comprehensive API references and architecture diagrams, see the [Online Documentation](https://neonect-devs.github.io/NeoNect-desktop/).
