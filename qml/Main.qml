@@ -333,9 +333,9 @@ Window {
                         settingsModalLoader.active = false;
                     }
                     onLogoutRequested: {
-                        settingsModalLoader.active = false;
                         NetworkManager.logout();
                         root.appState = "gateway";
+                        settingsModalLoader.active = false;
                     }
                     onSendTestNotificationRequested: {
                         if (typeof NotificationManager === "undefined" || !NotificationManager) {

@@ -902,8 +902,8 @@ Rectangle {
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
-                                            modalRoot.close();
                                             modalRoot.logoutRequested();
+                                            modalRoot.close();
                                         }
                                     }
                                 }

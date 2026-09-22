@@ -36,7 +36,13 @@ Rectangle {
         }
         function onFriendsChanged() {
             if (typeof NetworkManager !== "undefined" && NetworkManager) {
+                root.allFriends = NetworkManager.friends;
                 root.activeStatus = NetworkManager.allFriendStatuses();
+            }
+        }
+        function onPendingRequestsChanged() {
+            if (typeof NetworkManager !== "undefined" && NetworkManager) {
+                root.pendingRequests = NetworkManager.pendingRequests;
             }
         }
         function onIsConnectedChanged() {

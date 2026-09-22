@@ -95,6 +95,7 @@ QNetworkRequest HttpTransport::createRequest(const QUrl &url, bool includeJsonHe
 
     if (!token.isEmpty()) {
         req.setRawHeader("Authorization", "Bearer " + token.toUtf8());
+        req.setRawHeader("Cookie", "neonect_sid=" + token.toUtf8());
     }
     return req;
 }

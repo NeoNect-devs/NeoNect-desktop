@@ -553,16 +553,16 @@ void NetworkManager::loginUser(const QString &username, const QString &password)
 }
 
 void NetworkManager::logoutUser() {
-    m_sessionToken.clear();
     m_pendingBookmarkUsername.clear();
     m_pendingBookmarkPassword.clear();
-    m_transport->setAuthToken(QString());
     m_relayService->stopPolling();
     m_friendService->stopHeartbeat();
     m_authService->logoutUser();
-    m_friendService->loadFriends();
+    m_sessionToken.clear();
+    m_transport->setAuthToken(QString());
     m_openConversations.clear();
     m_isAutoIdle = false;
+    m_friendService->loadFriends();
     emit openConversationsChanged();
     emit tokenChanged();
     emit currentUsernameChanged();
