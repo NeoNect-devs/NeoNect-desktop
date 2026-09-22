@@ -165,8 +165,9 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: NeoNect ${{ github.ref_name }} Production Release
           body_path: RELEASE_NOTES.md
-          draft: false
+          draft: true
           prerelease: false
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
