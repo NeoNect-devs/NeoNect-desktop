@@ -162,7 +162,10 @@ Rectangle {
             var myUsername = (NetworkManager && NetworkManager.currentUsername) ? NetworkManager.currentUsername.toLowerCase() : "";
             if (myUsername !== "" && lower === myUsername) return; // Prevent self-DM from appearing on sent message
 
-            sidebarRoot.setFriendStatus(lower, "online");
+            var curStatus = sidebarRoot.getFriendStatus(lower);
+            if (curStatus === "offline") {
+                sidebarRoot.setFriendStatus(lower, "online");
+            }
             sidebarRoot.syncDmModel();
         }
         function onFriendStatusUpdated(username, status) {

@@ -36,6 +36,7 @@ public:
     void checkFriendsStatus();
     void checkUserStatus(const QString &username);
     void updateLastSeen(const QString &username);
+    void setPeerStatus(const QString &username, const QString &status);
 
 public slots:
     void handleIncomingFriendPacket(const NeoNect::Domain::Message &msg);
@@ -66,6 +67,7 @@ private:
 
     mutable std::mutex m_presenceMutex;
     QMap<QString, QDateTime> m_lastSeen;
+    QMap<QString, QString> m_peerStatuses;
 };
 
 } // namespace Services

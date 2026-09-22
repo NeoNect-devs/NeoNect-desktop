@@ -63,15 +63,37 @@ void FriendService::loadFriends() {
     }
 }
 
+void FriendService::setPeerStatus(const QString &username, const QString &status) {
+    QString target = username.trimmed().toLower();
+    if (target.isEmpty()) return;
+    QString st = status.trimmed().toLower();
+    if (st == "idle") st = "afk";
+
+    {
+        std::lock_guard<std::mutex> lock(m_presenceMutex);
+        m_peerStatuses[target] = st;
+        if (st != "offline") {
+            m_lastSeen[target] = QDateTime::currentDateTime();
+        }
+    }
+    emit friendStatusUpdated(target, st);
+}
+
 void FriendService::updateLastSeen(const QString &username) {
     QString target = username.trimmed().toLower();
     if (target.isEmpty()) return;
 
+    QString currentSt = "online";
     {
         std::lock_guard<std::mutex> lock(m_presenceMutex);
         m_lastSeen[target] = QDateTime::currentDateTime();
+        if (m_peerStatuses.contains(target) && m_peerStatuses[target] != "offline") {
+            currentSt = m_peerStatuses[target];
+        } else {
+            m_peerStatuses[target] = "online";
+        }
     }
-    emit friendStatusUpdated(target, "online");
+    emit friendStatusUpdated(target, currentSt);
 }
 
 void FriendService::checkFriendsStatus() {
@@ -99,14 +121,31 @@ void FriendService::checkUserStatus(const QString &username) {
             if (!doc.isNull() && doc.object().contains("online")) {
                 bool isOnline = doc.object().value("online").toBool();
                 if (isOnline) {
-                    updateLastSeen(u);
+                    QString st = "online";
+                    {
+                        std::lock_guard<std::mutex> lock(m_presenceMutex);
+                        if (m_peerStatuses.contains(u) && m_peerStatuses[u] != "offline") {
+                            st = m_peerStatuses[u];
+                        } else {
+                            m_peerStatuses[u] = "online";
+                        }
+                    }
+                    emit friendStatusUpdated(u, st);
                 } else {
+                    {
+                        std::lock_guard<std::mutex> lock(m_presenceMutex);
+                        m_peerStatuses[u] = "offline";
+                    }
                     emit friendStatusUpdated(u, "offline");
                 }
                 return;
             }
         }
         // If query failed or returned invalid response, reflect offline status
+        {
+            std::lock_guard<std::mutex> lock(m_presenceMutex);
+            m_peerStatuses[u] = "offline";
+        }
         emit friendStatusUpdated(u, "offline");
     });
 }
@@ -404,6 +443,10 @@ void FriendService::startHeartbeat() {
 void FriendService::stopHeartbeat() {
     if (m_heartbeatTimer->isActive()) {
         m_heartbeatTimer->stop();
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_presenceMutex);
+        m_peerStatuses.clear();
     }
     for (const QString &f : m_cachedFriends) {
         emit friendStatusUpdated(f.trimmed().toLower(), "offline");

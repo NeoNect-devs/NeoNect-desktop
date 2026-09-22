@@ -53,6 +53,7 @@ ColumnLayout {
                 if (messageListView.contentItem && messageListView.contentItem.height > messageListView.height) {
                     messageListView.contentY = Math.max(0, Math.min(saved, messageListView.contentItem.height - messageListView.height));
                 }
+                chatViewRoot.hasInitialPositioned = true;
             });
         }
     }
@@ -61,6 +62,10 @@ ColumnLayout {
         messageListView.positionViewAtEnd();
         Qt.callLater(function() {
             messageListView.positionViewAtEnd();
+            Qt.callLater(function() {
+                messageListView.positionViewAtEnd();
+                chatViewRoot.hasInitialPositioned = true;
+            });
         });
     }
 
@@ -71,6 +76,9 @@ ColumnLayout {
         hasInitialPositioned = false;
         isFetchingMore = false;
         if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+        Qt.callLater(function() {
+            chatViewRoot.restoreScrollPosition();
+        });
     }
 
     onSelectedServerChanged: {
@@ -80,14 +88,25 @@ ColumnLayout {
         hasInitialPositioned = false;
         isFetchingMore = false;
         if (scrollToBottomBtn) scrollToBottomBtn.unreadCount = 0;
+        Qt.callLater(function() {
+            chatViewRoot.restoreScrollPosition();
+        });
+    }
+
+    onVisibleChanged: {
+        if (visible) {
+            hasInitialPositioned = false;
+            Qt.callLater(function() {
+                chatViewRoot.restoreScrollPosition();
+                chatViewRoot.checkAndSendSeenReceipt();
+            });
+        }
     }
 
     Connections {
         target: messageModel
         function onCountChanged() {
             if (messageModel && messageModel.count > 0 && !chatViewRoot.hasInitialPositioned) {
-                chatViewRoot.hasInitialPositioned = true;
-                
                 // If opening a channel with unread messages, mark first unread for visual separator
                 if (selectedServer === "dms" && typeof NetworkManager !== "undefined" && NetworkManager) {
                     var unread = NetworkManager.unreadCount(activeChannel);
@@ -164,8 +183,8 @@ ColumnLayout {
     }
 
     function checkFetchMore() {
-        if (!messageModel || !messageModel.canFetchMore || isFetchingMore) return;
-        if (messageListView.contentY <= 80 && messageModel.count > 0) {
+        if (!chatViewRoot.hasInitialPositioned || !messageModel || !messageModel.canFetchMore || isFetchingMore) return;
+        if (messageListView.contentHeight > messageListView.height && messageListView.contentY <= 80 && (messageListView.moving || messageListView.dragging || messageListView.flicking)) {
             var oldest = messageModel.oldestTimestamp();
             if (oldest > 0) {
                 isFetchingMore = true;
@@ -217,6 +236,9 @@ ColumnLayout {
                         onContentHeightChanged: {
                             if (!chatViewRoot.hasInitialPositioned) {
                                 positionViewAtEnd();
+                                Qt.callLater(function() {
+                                    positionViewAtEnd();
+                                });
                             }
                         }
                         onContentYChanged: {

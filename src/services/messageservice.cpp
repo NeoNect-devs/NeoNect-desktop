@@ -202,7 +202,7 @@ void MessageService::sendSeenReceipt(const QString &conversationId, const QStrin
 }
 
 void MessageService::sendPresenceStatus(const QString &targetUser, const QString &status) {
-    if (m_isInvisible) return;
+    if (m_isInvisible && status != "offline") return;
     QString cleanTarget = targetUser.trimmed().toLower();
     if (cleanTarget.isEmpty() || cleanTarget == "saved-messages" || cleanTarget == "friends") return;
     Domain::Message msg;

@@ -1813,7 +1813,7 @@ void TestServices::testRealtimeChatPresenceExchange() {
     QCOMPARE(spyBobPresence.last().at(0).toString(), QString("alice"));
     QCOMPARE(spyBobPresence.last().at(1).toString(), QString("dnd"));
 
-    // 4. Bob queries presence directly via checkUserStatus
+    // 4. Bob queries presence directly via checkUserStatus (preserves Alice's reported 'dnd' status while online)
     spyBobPresence.clear();
     netMgrBob.checkUserStatus("alice");
     if (spyBobPresence.isEmpty()) {
@@ -1821,13 +1821,15 @@ void TestServices::testRealtimeChatPresenceExchange() {
     }
     QCOMPARE(spyBobPresence.count(), 1);
     QCOMPARE(spyBobPresence.last().at(0).toString(), QString("alice"));
-    QCOMPARE(spyBobPresence.last().at(1).toString(), QString("online"));
+    QCOMPARE(spyBobPresence.last().at(1).toString(), QString("dnd"));
 
-    // 5. Invisible mode suppresses sending presence
+    // 5. Invisible mode suppresses online presence but allows broadcasting offline
     msgAlice.setIsInvisible(true);
     QSignalSpy spyAliceTx(&msgAlice, &NeoNect::Services::MessageService::transmitMessage);
     msgAlice.sendPresenceStatus("bob", "online");
     QCOMPARE(spyAliceTx.count(), 0);
+    msgAlice.sendPresenceStatus("bob", "offline");
+    QCOMPARE(spyAliceTx.count(), 1);
 
     storageAlice->clearSession();
     storageBob->clearSession();

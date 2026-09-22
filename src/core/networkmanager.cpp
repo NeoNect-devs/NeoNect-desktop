@@ -157,7 +157,7 @@ void NetworkManager::setupServiceSignals() {
             if (msg.type == "presence_status") {
                 QString reportedStatus = msg.text.trimmed().toLower();
                 if (reportedStatus == "idle") reportedStatus = "afk";
-                emit friendStatusUpdated(sender, reportedStatus);
+                m_friendService->setPeerStatus(sender, reportedStatus);
                 continue;
             }
             if (msg.type != "typing_start" && msg.type != "typing_stop" && !sender.isEmpty() && (myUser.isEmpty() || sender != myUser)) {
