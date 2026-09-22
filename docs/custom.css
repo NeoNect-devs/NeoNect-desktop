@@ -1,0 +1,56 @@
+/* Custom Doxygen styling for NeoNect Desktop Documentation */
+
+#projectlogo {
+    padding: 8px 16px 8px 12px;
+    vertical-align: middle;
+}
+
+#projectlogo img {
+    max-height: 48px;
+    max-width: 140px;
+    height: auto;
+    width: auto;
+    object-fit: contain;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+#titlearea {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background-color: #1a1d24;
+    padding: 2px 0;
+}
+
+#projectname {
+    font-size: 130%;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+#projectbrief {
+    font-size: 85%;
+    opacity: 0.75;
+    margin-top: 2px;
+}
+
+/* Constrain any images embedded in document body */
+.contents img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Graphviz diagram container styling */
+div.dotgraph {
+    text-align: center;
+    margin: 24px 0;
+    overflow-x: auto;
+    background: #181a1f;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 16px;
+}
+
+div.dotgraph svg {
+    max-width: 100%;
+    height: auto;
+}
