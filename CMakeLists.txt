@@ -37,63 +37,75 @@ set(QT_NO_CREATE_AOT_PLUGINS ON CACHE BOOL "Disable QML AOT plugins" FORCE)
 # =====================================================================
 if(WIN32)
     set(TEST_PATHS
+        "$ENV{OPENSSL_ROOT_DIR}"
+        "${OPENSSL_ROOT_DIR}"
         "C:/OpenSSL-Win64"
-        "C:/PROGRA~1/OpenSSL-Win64"
+        "C:/Program Files/OpenSSL"
         "C:/Program Files/OpenSSL-Win64"
+        "C:/PROGRA~1/OpenSSL"
+        "C:/PROGRA~1/OpenSSL-Win64"
         "C:/OpenSSL"
     )
 
-    set(OPENSSL_ROOT_DIR "")
+    set(RESOLVED_OPENSSL_ROOT "")
     foreach(PATH_CANDIDATE ${TEST_PATHS})
-        if(EXISTS "${PATH_CANDIDATE}")
-            set(OPENSSL_ROOT_DIR "${PATH_CANDIDATE}")
-            message(STATUS "➔ Found OpenSSL Root Directory at: ${OPENSSL_ROOT_DIR}")
+        if(PATH_CANDIDATE AND EXISTS "${PATH_CANDIDATE}")
+            set(RESOLVED_OPENSSL_ROOT "${PATH_CANDIDATE}")
+            message(STATUS "➔ Found OpenSSL Root Directory at: ${RESOLVED_OPENSSL_ROOT}")
             break()
         endif()
     endforeach()
 
-    if("${OPENSSL_ROOT_DIR}" STREQUAL "")
-        message(FATAL_ERROR "➔ OpenSSL installation folder not found!")
-    endif()
-
-    set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include")
-
-    file(GLOB_RECURSE FOUND_CRYPTO_FILES "${OPENSSL_ROOT_DIR}/*crypto*.*")
-    file(GLOB_RECURSE FOUND_SSL_FILES    "${OPENSSL_ROOT_DIR}/*ssl*.*")
-
-    set(MANUAL_CRYPTO_LIB "")
-    foreach(FILE ${FOUND_CRYPTO_FILES})
-        if(NOT FILE MATCHES ".*/bin/.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
-            set(MANUAL_CRYPTO_LIB "${FILE}")
-            break()
+    if("${RESOLVED_OPENSSL_ROOT}" STREQUAL "")
+        find_package(OpenSSL)
+        if(NOT OPENSSL_FOUND)
+            message(FATAL_ERROR "➔ OpenSSL installation folder not found!")
         endif()
-    endforeach()
-
-    set(MANUAL_SSL_LIB "")
-    foreach(FILE ${FOUND_SSL_FILES})
-        if(NOT FILE MATCHES ".*/bin/.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
-            set(MANUAL_SSL_LIB "${FILE}")
-            break()
-        endif()
-    endforeach()
-
-    if(MANUAL_CRYPTO_LIB AND MANUAL_SSL_LIB)
-        add_library(OpenSSL::Crypto UNKNOWN IMPORTED)
-        set_target_properties(OpenSSL::Crypto PROPERTIES
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
-            INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
-            IMPORTED_LOCATION "${MANUAL_CRYPTO_LIB}"
-        )
-
-        add_library(OpenSSL::SSL UNKNOWN IMPORTED)
-        set_target_properties(OpenSSL::SSL PROPERTIES
-            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
-            INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
-            IMPORTED_LOCATION "${MANUAL_SSL_LIB}"
-            INTERFACE_LINK_LIBRARIES OpenSSL::Crypto
-        )
     else()
-        message(FATAL_ERROR "➔ Failed to bind OpenSSL runtime files.")
+        set(OPENSSL_ROOT_DIR "${RESOLVED_OPENSSL_ROOT}")
+        set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include")
+
+        file(GLOB_RECURSE FOUND_CRYPTO_FILES "${OPENSSL_ROOT_DIR}/*crypto*.*")
+        file(GLOB_RECURSE FOUND_SSL_FILES    "${OPENSSL_ROOT_DIR}/*ssl*.*")
+
+        set(MANUAL_CRYPTO_LIB "")
+        foreach(FILE ${FOUND_CRYPTO_FILES})
+            if(NOT FILE MATCHES ".*/bin/.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
+                set(MANUAL_CRYPTO_LIB "${FILE}")
+                break()
+            endif()
+        endforeach()
+
+        set(MANUAL_SSL_LIB "")
+        foreach(FILE ${FOUND_SSL_FILES})
+            if(NOT FILE MATCHES ".*/bin/.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
+                set(MANUAL_SSL_LIB "${FILE}")
+                break()
+            endif()
+        endforeach()
+
+        if(MANUAL_CRYPTO_LIB AND MANUAL_SSL_LIB)
+            if(NOT TARGET OpenSSL::Crypto)
+                add_library(OpenSSL::Crypto UNKNOWN IMPORTED)
+                set_target_properties(OpenSSL::Crypto PROPERTIES
+                    INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
+                    INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
+                    IMPORTED_LOCATION "${MANUAL_CRYPTO_LIB}"
+                )
+            endif()
+
+            if(NOT TARGET OpenSSL::SSL)
+                add_library(OpenSSL::SSL UNKNOWN IMPORTED)
+                set_target_properties(OpenSSL::SSL PROPERTIES
+                    INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
+                    INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
+                    IMPORTED_LOCATION "${MANUAL_SSL_LIB}"
+                    INTERFACE_LINK_LIBRARIES OpenSSL::Crypto
+                )
+            endif()
+        else()
+            find_package(OpenSSL REQUIRED)
+        endif()
     endif()
 else()
     find_package(OpenSSL REQUIRED)

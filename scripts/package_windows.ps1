@@ -73,9 +73,15 @@ if (Test-Path $WinDeployQt) {
 }
 
 # Copy OpenSSL DLLs if present
-$OpenSslCandidateDirs = @("C:\OpenSSL-Win64\bin", "C:\Program Files\OpenSSL-Win64\bin", "C:\OpenSSL\bin")
+$OpenSslCandidateDirs = @(
+    if ($env:OPENSSL_ROOT_DIR) { Join-Path $env:OPENSSL_ROOT_DIR "bin" },
+    "C:\Program Files\OpenSSL\bin",
+    "C:\Program Files\OpenSSL-Win64\bin",
+    "C:\OpenSSL-Win64\bin",
+    "C:\OpenSSL\bin"
+)
 foreach ($d in $OpenSslCandidateDirs) {
-    if (Test-Path $d) {
+    if ($d -and (Test-Path $d)) {
         Get-ChildItem -Path $d -Filter "*crypto*.dll" | ForEach-Object { Copy-Item $_.FullName -Destination $StagingDir -Force }
         Get-ChildItem -Path $d -Filter "*ssl*.dll" | ForEach-Object { Copy-Item $_.FullName -Destination $StagingDir -Force }
         break

@@ -27,14 +27,24 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install OpenSSL
+        run: |
+          choco install openssl.light --yes --no-progress
+          if (Test-Path "C:\Program Files\OpenSSL") {
+            echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL" >> $env:GITHUB_ENV
+          } elseif (Test-Path "C:\Program Files\OpenSSL-Win64") {
+            echo "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64" >> $env:GITHUB_ENV
+          } elseif (Test-Path "C:\OpenSSL-Win64") {
+            echo "OPENSSL_ROOT_DIR=C:\OpenSSL-Win64" >> $env:GITHUB_ENV
+          }
+
       - name: Install Qt 6
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.0'
           host: 'windows'
           target: 'desktop'
           arch: 'win64_mingw'
-          modules: 'qtmultimedia qt5compat'
 
       - name: Setup Ninja & GCC (MinGW)
         uses: seanmiddleditch/gha-setup-ninja@master
@@ -89,13 +99,12 @@ jobs:
           sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev libxkbcommon-dev libx11-xcb-dev libvulkan-dev libssl-dev
 
       - name: Install Qt 6
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.0'
           host: 'linux'
           target: 'desktop'
           arch: 'gcc_64'
-          modules: 'qtmultimedia qt5compat'
 
       - name: Set Release Version Env
         run: |
@@ -170,4 +179,3 @@ jobs:
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
