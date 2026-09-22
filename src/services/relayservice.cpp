@@ -271,11 +271,13 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
                 errorMsg = "Recipient has no active registered devices";
             } else if (statusCode == 404) {
                 errorMsg = "Recipient user not found";
-            } else if (statusCode == 401 || statusCode == 403) {
-                errorMsg = "Unauthorized or device ownership failure";
+            } else if (statusCode == 401) {
+                errorMsg = "Unauthorized: Session expired or invalid token";
+            } else if (statusCode == 403) {
+                errorMsg = "Forbidden: Cannot message user without mutual friendship";
             }
             qDebug() << "[RelayService] sendRelayMessage failed for" << targetUser << "Error:" << errorMsg << "Status:" << statusCode;
-            if (statusCode == 401 || data.contains("unauthorized")) {
+            if (statusCode == 401) {
                 handle401Error();
             }
         }

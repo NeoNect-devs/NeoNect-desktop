@@ -426,7 +426,7 @@ void TestServices::testTwoClientFriendRequestRejectFlow() {
     QCOMPARE(spyBobPending.count(), 1);
     QVERIFY(friendBob->pendingRequests().contains("alice"));
     QVERIFY(!friendBob->friends().contains("alice"));
-    QVERIFY(!friendAlice->friends().contains("bob"));
+    QVERIFY(friendAlice->friends().contains("bob"));
 
     // 3. Bob REJECTS friend request from Alice
     QSignalSpy spyBobTx(relayBob.get(), &NeoNect::Services::RelayService::messageTransmissionStatus);

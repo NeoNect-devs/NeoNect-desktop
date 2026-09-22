@@ -192,49 +192,58 @@ void FriendService::addFriend(const QString &username) {
         }
     }
 
-    QMap<QString, QString> params;
-    params.insert("u", target);
+    QJsonObject payload;
+    payload["username"] = target;
+    QByteArray postData = QJsonDocument(payload).toJson(QJsonDocument::Compact);
 
-    m_transport->get(Constants::EP_USERS_AVAILABILITY, params, this, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->post(Constants::EP_FRIENDS, postData, this, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
-        if (statusCode == 401) {
-            emit addFriendResult(false, "Authentication required. Please log in again.", target);
-            return;
-        }
-        if (statusCode == 429) {
-            emit addFriendResult(false, "Rate limit exceeded. Please try again later.", target);
-            return;
-        }
-        if (error != QNetworkReply::NoError || statusCode != 200) {
-            emit addFriendResult(false, "Failed to communicate with server.", target);
-            return;
-        }
-
         auto doc = QJsonDocument::fromJson(data);
-        if (doc.isNull() || !doc.isObject()) {
-            emit addFriendResult(false, "Invalid server response.", target);
+        QString errVal = (!doc.isNull() && doc.isObject()) ? doc.object().value("error").toString() : QString();
+
+        if (error == QNetworkReply::NoError && (statusCode == 200 || statusCode == 201)) {
+            loadFriends();
+
+            Domain::Message msg;
+            msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            msg.conversationId = "dms:" + target;
+            msg.senderId = m_storage->username();
+            msg.type = "friend_request";
+            msg.text = "Friend request";
+            msg.timestamp = QDateTime::currentMSecsSinceEpoch();
+
+            m_pendingFriendRequests.insert(msg.id, target);
+            emit requestSendDomainMessage(msg);
+            emit addFriendResult(true, "Friend added: @" + target, target);
             return;
         }
 
-        bool available = doc.object().value("available").toBool();
-        if (available) {
-            // Username is available, meaning no user with this username exists
+        if (statusCode == 404) {
             emit addFriendResult(false, "User '@" + target + "' does not exist on the network.", target);
             return;
         }
 
-        // User exists! Send friend request packet via Relay so recipient gets real-time notification
-        Domain::Message msg;
-        msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        msg.conversationId = "dms:" + target;
-        msg.senderId = m_storage->username();
-        msg.type = "friend_request";
-        msg.text = "Friend request";
-        msg.timestamp = QDateTime::currentMSecsSinceEpoch();
+        if (statusCode == 409) {
+            emit addFriendResult(false, target + " is already your friend.", target);
+            return;
+        }
 
-        m_pendingFriendRequests.insert(msg.id, target);
-        emit requestSendDomainMessage(msg);
-        emit addFriendResult(true, "Friend request sent to @" + target, target);
+        if (statusCode == 400) {
+            emit addFriendResult(false, errVal.isEmpty() ? "You cannot add yourself as a friend." : errVal, target);
+            return;
+        }
+
+        if (statusCode == 401) {
+            emit addFriendResult(false, "Authentication required. Please log in again.", target);
+            return;
+        }
+
+        if (statusCode == 429) {
+            emit addFriendResult(false, "Rate limit exceeded. Please try again later.", target);
+            return;
+        }
+
+        emit addFriendResult(false, errVal.isEmpty() ? "Failed to communicate with server." : errVal, target);
     });
 }
 
@@ -307,9 +316,9 @@ void FriendService::handleIncomingFriendPacket(const NeoNect::Domain::Message &m
             m_cachedFriends.append(sender);
             m_storage->setFriends(m_cachedFriends);
             emit friendsListChanged(m_cachedFriends);
-            qDebug() << "[FriendService] Emitting friendAccepted for:" << sender;
-            emit friendAccepted(sender);
         }
+        qDebug() << "[FriendService] Emitting friendAccepted for:" << sender;
+        emit friendAccepted(sender);
     } else if (msg.type == "friend_reject") {
         for (int i = m_cachedPending.size() - 1; i >= 0; --i) {
             if (m_cachedPending[i].compare(sender, Qt::CaseInsensitive) == 0) {
