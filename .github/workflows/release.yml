@@ -87,11 +87,24 @@ jobs:
         run: |
           cmake --build build --config Release --target NeoNectApp NeoNectTests
 
-      - name: Run Desktop Test Suites
+      - name: Deploy Test Dependencies & Run Test Suites
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;$env:PATH"
+          # 1. Deploy Qt & MinGW compiler runtime DLLs to build directory
+          $WinDeployQt = "${{ env.QT_ROOT_DIR }}\bin\windeployqt.exe"
+          if (Test-Path $WinDeployQt) {
+            & $WinDeployQt --qmldir qml --compiler-runtime .\build\NeoNectTests.exe
+          }
+          
+          # 2. Copy OpenSSL runtime DLLs to build directory
+          Get-ChildItem -Path "$env:OPENSSL_ROOT_DIR" -Filter "*crypto*.dll" -Recurse | ForEach-Object { Copy-Item $_.FullName -Destination "build" -Force }
+          Get-ChildItem -Path "$env:OPENSSL_ROOT_DIR" -Filter "*ssl*.dll" -Recurse | ForEach-Object { Copy-Item $_.FullName -Destination "build" -Force }
+          
+          # 3. Add all candidate search paths to PATH
+          $env:PATH = "${{ env.QT_ROOT_DIR }}\bin;$env:OPENSSL_ROOT_DIR\bin;$env:OPENSSL_ROOT_DIR;C:\mingw64\bin;$env:PATH"
+          
+          # 4. Execute test suite
           .\build\NeoNectTests.exe
 
       - name: Package Windows Artifacts
