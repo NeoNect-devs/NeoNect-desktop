@@ -58,15 +58,24 @@ Rectangle {
     property var friendStatusMap: ({})
 
     function getFriendStatus(name) {
+        var lower = (name || "").toLowerCase();
         if (!sidebarRoot.friendStatusMap) return "offline";
-        return sidebarRoot.friendStatusMap[name] || "offline";
+        return sidebarRoot.friendStatusMap[lower] || "offline";
     }
 
     function setFriendStatus(name, status) {
-        if (!sidebarRoot.friendStatusMap) {
-            sidebarRoot.friendStatusMap = ({});
+        var lower = (name || "").toLowerCase();
+        if (!lower) return;
+        var copy = Object.assign({}, sidebarRoot.friendStatusMap);
+        copy[lower] = status;
+        sidebarRoot.friendStatusMap = copy;
+
+        for (var i = 0; i < openDmListModel.count; ++i) {
+            var item = openDmListModel.get(i);
+            if (item && item.name && item.name.toLowerCase() === lower) {
+                openDmListModel.setProperty(i, "userStatus", status);
+            }
         }
-        sidebarRoot.friendStatusMap[name] = status;
     }
 
     onActiveChannelChanged: {

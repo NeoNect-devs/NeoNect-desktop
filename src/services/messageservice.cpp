@@ -201,6 +201,21 @@ void MessageService::sendSeenReceipt(const QString &conversationId, const QStrin
     emit transmitMessage(msg);
 }
 
+void MessageService::sendPresenceStatus(const QString &targetUser, const QString &status) {
+    if (m_isInvisible) return;
+    QString cleanTarget = targetUser.trimmed().toLower();
+    if (cleanTarget.isEmpty() || cleanTarget == "saved-messages" || cleanTarget == "friends") return;
+    Domain::Message msg;
+    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.conversationId = cleanTarget.startsWith("dms:") ? cleanTarget : ("dms:" + cleanTarget);
+    msg.senderId = m_currentUserId;
+    msg.type = "presence_status";
+    msg.text = status;
+    msg.status = Domain::MessageStatus::Sent;
+    msg.timestamp = QDateTime::currentMSecsSinceEpoch();
+    emit transmitMessage(msg);
+}
+
 void MessageService::sendMediaRequest(const QString &conversationId, const QString &text, const QString &mediaType,
                                       const QString &mediaUrl, const QString &fileName, qint64 fileSize)
 {
@@ -336,6 +351,10 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
     msgsToSave.reserve(msgs.size());
 
     for (const auto& msg : msgs) {
+        if (msg.type == "presence_status") {
+            continue;
+        }
+
         if (msg.type == "typing_start" || msg.type == "typing_stop") {
             bool isTyping = (msg.type == "typing_start");
             emit peerTypingStatusChanged(msg.conversationId, msg.senderId, isTyping);

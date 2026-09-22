@@ -37,6 +37,9 @@ public:
     // Seen Receipts (Direct Messages)
     Q_INVOKABLE void sendSeenReceipt(const QString &conversationId, const QString &messageId = "all");
 
+    // Real-time Peer Presence (Direct Messages)
+    Q_INVOKABLE void sendPresenceStatus(const QString &targetUser, const QString &status);
+
     // Retry sending a previously failed message or media
     Q_INVOKABLE void retryMessage(const QString &messageId);
 

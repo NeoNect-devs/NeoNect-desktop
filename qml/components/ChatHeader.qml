@@ -8,106 +8,171 @@ Rectangle {
     property string selectedServer: ""
     property string activeChannel: ""
     property bool membersPanelExpanded: false
+    property string contactStatus: "offline"
     signal toggleMembersPanel()
 
-                Layout.fillWidth: true
-                height: 48
-                color: ThemeData.panelBackground
-                border.color: Qt.darker(ThemeData.panelBackground, 1.25)
-                border.width: 1
+    function getStatusLabel(st) {
+        var s = (st || "offline").toLowerCase();
+        if (s === "online") return "Online";
+        if (s === "afk" || s === "idle") return "Idle";
+        if (s === "dnd") return "Do Not Disturb";
+        return "Offline";
+    }
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 16
-                    anchors.rightMargin: 16
-                    spacing: 10
+    function getStatusColor(st) {
+        var s = (st || "offline").toLowerCase();
+        if (s === "online") return "#23A55A";
+        if (s === "afk" || s === "idle") return "#FAA81A";
+        if (s === "dnd") return "#F23F43";
+        return "#80848E";
+    }
 
-                    // Server Channel Icon
-                    IconImage {
-                        visible: selectedServer !== "dms"
-                        source: "qrc:/qt/qml/NeoNect/assets/icons/hash.svg"
-                        width: 18; height: 18
-                        color: ThemeData.textSecondary
-                        Layout.alignment: Qt.AlignVCenter
-                    }
-
-                    // Saved Messages Vector Icon
-                    IconImage {
-                        visible: selectedServer === "dms" && activeChannel === "saved-messages"
-                        source: "qrc:/qt/qml/NeoNect/assets/icons/bookmark.svg"
-                        width: 20; height: 20
-                        color: "#00E5FF"
-                        Layout.alignment: Qt.AlignVCenter
-                    }
-
-                    // DM Contact @ Prefix
-                    Text {
-                        visible: selectedServer === "dms" && activeChannel !== "saved-messages"
-                        text: "@"
-                        color: ThemeData.textSecondary
-                        font.family: "Segoe UI"
-                        font.pixelSize: 20
-                        font.weight: Font.Light
-                    }
-
-                    // Channel / Contact Title
-                    Text {
-                        text: {
-                            if (selectedServer === "dms") {
-                                if (activeChannel === "saved-messages") return "Saved Messages";
-                                return activeChannel.replace(/^\w/, c => c.toUpperCase());
-                            }
-                            return activeChannel;
-                        }
-                        color: ThemeData.textPrimary
-                        font.family: "Segoe UI"
-                        font.pixelSize: 15
-                        font.bold: true
-                    }
-
-                    Rectangle {
-                        width: 1; height: 16
-                        color: ThemeData.textSecondary
-                        opacity: 0.3
-                        Layout.leftMargin: 4; Layout.rightMargin: 4
-                    }
-
-                    // Channel / DM Subtitle
-                    Text {
-                        Layout.fillWidth: true
-                        text: {
-                            if (selectedServer === "dms") {
-                                if (activeChannel === "saved-messages") return "Your Personal Cloud Storage & Notes";
-                                return "NeoNect Zero-Knowledge E2EE Direct Messages";
-                            }
-                            return "Secure Workspace Channel";
-                        }
-                        color: ThemeData.textSecondary
-                        font.family: "Segoe UI"
-                        font.pixelSize: 12
-                        elide: Text.ElideRight
-                    }
-
-                    Rectangle {
-                        width: 32; height: 32
-                        radius: 6
-                        visible: headerRoot.selectedServer !== "dms" && headerRoot.selectedServer !== ""
-                        color: membersToggleMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
-
-                        IconImage {
-                            anchors.centerIn: parent
-                            source: "qrc:/qt/qml/NeoNect/assets/icons/users.svg"
-                            width: 20; height: 20
-                            color: headerRoot.membersPanelExpanded ? ThemeData.textPrimary : ThemeData.textSecondary
-                        }
-
-                        MouseArea {
-                            id: membersToggleMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: headerRoot.toggleMembersPanel()
-                        }
-                    }
-                }
+    function updateContactStatus() {
+        if (selectedServer === "dms" && activeChannel && activeChannel !== "saved-messages" && activeChannel !== "friends") {
+            headerRoot.contactStatus = "offline";
+            if (typeof NetworkManager !== "undefined" && NetworkManager) {
+                NetworkManager.checkUserStatus(activeChannel.toLowerCase());
             }
+        }
+    }
+
+    onActiveChannelChanged: updateContactStatus()
+    onSelectedServerChanged: updateContactStatus()
+    Component.onCompleted: updateContactStatus()
+
+    Connections {
+        target: (typeof NetworkManager !== "undefined") ? NetworkManager : null
+        ignoreUnknownSignals: true
+        function onFriendStatusUpdated(username, status) {
+            if (headerRoot.selectedServer === "dms" && headerRoot.activeChannel.toLowerCase() === (username || "").toLowerCase()) {
+                headerRoot.contactStatus = status;
+            }
+        }
+        function onIsConnectedChanged() {
+            if (NetworkManager && !NetworkManager.isConnected) {
+                headerRoot.contactStatus = "offline";
+            } else {
+                headerRoot.updateContactStatus();
+            }
+        }
+    }
+
+    Layout.fillWidth: true
+    height: 48
+    color: ThemeData.panelBackground
+    border.color: Qt.darker(ThemeData.panelBackground, 1.25)
+    border.width: 1
+
+    RowLayout {
+        anchors.fill: parent
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        spacing: 10
+
+        // Server Channel Icon
+        IconImage {
+            visible: selectedServer !== "dms"
+            source: "qrc:/qt/qml/NeoNect/assets/icons/hash.svg"
+            width: 18; height: 18
+            color: ThemeData.textSecondary
+            Layout.alignment: Qt.AlignVCenter
+        }
+
+        // Saved Messages Vector Icon
+        IconImage {
+            visible: selectedServer === "dms" && activeChannel === "saved-messages"
+            source: "qrc:/qt/qml/NeoNect/assets/icons/bookmark.svg"
+            width: 20; height: 20
+            color: "#00E5FF"
+            Layout.alignment: Qt.AlignVCenter
+        }
+
+        // DM Contact @ Prefix
+        Text {
+            visible: selectedServer === "dms" && activeChannel !== "saved-messages"
+            text: "@"
+            color: ThemeData.textSecondary
+            font.family: "Segoe UI"
+            font.pixelSize: 20
+            font.weight: Font.Light
+        }
+
+        // Channel / Contact Title
+        Text {
+            text: {
+                if (selectedServer === "dms") {
+                    if (activeChannel === "saved-messages") return "Saved Messages";
+                    return activeChannel.replace(/^\w/, c => c.toUpperCase());
+                }
+                return activeChannel;
+            }
+            color: ThemeData.textPrimary
+            font.family: "Segoe UI"
+            font.pixelSize: 15
+            font.bold: true
+        }
+
+        // Real-time Status Indicator Dot for Direct Messages
+        Rectangle {
+            visible: headerRoot.selectedServer === "dms" && headerRoot.activeChannel !== "saved-messages" && headerRoot.activeChannel !== "friends" && headerRoot.activeChannel !== ""
+            width: 9
+            height: 9
+            radius: 4.5
+            color: headerRoot.getStatusColor(headerRoot.contactStatus)
+            border.color: Qt.rgba(0, 0, 0, 0.4)
+            border.width: 1
+            Layout.alignment: Qt.AlignVCenter
+            Layout.leftMargin: -2
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+        }
+
+        Rectangle {
+            width: 1; height: 16
+            color: ThemeData.textSecondary
+            opacity: 0.3
+            Layout.leftMargin: 4; Layout.rightMargin: 4
+        }
+
+        // Channel / DM Subtitle
+        Text {
+            Layout.fillWidth: true
+            text: {
+                if (selectedServer === "dms") {
+                    if (activeChannel === "saved-messages") return "Your Personal Cloud Storage & Notes";
+                    var label = headerRoot.getStatusLabel(headerRoot.contactStatus);
+                    return label + " • NeoNect Zero-Knowledge E2EE Direct Messages";
+                }
+                return "Secure Workspace Channel";
+            }
+            color: (headerRoot.selectedServer === "dms" && headerRoot.activeChannel !== "saved-messages") ? headerRoot.getStatusColor(headerRoot.contactStatus) : ThemeData.textSecondary
+            font.family: "Segoe UI"
+            font.pixelSize: 12
+            elide: Text.ElideRight
+
+            Behavior on color { ColorAnimation { duration: 150 } }
+        }
+
+        Rectangle {
+            width: 32; height: 32
+            radius: 6
+            visible: headerRoot.selectedServer !== "dms" && headerRoot.selectedServer !== ""
+            color: membersToggleMouse.containsMouse ? Qt.rgba(255, 255, 255, 0.1) : "transparent"
+
+            IconImage {
+                anchors.centerIn: parent
+                source: "qrc:/qt/qml/NeoNect/assets/icons/users.svg"
+                width: 20; height: 20
+                color: headerRoot.membersPanelExpanded ? ThemeData.textPrimary : ThemeData.textSecondary
+            }
+
+            MouseArea {
+                id: membersToggleMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: headerRoot.toggleMembersPanel()
+            }
+        }
+    }
+}

@@ -1742,3 +1742,94 @@ void TestServices::testFunctionalOnlineIdleDndInvisibleStates() {
     storage->clearSession();
 }
 
+void TestServices::testRealtimeChatPresenceExchange() {
+    auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
+    sharedTransport->seedUser("alice", "password123");
+    sharedTransport->seedUser("bob", "password123");
+
+    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>(); cryptoAlice->setMasterKey(QByteArray(32, 1));
+    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>(); cryptoBob->setMasterKey(QByteArray(32, 1));
+
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_pres");
+    storageAlice->clearSession();
+    storageAlice->setUsername("alice");
+    storageAlice->setAuthToken("mock-token-alice");
+    storageAlice->setDeviceId("mock-dev-alice");
+
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_pres");
+    storageBob->clearSession();
+    storageBob->setUsername("bob");
+    storageBob->setDeviceId("mock-dev-bob");
+    storageBob->setAuthToken("mock-token-bob");
+
+    auto authAlice = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageAlice, nullptr);
+    auto authBob = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageBob, nullptr);
+    auto devAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
+    auto devBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoAlice);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoBob);
+    auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
+    auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
+
+    NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoAlice, authAlice, devAlice, relayAlice, friendAlice);
+    NetworkManager netMgrBob(sharedTransport, storageBob, cryptoBob, authBob, devBob, relayBob, friendBob);
+
+    auto msgRepoAlice = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto msgRepoBob = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    NeoNect::Services::MessageService msgAlice(msgRepoAlice);
+    NeoNect::Services::MessageService msgBob(msgRepoBob);
+    msgAlice.setCurrentUserId("alice");
+    msgBob.setCurrentUserId("bob");
+
+    QObject::connect(&msgAlice, &NeoNect::Services::MessageService::transmitMessage,
+                     relayAlice.get(), &NeoNect::Services::RelayService::sendDomainMessage);
+    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
+                     &msgBob, &NeoNect::Services::MessageService::handleIncomingMessages);
+
+    QSignalSpy spyBobPresence(&netMgrBob, &NetworkManager::friendStatusUpdated);
+
+    // 1. Alice sends 'afk' (idle) presence status to Bob
+    sharedTransport->setAuthToken("mock-token-alice");
+    msgAlice.sendPresenceStatus("bob", "afk");
+
+    // 2. Bob polls and receives presence packet
+    sharedTransport->setAuthToken("mock-token-bob");
+    relayBob->pollPendingMessages();
+
+    QCOMPARE(spyBobPresence.count(), 1);
+    QCOMPARE(spyBobPresence.last().at(0).toString(), QString("alice"));
+    QCOMPARE(spyBobPresence.last().at(1).toString(), QString("afk"));
+
+    // 3. Alice changes status to 'dnd'
+    spyBobPresence.clear();
+    sharedTransport->setAuthToken("mock-token-alice");
+    msgAlice.sendPresenceStatus("bob", "dnd");
+
+    // Bob polls and receives dnd
+    sharedTransport->setAuthToken("mock-token-bob");
+    relayBob->pollPendingMessages();
+
+    QCOMPARE(spyBobPresence.count(), 1);
+    QCOMPARE(spyBobPresence.last().at(0).toString(), QString("alice"));
+    QCOMPARE(spyBobPresence.last().at(1).toString(), QString("dnd"));
+
+    // 4. Bob queries presence directly via checkUserStatus
+    spyBobPresence.clear();
+    netMgrBob.checkUserStatus("alice");
+    if (spyBobPresence.isEmpty()) {
+        spyBobPresence.wait(200);
+    }
+    QCOMPARE(spyBobPresence.count(), 1);
+    QCOMPARE(spyBobPresence.last().at(0).toString(), QString("alice"));
+    QCOMPARE(spyBobPresence.last().at(1).toString(), QString("online"));
+
+    // 5. Invisible mode suppresses sending presence
+    msgAlice.setIsInvisible(true);
+    QSignalSpy spyAliceTx(&msgAlice, &NeoNect::Services::MessageService::transmitMessage);
+    msgAlice.sendPresenceStatus("bob", "online");
+    QCOMPARE(spyAliceTx.count(), 0);
+
+    storageAlice->clearSession();
+    storageBob->clearSession();
+}
+

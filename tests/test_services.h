@@ -37,4 +37,5 @@ private slots:
     void testSelfDirectMessageAndSavedMessagesFlow();
     void testRetryMessageFlow();
     void testFunctionalOnlineIdleDndInvisibleStates();
+    void testRealtimeChatPresenceExchange();
 };

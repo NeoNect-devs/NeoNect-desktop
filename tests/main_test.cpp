@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
         std::cout << "    Result: " << (r6_2 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testTwoClientMediaRequestApprovalFlow..." << std::endl;
-        int r6_3 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testTwoClientMediaRequestApprovalFlow" << "-v2");
+        int r6_3 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testTwoClientMediaRequestApprovalFlow");
         std::cout << "    Result: " << (r6_3 == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= r6_3;
 
@@ -174,7 +174,11 @@ int main(int argc, char *argv[]) {
         int r20 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testFunctionalOnlineIdleDndInvisibleStates");
         std::cout << "    Result: " << (r20 == 0 ? "PASSED" : "FAILED") << std::endl;
 
-        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20);
+        std::cout << "--> Testing testRealtimeChatPresenceExchange..." << std::endl;
+        int r21 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRealtimeChatPresenceExchange");
+        std::cout << "    Result: " << (r21 == 0 ? "PASSED" : "FAILED") << std::endl;
+
+        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20 | r21);
     }
 
     {

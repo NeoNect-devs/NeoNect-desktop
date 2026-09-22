@@ -154,8 +154,17 @@ void NetworkManager::setupServiceSignals() {
         QString myUser = currentUsername().trimmed().toLower();
         for (const auto &msg : msgs) {
             QString sender = msg.senderId.trimmed().toLower();
+            if (msg.type == "presence_status") {
+                QString reportedStatus = msg.text.trimmed().toLower();
+                if (reportedStatus == "idle") reportedStatus = "afk";
+                emit friendStatusUpdated(sender, reportedStatus);
+                continue;
+            }
             if (msg.type != "typing_start" && msg.type != "typing_stop" && !sender.isEmpty() && (myUser.isEmpty() || sender != myUser)) {
                 updateConversationActivity(msg.senderId, msg.timestamp);
+            }
+            if (!sender.isEmpty() && (myUser.isEmpty() || sender != myUser)) {
+                m_friendService->updateLastSeen(sender);
             }
             emit incomingRelayMessageReceived(msg.senderId, msg.conversationId, msg.text, msg.timestamp);
         }
@@ -405,6 +414,12 @@ void NetworkManager::removeFriend(const QString &username) {
 
 void NetworkManager::checkFriendsStatus() {
     m_friendService->checkFriendsStatus();
+    for (const auto &conv : m_openConversations) {
+        QString name = conv.toMap().value("name").toString().trimmed().toLower();
+        if (!name.isEmpty() && name != "saved-messages" && name != "friends") {
+            m_friendService->checkUserStatus(name);
+        }
+    }
 }
 
 void NetworkManager::checkUserStatus(const QString &username) {
@@ -433,6 +448,8 @@ void NetworkManager::openDirectConversation(const QString &username, qint64 acti
         myUser = m_storage->username().trimmed().toLower();
     }
     if (lower.isEmpty() || lower == "saved-messages" || lower == "friends" || (!myUser.isEmpty() && lower == myUser)) return;
+
+    checkUserStatus(lower);
 
     qint64 ts = activityTimestamp > 0 ? activityTimestamp : QDateTime::currentMSecsSinceEpoch();
 

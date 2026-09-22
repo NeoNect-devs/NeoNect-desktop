@@ -200,6 +200,19 @@ void Application::initializeServices() {
     // MessageService -> RelayService (Outgoing)
     QObject::connect(m_messageService.get(), &Services::MessageService::transmitMessage, m_relayService.get(), &Services::RelayService::sendDomainMessage);
 
+    // Broadcast presence status changes to active chat peers
+    QObject::connect(m_networkManager.get(), &NetworkManager::effectiveStatusChanged, this, [this]() {
+        if (!m_networkManager->isInvisible() && m_networkManager->isConnected()) {
+            QString st = m_networkManager->effectiveStatus();
+            for (const auto &conv : m_networkManager->openConversations()) {
+                QString name = conv.toMap().value("name").toString().trimmed().toLower();
+                if (!name.isEmpty() && name != "saved-messages" && name != "friends") {
+                    m_messageService->sendPresenceStatus(name, st);
+                }
+            }
+        }
+    });
+
     m_audioManager = std::make_unique<AudioManager>();
     m_notificationManager = std::make_unique<Core::NotificationManager>();
     m_notificationManager->setupMessageServiceHook(m_messageService.get());
