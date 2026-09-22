@@ -718,6 +718,7 @@ void TestServices::testCiphertextDoesNotContainPlaintext() {
 
     QSignalSpy spyRaw(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
 
+    // 1. Text message encryption test
     NeoNect::Domain::Message msg;
     msg.id = "123";
     msg.conversationId = "dms:bob";
@@ -730,7 +731,43 @@ void TestServices::testCiphertextDoesNotContainPlaintext() {
     QCOMPARE(spyRaw.count(), 1);
     QByteArray rawJson = spyRaw.takeFirst().at(0).toByteArray();
     QVERIFY(!rawJson.contains("SUPER_SECRET_PLAINTEXT_999"));
+    QVERIFY(rawJson.contains("ciphertext"));
+
+    // 2. Media message encryption test (Image / Audio / Video / Voice binary stream)
+    QString tempMediaDir = QDir::tempPath() + "/neonect_crypto_test/";
+    QDir().mkpath(tempMediaDir);
+    QString tempMediaPath = tempMediaDir + "secret_voice_or_video.bin";
+    QByteArray secretMediaBytes = "CONFIDENTIAL_MEDIA_STREAM_PAYLOAD_E2EE_ABCXYZ_987654321";
+
+    QFile mediaFile(tempMediaPath);
+    QVERIFY(mediaFile.open(QIODevice::WriteOnly));
+    mediaFile.write(secretMediaBytes);
+    mediaFile.close();
+
+    NeoNect::Domain::Message mediaMsg;
+    mediaMsg.id = "456";
+    mediaMsg.conversationId = "dms:bob";
+    mediaMsg.type = "voice";
+    mediaMsg.mediaUrl = QUrl::fromLocalFile(tempMediaPath).toString();
+    mediaMsg.fileName = "secret_voice_or_video.bin";
+    mediaMsg.fileSize = secretMediaBytes.size();
+    mediaMsg.duration = 10;
+    mediaMsg.senderId = "alice";
+
+    relay.sendDomainMessage(mediaMsg);
+
+    QCOMPARE(spyRaw.count(), 1);
+    QByteArray rawMediaJson = spyRaw.takeFirst().at(0).toByteArray();
+
+    // Verify raw JSON on wire contains ZERO plaintext of the media stream or base64 file data
+    QVERIFY(!rawMediaJson.contains("CONFIDENTIAL_MEDIA_STREAM_PAYLOAD_E2EE_ABCXYZ_987654321"));
+    QVERIFY(!rawMediaJson.contains(secretMediaBytes.toBase64()));
+    QVERIFY(rawMediaJson.contains("ciphertext"));
+
+    // Clean up temporary test file
+    QFile::remove(tempMediaPath);
 }
+
 
 void TestServices::testRelayServiceTamperedMessageRejection() {
     auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);

@@ -15,6 +15,25 @@
 namespace NeoNect {
 namespace Services {
 
+static QString normalizeLocalFilePath(const QString &rawPath) {
+    if (rawPath.isEmpty()) return QString();
+    QString path = rawPath;
+    QUrl url(rawPath);
+    if (url.isLocalFile()) {
+        path = url.toLocalFile();
+    } else if (path.startsWith("file:///")) {
+        path = path.mid(8);
+    } else if (path.startsWith("file://")) {
+        path = path.mid(7);
+    }
+#ifdef _WIN32
+    if (path.startsWith("/") && path.length() >= 3 && path.at(2) == ':') {
+        path = path.mid(1);
+    }
+#endif
+    return path;
+}
+
 RelayService::RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
                            std::shared_ptr<Storage::ISettingsRepository> storage,
                            std::shared_ptr<Crypto::ICryptoService> cryptoService,
@@ -174,13 +193,8 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
         }
         QString myAvatarUrl = m_storage->avatarUrl().trimmed();
         if (!myAvatarUrl.isEmpty()) {
-            QString localPath = myAvatarUrl;
-            if (localPath.startsWith("file:///")) {
-                localPath = QUrl(localPath).toLocalFile();
-            } else if (localPath.startsWith("file://")) {
-                localPath = localPath.mid(7);
-            }
-            if (QFile::exists(localPath)) {
+            QString localPath = normalizeLocalFilePath(myAvatarUrl);
+            if (!localPath.startsWith("//") && !localPath.startsWith("\\\\") && QFile::exists(localPath)) {
                 QFile f(localPath);
                 if (f.open(QIODevice::ReadOnly)) {
                     QByteArray avBytes = f.readAll();
@@ -198,12 +212,7 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
     if (!msg.mediaUrl.isEmpty()) {
         packet["mediaUrl"] = msg.mediaUrl;
         if (msg.type != "media_request") {
-            QString localPath = msg.mediaUrl;
-            if (localPath.startsWith("file:///")) {
-                localPath = QUrl(localPath).toLocalFile();
-            } else if (localPath.startsWith("file://")) {
-                localPath = localPath.mid(7);
-            }
+            QString localPath = normalizeLocalFilePath(msg.mediaUrl);
             if (!localPath.startsWith("//") && !localPath.startsWith("\\\\") && QFile::exists(localPath)) {
                 QFileInfo fi(localPath);
                 if (fi.isFile() && fi.size() > 0 && fi.size() <= 2800000) {
