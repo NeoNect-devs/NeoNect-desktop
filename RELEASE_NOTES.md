@@ -1,7 +1,7 @@
 # NeoNect v1.0.0 Release Notes & Changelog
 
 **Release Date**: 2026-09-22  
-**Commit**: `30a54e5`  
+**Commit**: `8990b12`  
 **Supported Platforms**: Windows x86_64, Linux x86_64  
 **Documentation**: [https://neonect-devs.github.io/NeoNect-desktop/](https://neonect-devs.github.io/NeoNect-desktop/)
 
@@ -18,7 +18,6 @@ NeoNect `v1.0.0` delivers production-ready decentralized, end-to-end encrypted (
 
 ### ⚡ Performance & Memory Optimizations
 - fix Windows test runner & windeployqt packaging, optimize scripts (`2ca5e2d`)
-- implement pervasive UI lazy loading, reducing memory usage by approx. 40% (`53a36b3`)
 
 ### 🐛 Bug Fixes & Stability
 - prevent windows.h min/max macro collision on MSVC with NOMINMAX (`30a54e5`)
@@ -30,6 +29,7 @@ NeoNect `v1.0.0` delivers production-ready decentralized, end-to-end encrypted (
 - synchronize friend retrieval with backend api and fix settings logout flow (`ce44ccf`)
 
 ### 🛠️ General Improvements & Toolchain
+- automate changelog and patch notes synchronization for docs site and GitHub draft release (`8990b12`)
 - switch Windows release pipeline to native MSVC 2022 and win64_msvc2022_64 (`b7d0de9`)
 - install matching MinGW 13.1.0 toolchain to prevent 0xC0000139 entry point mismatch (`a01a8af`)
 - enable unbuffered Out-Host test console streaming and stderr logging (`ac28054`)
@@ -50,6 +50,7 @@ NeoNect `v1.0.0` delivers production-ready decentralized, end-to-end encrypted (
 - configure GitHub Actions to save releases as drafts for manual review (`89ffa33`)
 
 ### 📜 Detailed Commit Changelog
+- `8990b12` docs: automate changelog and patch notes synchronization for docs site and GitHub draft release - *M-U-T-E*
 - `30a54e5` fix(windows): prevent windows.h min/max macro collision on MSVC with NOMINMAX - *M-U-T-E*
 - `b7d0de9` ci: switch Windows release pipeline to native MSVC 2022 and win64_msvc2022_64 - *M-U-T-E*
 - `a01a8af` ci: install matching MinGW 13.1.0 toolchain to prevent 0xC0000139 entry point mismatch - *M-U-T-E*
@@ -79,7 +80,6 @@ NeoNect `v1.0.0` delivers production-ready decentralized, end-to-end encrypted (
 - `0219f30` feat(release): implement automated semantic versioning, patch notes engine, and cross-platform production packaging - **
 - `017baea` feat(security): ensure end-to-end encryption for all media transmissions - **
 - `333038a` feat(ui): lazy load fullscreen video and image components in MediaLightboxModal - **
-- `53a36b3` perf: implement pervasive UI lazy loading, reducing memory usage by approx. 40% - **
 
 ---
 ### 📦 Asset Checksums & Verification

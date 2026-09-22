@@ -3,14 +3,13 @@
     "version": "1.0.0",
     "tag": "v1.0.0",
     "date": "2026-09-22",
-    "commit": "30a54e5",
+    "commit": "8990b12",
     "title": "NeoNect v1.0.0 Production Release",
     "highlights": [
       "ensure end-to-end encryption for all media transmissions",
       "implement automated semantic versioning, patch notes engine, and cross-platform production packaging",
       "lazy load fullscreen video and image components in MediaLightboxModal",
       "fix Windows test runner & windeployqt packaging, optimize scripts",
-      "implement pervasive UI lazy loading, reducing memory usage by approx. 40%",
       "prevent windows.h min/max macro collision on MSVC with NOMINMAX",
       "make Windows post-build DLL copy dynamic and remove hardcoded paths",
       "resolve missing closing brace syntax error in modern-graph-viewer.js",
@@ -18,6 +17,7 @@
       "register friendship via POST /api/v1/friends and prevent false 401 session resets on 403 forbidden relay errors",
       "include required protocol_version in relay payload and fix unit test setup",
       "synchronize friend retrieval with backend api and fix settings logout flow",
+      "automate changelog and patch notes synchronization for docs site and GitHub draft release",
       "switch Windows release pipeline to native MSVC 2022 and win64_msvc2022_64",
       "install matching MinGW 13.1.0 toolchain to prevent 0xC0000139 entry point mismatch",
       "enable unbuffered Out-Host test console streaming and stderr logging"

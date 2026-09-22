@@ -87,6 +87,7 @@ void WebSocketClient::open(const QString &serverUrl, const QString &deviceId, co
     qDebug() << "[WebSocketClient] Connecting to" << host << "port" << port << "(SSL:" << isSsl << ")";
 
     if (isSsl) {
+        m_socket->setPeerVerifyName(host);
         m_socket->connectToHostEncrypted(host, static_cast<quint16>(port));
     } else {
         m_socket->connectToHost(host, static_cast<quint16>(port));
@@ -95,6 +96,7 @@ void WebSocketClient::open(const QString &serverUrl, const QString &deviceId, co
 
 void WebSocketClient::close() {
     m_shouldBeConnected = false;
+    m_reconnectAttempts = 0;
     m_deviceId.clear();
     m_token.clear();
     if (m_reconnectTimer->isActive()) {
@@ -124,11 +126,23 @@ void WebSocketClient::performHandshake() {
         url = QUrl("http://" + m_serverUrl);
     }
 
+    bool isSsl = (url.scheme().toLower() == "https" || url.scheme().toLower() == "wss");
     QString host = url.host();
     if (host.isEmpty()) host = "localhost";
-    int port = url.port(url.scheme().toLower() == "https" || url.scheme().toLower() == "wss" ? 443 : 8080);
+    int port = url.port();
 
-    QString hostHeader = host.contains(':') ? QString("[%1]:%2").arg(host).arg(port) : QString("%1:%2").arg(host).arg(port);
+    // Standard RFC 7230 §5.4: Omit default ports (80/443) from Host header
+    QString hostHeader;
+    if (port > 0 && ((isSsl && port != 443) || (!isSsl && port != 80))) {
+        hostHeader = host.contains(':') ? QString("[%1]:%2").arg(host).arg(port) : QString("%1:%2").arg(host).arg(port);
+    } else {
+        hostHeader = host;
+    }
+
+    QString origin = QString("%1://%2").arg(isSsl ? "https" : "http", host);
+    if (port > 0 && ((isSsl && port != 443) || (!isSsl && port != 80))) {
+        origin += QString(":%1").arg(port);
+    }
 
     // 16-byte random nonce for Sec-WebSocket-Key
     QByteArray nonce(16, Qt::Uninitialized);
@@ -142,9 +156,11 @@ void WebSocketClient::performHandshake() {
         "Host: %2\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"
-        "Sec-WebSocket-Key: %3\r\n"
+        "Origin: %3\r\n"
+        "User-Agent: NeoNectDesktop/1.0\r\n"
+        "Sec-WebSocket-Key: %4\r\n"
         "Sec-WebSocket-Version: 13\r\n"
-    ).arg(path, hostHeader, secKey);
+    ).arg(path, hostHeader, origin, secKey);
 
     if (!m_token.isEmpty()) {
         request += QString("Authorization: Bearer %1\r\n").arg(m_token);
@@ -186,7 +202,7 @@ void WebSocketClient::processIncomingData() {
             setState(WebSocketState::Connected);
             emit connected();
         } else {
-            qWarning() << "[WebSocketClient] WebSocket upgrade failed:" << firstLine;
+            qWarning() << "[WebSocketClient] WebSocket upgrade failed:" << firstLine << "\nResponse Headers:\n" << headerStr;
             emit errorOccurred("Handshake failed: " + firstLine);
             m_socket->disconnectFromHost();
             return;
@@ -349,7 +365,9 @@ void WebSocketClient::onSocketError(QAbstractSocket::SocketError socketError) {
 void WebSocketClient::onReconnectTimer() {
     if (m_shouldBeConnected && m_state == WebSocketState::Disconnected) {
         qDebug() << "[WebSocketClient] Attempting automatic reconnection...";
+        int savedAttempts = m_reconnectAttempts;
         open(m_serverUrl, m_deviceId, m_token);
+        m_reconnectAttempts = savedAttempts;
     }
 }
 
