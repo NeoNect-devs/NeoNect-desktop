@@ -64,8 +64,16 @@ void FriendService::loadFriends() {
     }
 }
 
+static QString cleanUsername(const QString &username) {
+    QString target = username.trimmed();
+    while (target.startsWith('@')) {
+        target = target.mid(1).trimmed();
+    }
+    return target;
+}
+
 void FriendService::setPeerStatus(const QString &username, const QString &status) {
-    QString target = username.trimmed().toLower();
+    QString target = cleanUsername(username).toLower();
     if (target.isEmpty()) return;
     QString st = status.trimmed().toLower();
     if (st == "idle") st = "afk";
@@ -81,7 +89,7 @@ void FriendService::setPeerStatus(const QString &username, const QString &status
 }
 
 QString FriendService::getPeerStatus(const QString &username) const {
-    QString target = username.trimmed().toLower();
+    QString target = cleanUsername(username).toLower();
     if (target.isEmpty()) return QStringLiteral("offline");
     std::lock_guard<std::mutex> lock(m_presenceMutex);
     return m_peerStatuses.value(target, QStringLiteral("offline"));
@@ -97,7 +105,7 @@ QVariantMap FriendService::allPeerStatuses() const {
 }
 
 void FriendService::updateLastSeen(const QString &username) {
-    QString target = username.trimmed().toLower();
+    QString target = cleanUsername(username).toLower();
     if (target.isEmpty()) return;
 
     QString currentSt = "online";
@@ -125,7 +133,7 @@ void FriendService::checkFriendsStatus() {
 }
 
 void FriendService::checkUserStatus(const QString &username) {
-    QString u = username.trimmed().toLower();
+    QString u = cleanUsername(username).toLower();
     if (u.isEmpty()) return;
 
     QMap<QString, QString> params;
@@ -168,10 +176,10 @@ void FriendService::checkUserStatus(const QString &username) {
 }
 
 void FriendService::addFriend(const QString &username) {
-    QString target = username.trimmed();
+    QString target = cleanUsername(username);
     if (target.isEmpty()) return;
 
-    QString myUsername = m_storage->username().trimmed();
+    QString myUsername = cleanUsername(m_storage->username());
     if (!myUsername.isEmpty() && target.compare(myUsername, Qt::CaseInsensitive) == 0) {
         emit addFriendResult(false, "You cannot add yourself as a friend.", target);
         return;
@@ -346,7 +354,7 @@ void FriendService::handleIncomingFriendPacket(const NeoNect::Domain::Message &m
 }
 
 void FriendService::acceptFriend(const QString &username) {
-    QString target = username.trimmed();
+    QString target = cleanUsername(username);
     if (target.isEmpty()) return;
 
     // Register friendship on backend via POST /api/v1/friends
@@ -398,7 +406,7 @@ void FriendService::acceptFriend(const QString &username) {
 }
 
 void FriendService::rejectFriend(const QString &username) {
-    QString target = username.trimmed();
+    QString target = cleanUsername(username);
     if (target.isEmpty()) return;
 
     for (int i = m_cachedPending.size() - 1; i >= 0; --i) {
@@ -434,7 +442,7 @@ void FriendService::rejectFriend(const QString &username) {
 }
 
 void FriendService::removeFriend(const QString &username) {
-    QString target = username.trimmed();
+    QString target = cleanUsername(username);
     if (target.isEmpty()) return;
 
     for (int i = m_cachedFriends.size() - 1; i >= 0; --i) {

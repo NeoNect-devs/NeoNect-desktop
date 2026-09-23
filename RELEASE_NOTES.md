@@ -1,7 +1,7 @@
 # NeoNect v1.0.0 Release Notes & Changelog
 
-**Release Date**: 2026-09-22  
-**Commit**: `8990b12`  
+**Release Date**: 2026-09-23  
+**Commit**: `2501220`  
 **Supported Platforms**: Windows x86_64, Linux x86_64  
 **Documentation**: [https://neonect-devs.github.io/NeoNect-desktop/](https://neonect-devs.github.io/NeoNect-desktop/)
 
@@ -14,12 +14,12 @@ NeoNect `v1.0.0` delivers production-ready decentralized, end-to-end encrypted (
 
 ### 🚀 New Features & Capabilities
 - implement automated semantic versioning, patch notes engine, and cross-platform production packaging (`0219f30`)
-- lazy load fullscreen video and image components in MediaLightboxModal (`333038a`)
 
 ### ⚡ Performance & Memory Optimizations
 - fix Windows test runner & windeployqt packaging, optimize scripts (`2ca5e2d`)
 
 ### 🐛 Bug Fixes & Stability
+- standard RFC 7230 Host/Origin headers, TLS SNI peer verification, and exponential backoff (`2501220`)
 - prevent windows.h min/max macro collision on MSVC with NOMINMAX (`30a54e5`)
 - make Windows post-build DLL copy dynamic and remove hardcoded paths (`a565360`)
 - resolve missing closing brace syntax error in modern-graph-viewer.js (`4c54975`)
@@ -50,6 +50,7 @@ NeoNect `v1.0.0` delivers production-ready decentralized, end-to-end encrypted (
 - configure GitHub Actions to save releases as drafts for manual review (`89ffa33`)
 
 ### 📜 Detailed Commit Changelog
+- `2501220` fix(websocket): standard RFC 7230 Host/Origin headers, TLS SNI peer verification, and exponential backoff - *M-U-T-E*
 - `8990b12` docs: automate changelog and patch notes synchronization for docs site and GitHub draft release - *M-U-T-E*
 - `30a54e5` fix(windows): prevent windows.h min/max macro collision on MSVC with NOMINMAX - *M-U-T-E*
 - `b7d0de9` ci: switch Windows release pipeline to native MSVC 2022 and win64_msvc2022_64 - *M-U-T-E*
@@ -79,7 +80,6 @@ NeoNect `v1.0.0` delivers production-ready decentralized, end-to-end encrypted (
 - `89ffa33` ci(release): configure GitHub Actions to save releases as drafts for manual review - **
 - `0219f30` feat(release): implement automated semantic versioning, patch notes engine, and cross-platform production packaging - **
 - `017baea` feat(security): ensure end-to-end encryption for all media transmissions - **
-- `333038a` feat(ui): lazy load fullscreen video and image components in MediaLightboxModal - **
 
 ---
 ### 📦 Asset Checksums & Verification

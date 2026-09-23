@@ -2,14 +2,14 @@
   {
     "version": "1.0.0",
     "tag": "v1.0.0",
-    "date": "2026-09-22",
-    "commit": "8990b12",
+    "date": "2026-09-23",
+    "commit": "2501220",
     "title": "NeoNect v1.0.0 Production Release",
     "highlights": [
       "ensure end-to-end encryption for all media transmissions",
       "implement automated semantic versioning, patch notes engine, and cross-platform production packaging",
-      "lazy load fullscreen video and image components in MediaLightboxModal",
       "fix Windows test runner & windeployqt packaging, optimize scripts",
+      "standard RFC 7230 Host/Origin headers, TLS SNI peer verification, and exponential backoff",
       "prevent windows.h min/max macro collision on MSVC with NOMINMAX",
       "make Windows post-build DLL copy dynamic and remove hardcoded paths",
       "resolve missing closing brace syntax error in modern-graph-viewer.js",

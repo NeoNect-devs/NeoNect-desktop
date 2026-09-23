@@ -139,11 +139,6 @@ void WebSocketClient::performHandshake() {
         hostHeader = host;
     }
 
-    QString origin = QString("%1://%2").arg(isSsl ? "https" : "http", host);
-    if (port > 0 && ((isSsl && port != 443) || (!isSsl && port != 80))) {
-        origin += QString(":%1").arg(port);
-    }
-
     // 16-byte random nonce for Sec-WebSocket-Key
     QByteArray nonce(16, Qt::Uninitialized);
     QRandomGenerator::global()->fillRange(reinterpret_cast<quint32*>(nonce.data()), 4);
@@ -156,11 +151,10 @@ void WebSocketClient::performHandshake() {
         "Host: %2\r\n"
         "Upgrade: websocket\r\n"
         "Connection: Upgrade\r\n"
-        "Origin: %3\r\n"
         "User-Agent: NeoNectDesktop/1.0\r\n"
-        "Sec-WebSocket-Key: %4\r\n"
+        "Sec-WebSocket-Key: %3\r\n"
         "Sec-WebSocket-Version: 13\r\n"
-    ).arg(path, hostHeader, origin, secKey);
+    ).arg(path, hostHeader, secKey);
 
     if (!m_token.isEmpty()) {
         request += QString("Authorization: Bearer %1\r\n").arg(m_token);
