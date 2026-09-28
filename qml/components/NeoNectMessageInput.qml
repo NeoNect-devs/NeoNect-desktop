@@ -19,11 +19,67 @@ Rectangle {
     signal typingStarted()
     signal typingStopped()
 
+    property bool isTypingActive: false
+
+    // Throttle: don't send typingStarted more frequently than every 3500ms while continuously typing
     Timer {
-        id: typingDebounceTimer
-        interval: 2000
+        id: typingThrottleTimer
+        interval: 3500
         repeat: false
-        onTriggered: inputRoot.typingStopped()
+    }
+
+    // Inactivity timeout: stop typing indicator after 2500ms of no keystrokes
+    Timer {
+        id: typingInactivityTimer
+        interval: 2500
+        repeat: false
+        onTriggered: {
+            if (inputRoot.isTypingActive) {
+                inputRoot.isTypingActive = false;
+                typingThrottleTimer.stop();
+                inputRoot.typingStopped();
+            }
+        }
+    }
+
+    // Draft State Management
+    function getDraftState() {
+        return {
+            text: inputArea.text,
+            attachment: inputRoot.draftAttachment ? {
+                type: inputRoot.draftAttachment.type || "",
+                url: inputRoot.draftAttachment.url || "",
+                name: inputRoot.draftAttachment.name || "",
+                size: inputRoot.draftAttachment.size || 0,
+                duration: inputRoot.draftAttachment.duration || 0
+            } : null
+        };
+    }
+
+    function setDraftState(text, attachment) {
+        inputArea.text = text || "";
+        if (attachment && (attachment.url || (typeof attachment === "object" && Object.keys(attachment).length > 0 && attachment.name))) {
+            inputRoot.draftAttachment = {
+                type: attachment.type || "file",
+                url: attachment.url || "",
+                name: attachment.name || "",
+                size: attachment.size || 0,
+                duration: attachment.duration || 0
+            };
+        } else {
+            inputRoot.draftAttachment = null;
+        }
+    }
+
+    function clearInput() {
+        inputArea.clear();
+        inputRoot.draftAttachment = null;
+        if (inputRoot.isTypingActive) {
+            inputRoot.isTypingActive = false;
+            typingThrottleTimer.stop();
+            typingInactivityTimer.stop();
+            inputRoot.typingStopped();
+        }
     }
 
     // Draft Attachment State
@@ -330,11 +386,24 @@ Rectangle {
                     horizontalAlignment: inputRoot.isRTL(inputArea.text) ? Text.AlignRight : Text.AlignLeft
 
                     onTextChanged: {
-                        if (text.trim() !== "") {
-                            inputRoot.typingStarted();
-                            typingDebounceTimer.restart();
+                        var trimmed = text.trim();
+                        if (trimmed !== "") {
+                            if (!inputRoot.isTypingActive) {
+                                inputRoot.isTypingActive = true;
+                                inputRoot.typingStarted();
+                                typingThrottleTimer.restart();
+                            } else if (!typingThrottleTimer.running) {
+                                inputRoot.typingStarted();
+                                typingThrottleTimer.restart();
+                            }
+                            typingInactivityTimer.restart();
                         } else {
-                            inputRoot.typingStopped();
+                            if (inputRoot.isTypingActive) {
+                                inputRoot.isTypingActive = false;
+                                typingThrottleTimer.stop();
+                                typingInactivityTimer.stop();
+                                inputRoot.typingStopped();
+                            }
                         }
                     }
 
@@ -348,11 +417,15 @@ Rectangle {
                     }
 
                     Keys.onReturnPressed: function(event) {
-                        typingDebounceTimer.stop();
-                        inputRoot.typingStopped();
                         if (event.modifiers & Qt.ShiftModifier) {
                             event.accepted = false;
                             return;
+                        }
+                        if (inputRoot.isTypingActive) {
+                            inputRoot.isTypingActive = false;
+                            typingThrottleTimer.stop();
+                            typingInactivityTimer.stop();
+                            inputRoot.typingStopped();
                         }
                         sendTriggered();
                         event.accepted = true;
@@ -439,6 +512,13 @@ Rectangle {
     }
 
     function sendTriggered() {
+        if (inputRoot.isTypingActive) {
+            inputRoot.isTypingActive = false;
+            typingThrottleTimer.stop();
+            typingInactivityTimer.stop();
+            inputRoot.typingStopped();
+        }
+
         var captionText = inputArea.text.trim();
 
         if (inputRoot.draftAttachment !== null) {

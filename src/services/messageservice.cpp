@@ -9,6 +9,8 @@
 #include <QFileInfo>
 #include <QUrl>
 #include <QSet>
+#include <QImageReader>
+#include <QFile>
 
 namespace NeoNect {
 namespace Services {
@@ -88,10 +90,10 @@ void MessageService::cancelMediaTransfer(const QString &conversationId, const QS
 
 void MessageService::sendMessage(const QString &conversationId, const QString &text, const QString &type, 
                                  const QString &mediaUrl, const QString &fileName, qint64 fileSize, 
-                                 int duration, const QVariantList &waveform) 
+                                 int duration, const QVariantList &waveform, const QString &clientMessageId) 
 {
     Domain::Message msg;
-    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.id = clientMessageId.trimmed().isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : clientMessageId.trimmed();
     msg.conversationId = conversationId;
     msg.senderId = m_currentUserId;
     msg.type = type;
@@ -100,6 +102,32 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
     msg.fileName = fileName;
     msg.fileSize = determineFileSize(mediaUrl, fileSize);
     msg.duration = duration;
+
+    // Detect image dimensions for local files immediately to reserve aspect-ratio
+    if ((msg.type == "image" || type == "image") && !mediaUrl.isEmpty()) {
+        QString cleanPath = mediaUrl;
+        QUrl url(mediaUrl);
+        if (url.isLocalFile()) {
+            cleanPath = url.toLocalFile();
+        } else if (cleanPath.startsWith("file:///")) {
+            cleanPath = cleanPath.mid(8);
+        } else if (cleanPath.startsWith("file://")) {
+            cleanPath = cleanPath.mid(7);
+        }
+#ifdef _WIN32
+        if (cleanPath.startsWith("/") && cleanPath.length() >= 3 && cleanPath.at(2) == ':') {
+            cleanPath = cleanPath.mid(1);
+        }
+#endif
+        if (QFile::exists(cleanPath)) {
+            QImageReader reader(cleanPath);
+            QSize sz = reader.size();
+            if (sz.isValid() && sz.width() > 0 && sz.height() > 0) {
+                msg.mediaWidth = sz.width();
+                msg.mediaHeight = sz.height();
+            }
+        }
+    }
     
     QJsonArray waveArray;
     for (const QVariant &v : waveform) {
@@ -217,16 +245,17 @@ void MessageService::sendPresenceStatus(const QString &targetUser, const QString
 }
 
 void MessageService::sendMediaRequest(const QString &conversationId, const QString &text, const QString &mediaType,
-                                      const QString &mediaUrl, const QString &fileName, qint64 fileSize)
+                                      const QString &mediaUrl, const QString &fileName, qint64 fileSize,
+                                      const QString &clientMessageId)
 {
     bool isSavedMessages = (conversationId == "dms:saved-messages" || conversationId == "saved-messages");
     if (isSavedMessages) {
-        sendMessage(conversationId, text, mediaType, mediaUrl, fileName, determineFileSize(mediaUrl, fileSize), 0, {});
+        sendMessage(conversationId, text, mediaType, mediaUrl, fileName, determineFileSize(mediaUrl, fileSize), 0, {}, clientMessageId);
         return;
     }
 
     Domain::Message msg;
-    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.id = clientMessageId.trimmed().isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : clientMessageId.trimmed();
     msg.conversationId = conversationId;
     msg.senderId = m_currentUserId;
     msg.type = "media_request";
@@ -237,6 +266,31 @@ void MessageService::sendMediaRequest(const QString &conversationId, const QStri
     msg.errorText = mediaType;
     msg.status = Domain::MessageStatus::Pending;
     msg.timestamp = QDateTime::currentMSecsSinceEpoch();
+
+    if (mediaType == "image" && !mediaUrl.isEmpty()) {
+        QString cleanPath = mediaUrl;
+        QUrl url(mediaUrl);
+        if (url.isLocalFile()) {
+            cleanPath = url.toLocalFile();
+        } else if (cleanPath.startsWith("file:///")) {
+            cleanPath = cleanPath.mid(8);
+        } else if (cleanPath.startsWith("file://")) {
+            cleanPath = cleanPath.mid(7);
+        }
+#ifdef _WIN32
+        if (cleanPath.startsWith("/") && cleanPath.length() >= 3 && cleanPath.at(2) == ':') {
+            cleanPath = cleanPath.mid(1);
+        }
+#endif
+        if (QFile::exists(cleanPath)) {
+            QImageReader reader(cleanPath);
+            QSize sz = reader.size();
+            if (sz.isValid() && sz.width() > 0 && sz.height() > 0) {
+                msg.mediaWidth = sz.width();
+                msg.mediaHeight = sz.height();
+            }
+        }
+    }
 
     m_pendingMediaRequests.insert(msg.id, msg);
     m_outgoingMessages.insert(msg.id, msg);
@@ -733,6 +787,8 @@ QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const
     
     map["errorText"] = msg.errorText;
     map["timestamp"] = msg.timestamp;
+    map["mediaWidth"] = msg.mediaWidth;
+    map["mediaHeight"] = msg.mediaHeight;
     return map;
 }
 

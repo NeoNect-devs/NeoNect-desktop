@@ -68,7 +68,7 @@ public:
      */
     Q_INVOKABLE void sendMessage(const QString &conversationId, const QString &text, const QString &type = "text", 
                                  const QString &mediaUrl = "", const QString &fileName = "", qint64 fileSize = 0, 
-                                 int duration = 0, const QVariantList &waveform = {});
+                                 int duration = 0, const QVariantList &waveform = {}, const QString &clientMessageId = "");
     
     /**
      * @brief Sends a two-phase media request proposal to the remote peer.
@@ -78,9 +78,11 @@ public:
      * @param mediaUrl Local source file URL.
      * @param fileName Filename.
      * @param fileSize File size in bytes.
+     * @param clientMessageId Optional client-generated UUID.
      */
     Q_INVOKABLE void sendMediaRequest(const QString &conversationId, const QString &text, const QString &mediaType,
-                                      const QString &mediaUrl, const QString &fileName, qint64 fileSize);
+                                      const QString &mediaUrl, const QString &fileName, qint64 fileSize,
+                                      const QString &clientMessageId = "");
 
     /**
      * @brief Accepts an incoming two-phase media request from a peer.

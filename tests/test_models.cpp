@@ -292,3 +292,200 @@ void TestModels::testMediaRequestFallbackCategoryDetection() {
     QCOMPARE(model.data(model.index(0), ChatMessageModel::ErrorTextRole).toString(), QString("video"));
 }
 
+void TestModels::testConversationSwitchCaching() {
+    ChatMessageModel model;
+    
+    // Set active conversation to alice
+    model.setActiveConversation("dms:alice");
+    model.insertMessage("Hello Alice", true, "Me", "", "text", "", "", 0, 0, {}, "sent", "msg-1");
+    model.insertMessage("Hi there!", false, "Alice", "A", "text", "", "", 0, 0, {}, "sent", "msg-2");
+    QCOMPARE(model.rowCount(), 2);
+    QVERIFY(model.hasCachedConversation("dms:alice"));
+
+    // Switch to bob (cold conversation)
+    model.setActiveConversation("dms:bob");
+    QCOMPARE(model.rowCount(), 0);
+    model.insertMessage("Hey Bob", true, "Me", "", "text", "", "", 0, 0, {}, "sent", "msg-3");
+    QCOMPARE(model.rowCount(), 1);
+    QVERIFY(model.hasCachedConversation("dms:bob"));
+
+    // Switch back to alice (cached conversation) - must be restored immediately with zero async delay
+    model.setActiveConversation("dms:alice");
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::TextRole).toString(), QString("Hello Alice"));
+    QCOMPARE(model.data(model.index(1), ChatMessageModel::TextRole).toString(), QString("Hi there!"));
+
+    // Switch back to bob
+    model.setActiveConversation("dms:bob");
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::TextRole).toString(), QString("Hey Bob"));
+}
+
+void TestModels::testDraftAndScrollPersistence() {
+    ChatMessageModel model;
+    
+    // Save drafts for different channels
+    QVariantMap attMap;
+    attMap["name"] = "document.pdf";
+    attMap["url"] = "file:///document.pdf";
+    attMap["size"] = 12345;
+
+    model.saveDraft("dms:alice", "Unfinished text for Alice");
+    model.saveDraft("dms:bob", "Draft for Bob with attachment", attMap);
+
+    QCOMPARE(model.getDraftText("dms:alice"), QString("Unfinished text for Alice"));
+    QVERIFY(model.getDraftAttachment("dms:alice").isEmpty());
+
+    QCOMPARE(model.getDraftText("dms:bob"), QString("Draft for Bob with attachment"));
+    QCOMPARE(model.getDraftAttachment("dms:bob").value("name").toString(), QString("document.pdf"));
+
+    // Save scroll positions
+    model.saveScrollPosition("dms:alice", 420.5, false);
+    model.saveScrollPosition("dms:bob", 0.0, true);
+
+    QCOMPARE(model.getSavedScrollPosition("dms:alice"), 420.5);
+    QCOMPARE(model.isSavedAtBottom("dms:alice"), false);
+
+    QCOMPARE(model.getSavedScrollPosition("dms:bob"), 0.0);
+    QCOMPARE(model.isSavedAtBottom("dms:bob"), true);
+}
+
+void TestModels::testScrollPositionMemoryAnchor() {
+    ChatMessageModel model;
+    model.setActiveConversation("dms:alice");
+
+    model.insertMessage("Message 1", true, "Me", "", "text", "", "", 0, 0, {}, "sent", "msg-1", 1000);
+    model.insertMessage("Message 2", false, "Alice", "", "text", "", "", 0, 0, {}, "sent", "msg-2", 2000);
+    model.insertMessage("Message 3", true, "Me", "", "text", "", "", 0, 0, {}, "sent", "msg-3", 3000);
+
+    QCOMPARE(model.rowCount(), 3);
+    QCOMPARE(model.indexOfMessageId("msg-1"), 0);
+    QCOMPARE(model.indexOfMessageId("msg-2"), 1);
+    QCOMPARE(model.indexOfMessageId("msg-3"), 2);
+    QCOMPARE(model.indexOfMessageId("msg-nonexistent"), -1);
+
+    QCOMPARE(model.getMessageIdAt(0), QString("msg-1"));
+    QCOMPARE(model.getMessageIdAt(1), QString("msg-2"));
+    QCOMPARE(model.getMessageIdAt(2), QString("msg-3"));
+    QCOMPARE(model.getMessageIdAt(99), QString());
+
+    // Initially unset conversation defaults to wasAtEnd = true
+    QVERIFY(!model.hasChatPosition("dms:alice"));
+    QVariantMap initialMem = model.getChatPosition("dms:alice");
+    QVERIFY(initialMem.value("wasAtEnd").toBool());
+    QVERIFY(initialMem.value("messageId").toString().isEmpty());
+
+    // User was scrolled reading Message 2 with a 14.5px offset
+    model.saveChatPosition("dms:alice", "msg-2", 14.5, false);
+    QVERIFY(model.hasChatPosition("dms:alice"));
+    QVERIFY(model.hasScrollMemory("dms:alice"));
+
+    QVariantMap savedMem = model.getChatPosition("dms:alice");
+    QCOMPARE(savedMem.value("messageId").toString(), QString("msg-2"));
+    QCOMPARE(savedMem.value("lastVisibleMessageId").toString(), QString("msg-2"));
+    QCOMPARE(savedMem.value("pixelOffset").toReal(), 14.5);
+    QCOMPARE(savedMem.value("offset").toReal(), 14.5);
+    QCOMPARE(savedMem.value("wasAtEnd").toBool(), false);
+
+    // Switch conversation to bob, who was scrolled at msg-b1 with 32.0px offset
+    model.setActiveConversation("dms:bob");
+    model.insertMessage("Bob msg 1", false, "Bob", "", "text", "", "", 0, 0, {}, "sent", "msg-b1", 4000);
+    model.insertMessage("Bob msg 2", false, "Bob", "", "text", "", "", 0, 0, {}, "sent", "msg-b2", 4001);
+    model.saveChatPosition("dms:bob", "msg-b1", 32.0, false);
+
+    QVariantMap bobMem = model.getChatPosition("dms:bob");
+    QCOMPARE(bobMem.value("messageId").toString(), QString("msg-b1"));
+    QCOMPARE(bobMem.value("offset").toReal(), 32.0);
+    QCOMPARE(bobMem.value("wasAtEnd").toBool(), false);
+
+    // Switch conversation to charlie, who was at the bottom
+    model.setActiveConversation("dms:charlie");
+    model.insertMessage("Charlie msg 1", false, "Charlie", "", "text", "", "", 0, 0, {}, "sent", "msg-c1", 5000);
+    model.saveChatPosition("dms:charlie", "", 0.0, true);
+
+    QVariantMap charlieMem = model.getChatPosition("dms:charlie");
+    QVERIFY(charlieMem.value("wasAtEnd").toBool());
+
+    // Cycle 1: Switch back to alice - verify memory is intact and resolved
+    model.setActiveConversation("dms:alice");
+    QVariantMap aliceRestored = model.getChatPosition("dms:alice");
+    QCOMPARE(aliceRestored.value("messageId").toString(), QString("msg-2"));
+    QCOMPARE(aliceRestored.value("offset").toReal(), 14.5);
+    QCOMPARE(aliceRestored.value("wasAtEnd").toBool(), false);
+    QCOMPARE(model.indexOfMessageId(aliceRestored.value("messageId").toString()), 1);
+
+    // Cycle 2: Switch back to bob - verify memory is intact and resolved
+    model.setActiveConversation("dms:bob");
+    QVariantMap bobRestored = model.getChatPosition("dms:bob");
+    QCOMPARE(bobRestored.value("messageId").toString(), QString("msg-b1"));
+    QCOMPARE(bobRestored.value("offset").toReal(), 32.0);
+    QCOMPARE(bobRestored.value("wasAtEnd").toBool(), false);
+    QCOMPARE(model.indexOfMessageId(bobRestored.value("messageId").toString()), 0);
+
+    // Cycle 3: Switch back to charlie - verify still at bottom
+    model.setActiveConversation("dms:charlie");
+    QVariantMap charlieRestored = model.getChatPosition("dms:charlie");
+    QVERIFY(charlieRestored.value("wasAtEnd").toBool());
+
+    // Verify case-insensitive trimmed keying
+    QVERIFY(model.hasChatPosition("  DMS:ALICE  "));
+    QCOMPARE(model.getChatPosition("  DMS:ALICE  ").value("messageId").toString(), QString("msg-2"));
+}
+
+void TestModels::testIdempotentMessageMerge() {
+    ChatMessageModel model;
+    model.setActiveConversation("dms:alice");
+
+    // Populate initial conversation
+    QVariantMap m1;
+    m1["id"] = "msg-100";
+    m1["text"] = "Message 1";
+    m1["status"] = "sending";
+    m1["timestamp"] = 1000LL;
+
+    QVariantList list1;
+    list1.append(m1);
+    model.onConversationLoaded("dms:alice", list1);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::StatusRole).toString(), QString("sending"));
+
+    // Server acknowledges delivery: same message with status sent + 1 new message
+    QVariantMap m1_updated = m1;
+    m1_updated["status"] = "sent";
+
+    QVariantMap m2;
+    m2["id"] = "msg-101";
+    m2["text"] = "Message 2";
+    m2["status"] = "sent";
+    m2["timestamp"] = 2000LL;
+
+    QVariantList list2;
+    list2.append(m1_updated);
+    list2.append(m2);
+
+    // Reconnection or sync load: should update m1 status and insert m2 cleanly
+    model.onConversationLoaded("dms:alice", list2);
+
+    QCOMPARE(model.rowCount(), 2);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::MessageIdRole).toString(), QString("msg-100"));
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(model.data(model.index(1), ChatMessageModel::MessageIdRole).toString(), QString("msg-101"));
+}
+
+void TestModels::testMediaDimensionsRole() {
+    ChatMessageModel model;
+    QVariantMap imgMap;
+    imgMap["id"] = "img-501";
+    imgMap["type"] = "image";
+    imgMap["mediaUrl"] = "file:///dummy.png";
+    imgMap["mediaWidth"] = 1920;
+    imgMap["mediaHeight"] = 1080;
+
+    model.insertMessageItem(imgMap);
+
+    QCOMPARE(model.rowCount(), 1);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::MediaWidthRole).toInt(), 1920);
+    QCOMPARE(model.data(model.index(0), ChatMessageModel::MediaHeightRole).toInt(), 1080);
+}
+

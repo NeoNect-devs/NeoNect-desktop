@@ -46,7 +46,20 @@ struct MessageItem {
     bool isFirstUnread{false};  /**< True if this bubble anchors the "Unread Messages" divider line. */
     qreal transferProgress{0.0};/**< Transfer progress percentage [0.0 - 1.0]. */
     qint64 transferBytes{0};    /**< Transferred bytes counter. */
+    int mediaWidth{0};          /**< Natural width of attached media if known. */
+    int mediaHeight{0};         /**< Natural height of attached media if known. */
 };
+
+/**
+ * @struct ScrollPosition
+ * @brief Anchors viewport scroll state to a concrete message ID rather than fragile raw pixels.
+ */
+struct ScrollPosition {
+    QString messageId;            /**< Concrete message UUID visible at the top of the viewport. */
+    qreal pixelOffset{0.0};       /**< Sub-pixel offset of anchor item relative to viewport top. */
+    bool wasAtEnd{true};          /**< True if user was pinned to the bottom of the chat. */
+};
+using ScrollPositionMemory = ScrollPosition;
 
 /**
  * @class ChatMessageModel
@@ -61,6 +74,8 @@ class ChatMessageModel : public QAbstractListModel {
     Q_PROPERTY(bool isLoadingMore READ isLoadingMore NOTIFY isLoadingMoreChanged)
     /** @brief Current count of loaded messages in the active viewport. */
     Q_PROPERTY(int count READ count NOTIFY countChanged)
+    /** @brief Active conversation ID. */
+    Q_PROPERTY(QString activeConversationId READ activeConversationId NOTIFY activeConversationIdChanged)
 
 public:
     /**
@@ -86,7 +101,9 @@ public:
         ErrorTextRole,               /**< Failure explanation string. */
         TimestampRole,               /**< Epoch timestamp. */
         TransferProgressRole,        /**< Real progress [0.0 - 1.0]. */
-        TransferBytesRole            /**< Integer transferred bytes. */
+        TransferBytesRole,           /**< Integer transferred bytes. */
+        MediaWidthRole,              /**< Natural media width. */
+        MediaHeightRole              /**< Natural media height. */
     };
 
     /**
@@ -112,6 +129,8 @@ public:
     bool canFetchMore() const { return m_canFetchMore; }
     /** @brief Checks if older history is actively loading. */
     bool isLoadingMore() const { return m_isLoadingMore; }
+    /** @brief Returns currently active conversation ID. */
+    QString activeConversationId() const { return m_activeConversationId; }
 
     /**
      * @brief Queries model data for a given role and index.
@@ -212,6 +231,106 @@ public:
     Q_INVOKABLE void updateTransferProgress(const QString &messageId, qreal progress, qint64 bytes, qint64 totalBytes = 0);
 
     /**
+     * @brief Generates an RFC 4122 UUID v4 string for optimistic message creation.
+     */
+    Q_INVOKABLE QString generateUuid() const;
+
+    /**
+     * @brief Saves the current user input draft text and attachment for a conversation.
+     * @param conversationId Scope channel ID.
+     * @param text Unfinished draft body text.
+     * @param attachment Optional staged file attachment map.
+     */
+    Q_INVOKABLE void saveDraft(const QString &conversationId, const QString &text, const QVariantMap &attachment = {});
+
+    /**
+     * @brief Retrieves stored draft text for a conversation.
+     */
+    Q_INVOKABLE QString getDraftText(const QString &conversationId) const;
+
+    /**
+     * @brief Retrieves stored draft attachment map for a conversation.
+     */
+    Q_INVOKABLE QVariantMap getDraftAttachment(const QString &conversationId) const;
+
+    /**
+     * @brief Persists the active scroll offset and bottom-lock status for a conversation.
+     * @param conversationId Scope channel ID.
+     * @param scrollPos ListView contentY offset.
+     * @param isAtBottom True if user was pinned to the bottom.
+     */
+    Q_INVOKABLE void saveScrollPosition(const QString &conversationId, qreal scrollPos, bool isAtBottom);
+
+    /**
+     * @brief Retrieves cached scroll position for a conversation (-1.0 if unset).
+     */
+    Q_INVOKABLE qreal getSavedScrollPosition(const QString &conversationId) const;
+
+    /**
+     * @brief Checks if conversation was left pinned to the bottom.
+     */
+    Q_INVOKABLE bool isSavedAtBottom(const QString &conversationId) const;
+
+    /**
+     * @brief Checks if a conversation is already cached in memory.
+     */
+    Q_INVOKABLE bool hasCachedConversation(const QString &conversationId) const;
+
+    /**
+     * @brief Persists anchor message ID, pixel offset, and bottom-pinned state for a conversation.
+     * @param chatId Scope channel ID.
+     * @param messageId UUID of top-most visible message in viewport.
+     * @param offset Sub-pixel offset of message relative to top of viewport.
+     * @param wasAtEnd True if view was pinned to the bottom of the feed.
+     */
+    Q_INVOKABLE void saveChatPosition(const QString &chatId, const QString &messageId, qreal offset, bool wasAtEnd);
+
+    /**
+     * @brief Retrieves stored scroll position memory for a conversation.
+     * @param chatId Scope channel ID.
+     * @return Map containing `messageId`, `lastVisibleMessageId`, `offset`, `pixelOffset`, and `wasAtEnd`.
+     */
+    Q_INVOKABLE QVariantMap getChatPosition(const QString &chatId) const;
+
+    /**
+     * @brief Checks if scroll position exists for a conversation.
+     */
+    Q_INVOKABLE bool hasChatPosition(const QString &chatId) const;
+
+    /**
+     * @brief Persists anchor message ID, pixel offset, and bottom-pinned state for a conversation (Backward-compatible).
+     * @param conversationId Scope channel ID.
+     * @param lastVisibleMessageId UUID of top-most visible message in viewport.
+     * @param pixelOffset Sub-pixel offset of message relative to top of viewport.
+     * @param wasAtEnd True if view was pinned to the bottom of the feed.
+     */
+    Q_INVOKABLE void saveScrollMemory(const QString &conversationId, const QString &lastVisibleMessageId, qreal pixelOffset, bool wasAtEnd);
+
+    /**
+     * @brief Retrieves stored scroll position memory for a conversation (Backward-compatible).
+     * @param conversationId Scope channel ID.
+     * @return Map containing `lastVisibleMessageId`, `pixelOffset`, and `wasAtEnd`.
+     */
+    Q_INVOKABLE QVariantMap getScrollMemory(const QString &conversationId) const;
+
+    /**
+     * @brief Checks if scroll memory exists for a conversation (Backward-compatible).
+     */
+    Q_INVOKABLE bool hasScrollMemory(const QString &conversationId) const;
+
+    /**
+     * @brief Returns row index of a message by UUID in the currently active conversation, or -1 if not found.
+     * @param messageId Target message UUID.
+     */
+    Q_INVOKABLE int indexOfMessageId(const QString &messageId) const;
+
+    /**
+     * @brief Returns message UUID at row index in the active conversation, or empty string if out of bounds.
+     * @param index Row index.
+     */
+    Q_INVOKABLE QString getMessageIdAt(int index) const;
+
+    /**
      * @brief Internal fast-path appender for rvalue MessageItem instances.
      * @param item Rvalue reference to MessageItem.
      */
@@ -242,15 +361,30 @@ signals:
     void isLoadingMoreChanged();
     /** @brief Emitted when item count changes. */
     void countChanged();
+    /** @brief Emitted when a conversation's initial batch or cached history is fully loaded into the model. */
+    void conversationReady(const QString &conversationId);
+    /** @brief Emitted when active conversation scope changes. */
+    void activeConversationIdChanged();
 
 private:
     /** @brief Re-computes block cluster flags (`isFirstInBlock`, `isLastInBlock`) across items. */
     void recalculateBlocks();
     /** @brief Converts variant map into typed internal MessageItem struct. */
     MessageItem parseVariantMap(const QVariantMap &map) const;
+    /** @brief Idempotently merges loaded messages without triggering full model resets. */
+    void mergeMessages(std::vector<MessageItem> &&newItems);
 
     std::vector<MessageItem> m_items;
     QString m_activeConversationId;
     bool m_canFetchMore{false};
     bool m_isLoadingMore{false};
+
+    // In-memory conversation state persistence
+    QHash<QString, std::vector<MessageItem>> m_conversationCache;
+    QHash<QString, bool> m_canFetchMoreCache;
+    QHash<QString, qreal> m_scrollPositions;
+    QHash<QString, bool> m_isAtBottomMap;
+    QHash<QString, ScrollPosition> m_chatScrollPositions;
+    QHash<QString, QString> m_draftTexts;
+    QHash<QString, QVariantMap> m_draftAttachments;
 };

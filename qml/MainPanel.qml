@@ -12,6 +12,7 @@ Item {
     property string activeChannel: "friends"
     property string selectedServer: "dms"
     property bool userToggledExpanded: false
+    property string currentChatId: ""
 
     ChatMessageModel {
         id: nativeMessageModel
@@ -111,22 +112,57 @@ Item {
     function switchChannel() {
         root.isOtherTyping = false;
         peerTypingTimeoutTimer.stop();
+
         if (root.selectedServer === "dms" && (root.activeChannel === "friends" || !root.activeChannel)) {
+            if (root.currentChatId !== "" && chatView) {
+                chatView.saveCurrentPosition(root.currentChatId);
+            }
+            root.currentChatId = "";
+            if (chatView) {
+                chatView.currentChatId = "";
+            }
             nativeMessageModel.setActiveConversation("");
             return;
         }
 
         var chan = root.activeChannel ? root.activeChannel.trim().toLowerCase() : "";
         if (!chan) {
+            if (root.currentChatId !== "" && chatView) {
+                chatView.saveCurrentPosition(root.currentChatId);
+            }
+            root.currentChatId = "";
+            if (chatView) {
+                chatView.currentChatId = "";
+            }
             nativeMessageModel.setActiveConversation("");
             return;
         }
-        var key = (root.selectedServer + ":" + chan).toLowerCase();
-        nativeMessageModel.setActiveConversation(key);
-        MessageService.loadConversation(key);
+
+        var newChatId = (root.selectedServer + ":" + chan).toLowerCase();
+        if (root.currentChatId === newChatId) return;
+
+        // 1. Save current active chat position BEFORE updating currentChatId and BEFORE changing model
+        if (root.currentChatId !== "" && chatView) {
+            chatView.saveCurrentPosition(root.currentChatId);
+        }
+
+        // 2. Set the restoration guard to suppress onContentYChanged, onContentHeightChanged & auto-scroll
+        if (chatView) {
+            chatView.isRestoringPosition = true;
+            chatView.hasInitialPositioned = false;
+            chatView.currentChatId = newChatId;
+        }
+
+        // 3. Update active conversation identifier
+        root.currentChatId = newChatId;
+
+        // 4. Load the new conversation model
+        nativeMessageModel.setActiveConversation(newChatId);
+        MessageService.loadConversation(newChatId);
+
         if (typeof NotificationManager !== "undefined" && NotificationManager) {
             NotificationManager.markChannelAsRead(chan);
-            NotificationManager.markChannelAsRead(key);
+            NotificationManager.markChannelAsRead(newChatId);
         }
     }
 
@@ -148,11 +184,12 @@ Item {
         }
         var mType = itemObj.messageType || "text";
         var isTwoPhaseMedia = (mType === "image" || mType === "video" || mType === "audio" || mType === "file" || mType === "media_request");
+        var clientMsgId = itemObj.messageId || "";
         if (isTwoPhaseMedia && root.selectedServer === "dms" && chan !== "saved-messages") {
             var mediaCat = (mType === "media_request") ? (itemObj.mediaCategory || itemObj.errorText || UIHelpers.detectMediaType(itemObj.mediaUrl, itemObj.fileName) || "file") : mType;
-            MessageService.sendMediaRequest(key, itemObj.text || itemObj.content || "", mediaCat, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0);
+            MessageService.sendMediaRequest(key, itemObj.text || itemObj.content || "", mediaCat, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0, clientMsgId);
         } else {
-            MessageService.sendMessage(key, itemObj.text || itemObj.content || "", mType, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0, itemObj.duration || 0, itemObj.waveform || []);
+            MessageService.sendMessage(key, itemObj.text || itemObj.content || "", mType, itemObj.mediaUrl || "", itemObj.fileName || "", itemObj.fileSize || 0, itemObj.duration || 0, itemObj.waveform || [], clientMsgId);
         }
     }
 
@@ -224,6 +261,7 @@ Item {
             Layout.fillHeight: true
             selectedServer: root.selectedServer
             activeChannel: root.activeChannel
+            currentChatId: root.currentChatId
             userToggledExpanded: root.userToggledExpanded
             isOtherTyping: root.isOtherTyping
             typingUser: root.typingUser

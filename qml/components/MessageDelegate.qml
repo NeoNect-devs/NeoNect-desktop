@@ -342,8 +342,8 @@ import "UIHelpers.js" as UIHelpers
                                                     return url.endsWith(".gif") || fn.endsWith(".gif");
                                                 }
                                                 readonly property var activeImgObj: isGif ? chatGif : chatImg
-                                                readonly property real naturalW: (activeImgObj && activeImgObj.implicitWidth > 0) ? activeImgObj.implicitWidth : 320
-                                                readonly property real naturalH: (activeImgObj && activeImgObj.implicitHeight > 0) ? activeImgObj.implicitHeight : 200
+                                                readonly property real naturalW: (model.mediaWidth && model.mediaWidth > 0) ? model.mediaWidth : ((activeImgObj && activeImgObj.implicitWidth > 0) ? activeImgObj.implicitWidth : 320)
+                                                readonly property real naturalH: (model.mediaHeight && model.mediaHeight > 0) ? model.mediaHeight : ((activeImgObj && activeImgObj.implicitHeight > 0) ? activeImgObj.implicitHeight : 200)
                                                 readonly property real ratio: (naturalW > 0 && naturalH > 0) ? (naturalW / naturalH) : 1.6
 
                                                 readonly property real maxAllowedWidth: Math.min(420, Math.max(160, bubbleBox.maxContentWidth))
@@ -661,6 +661,8 @@ import "UIHelpers.js" as UIHelpers
                                                     fileSize: model.fileSize
                                                     duration: model.duration || 30
                                                     fromMe: model.fromMe
+                                                    mediaWidth: (model.mediaWidth && model.mediaWidth > 0) ? model.mediaWidth : 0
+                                                    mediaHeight: (model.mediaHeight && model.mediaHeight > 0) ? model.mediaHeight : 0
                                                     onOpenFullscreenRequested: (url, name, pos, playing) => delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(url), "video", name, pos, playing)
                                                 }
 

@@ -141,6 +141,16 @@ struct Message {
      * @brief Message creation or transmission timestamp expressed in Unix epoch milliseconds.
      */
     qint64 timestamp{0};
+
+    /**
+     * @brief Natural width in pixels of media attachment if known.
+     */
+    int mediaWidth{0};
+
+    /**
+     * @brief Natural height in pixels of media attachment if known.
+     */
+    int mediaHeight{0};
 };
 
 } // namespace Domain

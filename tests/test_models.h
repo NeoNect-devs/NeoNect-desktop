@@ -17,4 +17,9 @@ private slots:
     void testAudioManagerVolumePersistence();
     void testMediaRequestMessageItem();
     void testMediaRequestFallbackCategoryDetection();
+    void testConversationSwitchCaching();
+    void testDraftAndScrollPersistence();
+    void testScrollPositionMemoryAnchor();
+    void testIdempotentMessageMerge();
+    void testMediaDimensionsRole();
 };

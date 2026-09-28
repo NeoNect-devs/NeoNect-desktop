@@ -43,7 +43,13 @@ int main(int argc, char *argv[]) {
     }
     {
         TestModels tm;
-        int res = QTest::qExec(&tm);
+        int res = QTest::qExec(&tm, QStringList() << "NeoNectTests" << "-o" << "models_log.txt,txt");
+        if (res != 0) {
+            QFile f("models_log.txt");
+            if (f.open(QIODevice::ReadOnly)) {
+                std::cout << f.readAll().toStdString() << std::endl;
+            }
+        }
         std::cout << "[TestModels Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }

@@ -14,6 +14,8 @@ Rectangle {
     property int fileSize: 0
     property int duration: 45 // seconds
     property bool fromMe: false
+    property int mediaWidth: 0
+    property int mediaHeight: 0
 
     property real volumeLevel: (typeof AudioManager !== "undefined" && AudioManager) ? AudioManager.volume : 1.0
     property bool isMuted: (typeof AudioManager !== "undefined" && AudioManager) ? AudioManager.isMuted : false
@@ -40,8 +42,8 @@ Rectangle {
     }
 
     // Dynamic Resolution and Aspect Ratio Scaling
-    readonly property real metaW: (player.metaData && player.metaData.value(MediaMetaData.Resolution)) ? player.metaData.value(MediaMetaData.Resolution).width : 0
-    readonly property real metaH: (player.metaData && player.metaData.value(MediaMetaData.Resolution)) ? player.metaData.value(MediaMetaData.Resolution).height : 0
+    readonly property real metaW: (mediaWidth > 0) ? mediaWidth : ((player.metaData && player.metaData.value(MediaMetaData.Resolution)) ? player.metaData.value(MediaMetaData.Resolution).width : 0)
+    readonly property real metaH: (mediaHeight > 0) ? mediaHeight : ((player.metaData && player.metaData.value(MediaMetaData.Resolution)) ? player.metaData.value(MediaMetaData.Resolution).height : 0)
 
     readonly property real naturalWidth: metaW > 0 ? metaW : 340
     readonly property real naturalHeight: metaH > 0 ? metaH : 204
