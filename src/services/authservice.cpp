@@ -169,10 +169,14 @@ void AuthService::loginUser(const QString &username, const QString &password) {
     });
 }
 
-void AuthService::logoutUser() {
-    m_transport->deleteResource(Constants::EP_AUTH, this, [](int, const QByteArray&, QNetworkReply::NetworkError, const QString&) {});
+void AuthService::teardownLocalSession() {
     m_storage->clearSession();
     m_transport->setAuthToken(QString());
+}
+
+void AuthService::logoutUser() {
+    m_transport->deleteResource(Constants::EP_AUTH, this, [](int, const QByteArray&, QNetworkReply::NetworkError, const QString&) {});
+    teardownLocalSession();
 }
 
 void AuthService::fetchUserProfile() {
@@ -184,7 +188,7 @@ void AuthService::fetchUserProfile() {
     m_transport->get(Constants::EP_USERS_ME, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
         if (statusCode == 401) {
-            logoutUser();
+            teardownLocalSession();
             emit authSessionExpired();
             emit userProfileFetched(false, QString());
             return;

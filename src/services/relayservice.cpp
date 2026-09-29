@@ -129,6 +129,13 @@ bool RelayService::isConnected() const {
 }
 
 void RelayService::handle401Error() {
+    if (m_retry401Count < 2) {
+        m_retry401Count++;
+        qDebug() << "[RelayService] 401 Unauthorized encountered. Requesting device re-registration attempt" << m_retry401Count;
+        emit deviceRegistrationRequested();
+        return;
+    }
+
     m_retry401Count = 0;
     qDebug() << "[RelayService] Permanent 401 Session Expired.";
     stopPolling();

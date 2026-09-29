@@ -125,6 +125,9 @@ signals:
     void authSessionExpired();
 
 private:
+    /** @brief Terminates the local session cleanly without server interaction. */
+    void teardownLocalSession();
+
     /** @brief Injected HTTP transport layer. */
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     /** @brief Injected persistent settings repository. */

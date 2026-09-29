@@ -2066,47 +2066,77 @@ void TestServices::testAvatarProcessingAndPeerSync() {
 
 void TestServices::testPhase3AuthSessionDeviceHarden() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
-    
-    // Test 1: secure-store unavailable behavior is handled by SettingsRepository internally 
-    // without crashing and generating a key on the fly.
+
+    // Test 1: secure-store unavailable behavior is handled by SettingsRepository internally
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_p3_auth");
     storage->clearSession();
     storage->setAuthToken("P3_SECRET_TOKEN");
     QCOMPARE(storage->authToken(), "P3_SECRET_TOKEN");
-    
-    NeoNect::Services::AuthService authService(mockTransport, storage);
-    
+
     // Test 2: Profile Isolation
-    auto storage2 = std::make_shared<NeoNect::Storage::SettingsRepository>("test_p3_auth_b");
-    storage2->clearSession();
-    storage2->setAuthToken("P3_TOKEN_B");
-    QCOMPARE(storage->authToken(), "P3_SECRET_TOKEN"); // Not leaked
-    
+    auto storageA = std::make_shared<NeoNect::Storage::SettingsRepository>("profile_A");
+    auto storageB = std::make_shared<NeoNect::Storage::SettingsRepository>("profile_B");
+    storageA->clearSession();
+    storageB->clearSession();
+
+    // Write to A, inspect B
+    storageA->setAuthToken("TOKEN_A");
+    storageA->setUsername("userA");
+    storageA->setDeviceId("DEVICE_A");
+    QVERIFY(storageB->authToken().isEmpty());
+    QVERIFY(storageB->username().isEmpty());
+    QVERIFY(storageB->deviceId().isEmpty());
+
+    // Write to B, inspect A
+    storageB->setAuthToken("TOKEN_B");
+    storageB->setUsername("userB");
+    storageB->setDeviceId("DEVICE_B");
+    QCOMPARE(storageA->authToken(), "TOKEN_A");
+    QCOMPARE(storageA->username(), "userA");
+    QCOMPARE(storageA->deviceId(), "DEVICE_A");
+    QCOMPARE(storageB->authToken(), "TOKEN_B");
+    QCOMPARE(storageB->username(), "userB");
+    QCOMPARE(storageB->deviceId(), "DEVICE_B");
+
     // Test 3: 401 Session Teardown
+    NeoNect::Services::AuthService authService(mockTransport, storageA);
     QSignalSpy spyExpired(&authService, &NeoNect::Services::AuthService::authSessionExpired);
     QSignalSpy spyProfile(&authService, &NeoNect::Services::AuthService::userProfileFetched);
-    
-    // Inject a 401 response into the mock by providing an invalid token to trigger a 401 (if supported by mock)
-    // Actually, MockHttpTransport might not return 401 automatically. Let's force a call that returns 401 if possible.
-    // If mock doesn't simulate 401, we just verify logoutUser() logic.
-    authService.logoutUser();
-    QVERIFY(storage->authToken().isEmpty());
-    
+
+    // Ensure mock transport returns 401 for fetchUserProfile (EP_USERS_ME)
+    mockTransport->setSimulatedResponse("/api/v1/users/me", QByteArray(), 401);
+
+    // Call fetchUserProfile to trigger 401 handling
+    authService.fetchUserProfile();
+
+    // Verify 401 handling
+    QCOMPARE(spyExpired.count(), 1);
+    QCOMPARE(spyProfile.count(), 1);
+    QCOMPARE(spyProfile.first().at(0).toBool(), false);
+
+    // Verify local session is cleared
+    QVERIFY(storageA->authToken().isEmpty());
+    QVERIFY(storageA->username().isEmpty());
+
+    // Verify authenticated transport state is cleared
+    QVERIFY(mockTransport->authToken().isEmpty());
+
     // Test 4: Device Lifecycle and Limits
-    NeoNect::Services::DeviceService devService(mockTransport, storage);
+    NeoNect::Services::DeviceService devService(mockTransport, storageA);
     QSignalSpy spyReg(&devService, &NeoNect::Services::DeviceService::deviceRegistrationResult);
-    
+
     // Need a user to register a device
+    mockTransport->setSimulateHttpError(0); // Clear error
     authService.registerUser("limit_user", "pass12345");
     authService.loginUser("limit_user", "pass12345");
-    
+
     // Register device 1
     devService.registerDevice("DEV_ID_1", "PUB_KEY_1");
     QCOMPARE(spyReg.count(), 1);
     QVERIFY(spyReg.takeFirst().at(0).toBool());
-    QString d1 = storage->deviceId();
+    QString d1 = storageA->deviceId();
     QVERIFY(!d1.isEmpty());
-    
+
     // Test Device Revocation
     QSignalSpy spyRev(&devService, &NeoNect::Services::DeviceService::deviceRevocationResult);
     devService.revokeDevice(d1);
