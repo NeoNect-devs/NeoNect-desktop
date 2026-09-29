@@ -40,4 +40,5 @@ private slots:
     void testRealtimeChatPresenceExchange();
     void testDisplayNameResolutionAndSync();
     void testAvatarProcessingAndPeerSync();
+    void testPhase3AuthSessionDeviceHarden();
 };

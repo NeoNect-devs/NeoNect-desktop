@@ -1,6 +1,14 @@
+#include <QRandomGenerator>
 // src/storage/settingsrepository.cpp
 #include "settingsrepository.h"
 #include "../common/constants.h"
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <wincrypt.h>
+#endif
+#include <QFile>
+#include <QDir>
+#include <QStandardPaths>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -17,8 +25,71 @@ namespace {
 
 QByteArray getMachineKey() {
     QByteArray machineId = QSysInfo::machineUniqueId();
-    if (machineId.isEmpty()) machineId = "fallback-machine-id-12345";
-    return QCryptographicHash::hash(machineId, QCryptographicHash::Sha256);
+    if (!machineId.isEmpty()) {
+        return QCryptographicHash::hash(machineId, QCryptographicHash::Sha256);
+    }
+    
+    // Secure Fallback: Generate a random key and persist it securely
+    QString keyPath = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir().mkpath(keyPath);
+    QString keyFile = QDir(keyPath).filePath("secret.key");
+
+#ifdef Q_OS_WIN
+    // On Windows, use DPAPI to protect the fallback key
+    QFile f(keyFile);
+    if (f.open(QIODevice::ReadOnly)) {
+        QByteArray enc = f.readAll();
+        f.close();
+        DATA_BLOB in;
+        in.pbData = reinterpret_cast<BYTE*>(enc.data());
+        in.cbData = static_cast<DWORD>(enc.size());
+        DATA_BLOB out;
+        if (CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, 0, &out)) {
+            QByteArray dec(reinterpret_cast<char*>(out.pbData), static_cast<int>(out.cbData));
+            LocalFree(out.pbData);
+            return dec;
+        }
+    }
+    // Generate new key
+    QByteArray newKey;
+    newKey.resize(32);
+    for (int i = 0; i < 8; ++i) {
+        quint32 randVal = QRandomGenerator::system()->generate();
+        memcpy(newKey.data() + i * 4, &randVal, 4);
+    }
+    DATA_BLOB in;
+    in.pbData = reinterpret_cast<BYTE*>(newKey.data());
+    in.cbData = static_cast<DWORD>(newKey.size());
+    DATA_BLOB out;
+    if (CryptProtectData(&in, L"NeoNectMasterKey", nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &out)) {
+        if (f.open(QIODevice::WriteOnly)) {
+            f.write(reinterpret_cast<char*>(out.pbData), static_cast<int>(out.cbData));
+            f.close();
+        }
+        LocalFree(out.pbData);
+    }
+    return newKey;
+#else
+    // On Linux/Unix, use strict file permissions (0600)
+    QFile f(keyFile);
+    if (f.open(QIODevice::ReadOnly)) {
+        QByteArray key = f.readAll();
+        if (key.size() == 32) return key;
+        f.close();
+    }
+    QByteArray newKey;
+    newKey.resize(32);
+    for (int i = 0; i < 8; ++i) {
+        quint32 randVal = QRandomGenerator::system()->generate();
+        memcpy(newKey.data() + i * 4, &randVal, 4);
+    }
+    if (f.open(QIODevice::WriteOnly)) {
+        f.setPermissions(QFile::ReadOwner | QFile::WriteOwner); // 0600
+        f.write(newKey);
+        f.close();
+    }
+    return newKey;
+#endif
 }
 
 Crypto::CryptoService& getLocalCrypto() {

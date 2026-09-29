@@ -182,8 +182,13 @@ void AuthService::fetchUserProfile() {
     }
 
     m_transport->get(Constants::EP_USERS_ME, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-        Q_UNUSED(statusCode);
         Q_UNUSED(errStr);
+        if (statusCode == 401) {
+            logoutUser();
+            emit authSessionExpired();
+            emit userProfileFetched(false, QString());
+            return;
+        }
         if (error == QNetworkReply::NoError) {
             auto doc = QJsonDocument::fromJson(data);
             if (!doc.isNull() && doc.object().contains("username")) {
