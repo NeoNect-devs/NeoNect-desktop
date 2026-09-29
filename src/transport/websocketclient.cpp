@@ -1,5 +1,6 @@
 // src/transport/websocketclient.cpp
 #include "websocketclient.h"
+#include "common/constants.h"
 #include <QDebug>
 #include <QCryptographicHash>
 #include <cstring>
@@ -246,8 +247,10 @@ void WebSocketClient::processFrames() {
         }
 
         if (masked) {
-            if (m_readBuffer.size() < headerLen + 4) return;
-            headerLen += 4;
+            qWarning() << "[WebSocketClient] Server sent masked frame (RFC 6455 violation)";
+            emit errorOccurred("Server sent masked frame");
+            m_socket->disconnectFromHost();
+            return;
         }
 
         quint64 totalFrameLen = headerLen + payloadLen;
@@ -257,13 +260,7 @@ void WebSocketClient::processFrames() {
 
         QByteArray payload;
         if (payloadLen > 0) {
-            payload = m_readBuffer.mid(masked ? (headerLen - 4 + 4) : headerLen, static_cast<int>(payloadLen));
-            if (masked) {
-                const quint8 *maskKey = reinterpret_cast<const quint8*>(m_readBuffer.constData() + headerLen - 4);
-                for (int i = 0; i < payload.size(); ++i) {
-                    payload[i] = payload[i] ^ maskKey[i % 4];
-                }
-            }
+            payload = m_readBuffer.mid(headerLen, static_cast<int>(payloadLen));
         }
 
         m_readBuffer.remove(0, static_cast<int>(totalFrameLen));
@@ -303,7 +300,7 @@ void WebSocketClient::processFrames() {
                 m_socket->disconnectFromHost();
                 return;
             }
-            if (static_cast<quint64>(m_fragmentBuffer.size()) + payload.size() > 65536) {
+            if (static_cast<quint64>(m_fragmentBuffer.size()) + payload.size() > Constants::WS_MAX_MESSAGE_SIZE) {
                 qWarning() << "[WebSocketClient] Message too large";
                 emit errorOccurred("Message too large");
                 m_socket->disconnectFromHost();
@@ -344,6 +341,8 @@ void WebSocketClient::processFrames() {
 
                 if (finalOpcode == 0x01) {
                     emit textMessageReceived(QString::fromUtf8(message));
+                } else if (finalOpcode == 0x02) {
+                    emit binaryMessageReceived(message);
                 }
             }
         }

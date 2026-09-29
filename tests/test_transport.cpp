@@ -137,10 +137,12 @@ void TestTransport::testUnfragmentedBinary() {
     WebSocketClient client;
     startClient(&client);
 
+    QSignalSpy spy(&client, &WebSocketClient::binaryMessageReceived);
     QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
     m_serverConnection->write(makeFrame(0x02, QByteArray::fromHex("001122")));
 
-    QTest::qWait(500);
+    QVERIFY(spy.wait(1000));
+    QCOMPARE(spy.first().first().toByteArray(), QByteArray::fromHex("001122"));
     QCOMPARE(errorSpy.count(), 0);
     QCOMPARE(client.state(), WebSocketState::Connected);
 }
@@ -161,11 +163,13 @@ void TestTransport::testFragmentedBinary() {
     WebSocketClient client;
     startClient(&client);
 
+    QSignalSpy spy(&client, &WebSocketClient::binaryMessageReceived);
     QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
     m_serverConnection->write(makeFrame(0x02, QByteArray::fromHex("00"), false));
     m_serverConnection->write(makeFrame(0x00, QByteArray::fromHex("11"), true));
 
-    QTest::qWait(500);
+    QVERIFY(spy.wait(1000));
+    QCOMPARE(spy.first().first().toByteArray(), QByteArray::fromHex("0011"));
     QCOMPARE(errorSpy.count(), 0);
 }
 
@@ -263,15 +267,77 @@ void TestTransport::testOversizedControl() {
     QVERIFY(errorSpy.wait(1000));
 }
 
+void TestTransport::testMaskedServerFrameRejected() {
+    WebSocketClient client;
+    startClient(&client);
+
+    QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
+    QByteArray frame = makeFrame(0x01, "masked_payload", true);
+    frame[1] = frame[1] | 0x80;
+    frame.insert(2, QByteArray(4, ' '));
+
+    m_serverConnection->write(frame);
+    QVERIFY(errorSpy.wait(1000));
+}
+
+void TestTransport::testExact4MiBUnfragmented() {
+    WebSocketClient client;
+    startClient(&client);
+
+    constexpr quint64 limit = 4 * 1024 * 1024;
+    QByteArray data(static_cast<int>(limit), 'A');
+    QSignalSpy spy(&client, &WebSocketClient::textMessageReceived);
+    QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
+    m_serverConnection->write(makeFrame(0x01, data, true));
+
+    QVERIFY(spy.wait(5000));
+    QCOMPARE(spy.first().first().toString().size(), static_cast<int>(limit));
+    QCOMPARE(errorSpy.count(), 0);
+}
+
+void TestTransport::testExact4MiBFragmented() {
+    WebSocketClient client;
+    startClient(&client);
+
+    constexpr quint64 limit = 4 * 1024 * 1024;
+    constexpr int half = static_cast<int>(limit / 2);
+    QByteArray part1(half, 'B');
+    QByteArray part2(static_cast<int>(limit) - half, 'C');
+    QSignalSpy spy(&client, &WebSocketClient::textMessageReceived);
+    QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
+    m_serverConnection->write(makeFrame(0x01, part1, false));
+    m_serverConnection->write(makeFrame(0x00, part2, true));
+
+    QVERIFY(spy.wait(5000));
+    QCOMPARE(spy.first().first().toString().size(), static_cast<int>(limit));
+    QCOMPARE(errorSpy.count(), 0);
+}
+
 void TestTransport::testMessageTooLarge() {
     WebSocketClient client;
     startClient(&client);
 
-    QByteArray bigData(65537, 'X');
+    constexpr quint64 limit = 4 * 1024 * 1024;
+    QByteArray bigData(static_cast<int>(limit) + 1, 'X');
     QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
     m_serverConnection->write(makeFrame(0x01, bigData, true));
 
-    QVERIFY(errorSpy.wait(1000));
+    QVERIFY(errorSpy.wait(5000));
+}
+
+void TestTransport::testFragmentedMessageTooLarge() {
+    WebSocketClient client;
+    startClient(&client);
+
+    constexpr quint64 limit = 4 * 1024 * 1024;
+    constexpr int half = static_cast<int>(limit / 2);
+    QByteArray part1(half, 'D');
+    QByteArray part2(half + 1, 'E');
+    QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
+    m_serverConnection->write(makeFrame(0x01, part1, false));
+    m_serverConnection->write(makeFrame(0x00, part2, true));
+
+    QVERIFY(errorSpy.wait(5000));
 }
 
 void TestTransport::testMalformedFrame() {

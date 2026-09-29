@@ -30,7 +30,11 @@ private slots:
     void testInvalidNewDataDuringFragmentation();
     void testFragmentedControl();
     void testOversizedControl();
+    void testMaskedServerFrameRejected();
+    void testExact4MiBUnfragmented();
+    void testExact4MiBFragmented();
     void testMessageTooLarge();
+    void testFragmentedMessageTooLarge();
     void testMalformedFrame();
     void testTlsValidationFailure();
     void testTlsConnectionSuccess();

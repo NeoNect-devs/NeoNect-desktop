@@ -158,6 +158,9 @@ signals:
      */
     void textMessageReceived(const QString &message);
 
+    /** @brief Emitted when a complete unmasked binary frame is received from the server. */
+    void binaryMessageReceived(const QByteArray &message);
+
     /**
      * @brief Emitted on network socket errors or protocol validation failures.
      * @param error Descriptive error message.

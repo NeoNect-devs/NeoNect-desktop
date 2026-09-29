@@ -111,6 +111,14 @@ namespace Constants {
     inline constexpr const char* STATIC_SALT_VAULT = "NEONECT_STATIC_NETWORK_SALT_VAULT";
 
     // =========================================================================
+    // =========================================================================
+    // WebSocket Protocol Limits (NeoNect-server v1.0.0 compatibility baseline)
+    // =========================================================================
+
+    /** @brief Maximum logical WebSocket message size in bytes (4 MiB). */
+    inline constexpr quint64 WS_MAX_MESSAGE_SIZE = 4 * 1024 * 1024;
+
+
     // Timers, Intervals & Watchdogs
     // =========================================================================
 
