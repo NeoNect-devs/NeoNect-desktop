@@ -173,6 +173,8 @@ signals:
 private slots:
     /** @brief Socket connected slot: triggers handshake transmission. */
     void onSocketConnected();
+    /** @brief Socket encrypted slot: triggers handshake transmission for SSL. */
+    void onSocketEncrypted();
     /** @brief Socket disconnected slot: initiates exponential backoff reconnect if requested. */
     void onSocketDisconnected();
     /** @brief Inbound data ready slot: processes handshake or binary frames. */
@@ -215,6 +217,12 @@ private:
 
     /** @brief Buffer accumulating raw incoming TCP bytes. */
     QByteArray m_readBuffer;
+    
+    /** @brief Buffer accumulating message fragments. */
+    QByteArray m_fragmentBuffer;
+    /** @brief Original opcode of the fragmented message. */
+    quint8 m_fragmentOpcode{0};
+    
     /** @brief Flag indicating whether handshake negotiation succeeded. */
     bool m_handshakeComplete{false};
 };

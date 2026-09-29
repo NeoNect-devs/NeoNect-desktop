@@ -8,6 +8,7 @@
 #include "test_models.h"
 #include "test_services.h"
 #include "test_messages.h"
+#include "test_transport.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -217,6 +218,12 @@ int main(int argc, char *argv[]) {
         TestMessages tm;
         int res = QTest::qExec(&tm);
         std::cout << "[TestMessages Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        NeoNect::Transport::TestTransport tt;
+        int res = QTest::qExec(&tt);
+        std::cout << "[TestTransport Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     std::cout << "\n==========================================" << std::endl;

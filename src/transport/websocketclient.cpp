@@ -11,9 +11,12 @@ WebSocketClient::WebSocketClient(QObject *parent)
     : QObject(parent)
 {
     m_socket = new QSslSocket(this);
-    m_socket->ignoreSslErrors(); // For local/self-signed certs in test/dev environments
+    connect(m_socket, &QSslSocket::sslErrors, [](const QList<QSslError> &errors){
+        for (const auto& e : errors) qDebug() << "[WebSocketClient] SSL Error:" << e.errorString();
+    });
 
     connect(m_socket, &QSslSocket::connected, this, &WebSocketClient::onSocketConnected);
+    connect(m_socket, &QSslSocket::encrypted, this, &WebSocketClient::onSocketEncrypted);
     connect(m_socket, &QSslSocket::disconnected, this, &WebSocketClient::onSocketDisconnected);
     connect(m_socket, &QSslSocket::readyRead, this, &WebSocketClient::onSocketReadyRead);
     connect(m_socket, &QAbstractSocket::errorOccurred, this, &WebSocketClient::onSocketError);
@@ -115,7 +118,17 @@ void WebSocketClient::close() {
 }
 
 void WebSocketClient::onSocketConnected() {
+    if (m_socket->mode() != QSslSocket::UnencryptedMode && !m_socket->isEncrypted()) {
+        // Wait for encrypted() signal
+        return;
+    }
     qDebug() << "[WebSocketClient] Socket connected, sending HTTP upgrade request";
+    setState(WebSocketState::Handshaking);
+    performHandshake();
+}
+
+void WebSocketClient::onSocketEncrypted() {
+    qDebug() << "[WebSocketClient] Socket encrypted, sending HTTP upgrade request";
     setState(WebSocketState::Handshaking);
     performHandshake();
 }
@@ -255,28 +268,84 @@ void WebSocketClient::processFrames() {
 
         m_readBuffer.remove(0, static_cast<int>(totalFrameLen));
 
+        bool isControl = (opcode & 0x08) != 0;
+        bool fin = (b0 & 0x80) != 0;
+
+        if (isControl) {
+            if (!fin) {
+                qWarning() << "[WebSocketClient] Fragmented control frame";
+                emit errorOccurred("Fragmented control frame");
+                m_socket->disconnectFromHost();
+                return;
+            }
+            if (payloadLen > 125) {
+                qWarning() << "[WebSocketClient] Oversized control frame";
+                emit errorOccurred("Oversized control frame");
+                m_socket->disconnectFromHost();
+                return;
+            }
+        } else {
+            if (opcode == 0x00 && m_fragmentOpcode == 0) {
+                qWarning() << "[WebSocketClient] Invalid continuation frame";
+                emit errorOccurred("Invalid continuation frame");
+                m_socket->disconnectFromHost();
+                return;
+            }
+            if (opcode != 0x00 && m_fragmentOpcode != 0) {
+                qWarning() << "[WebSocketClient] Invalid new data during fragmentation";
+                emit errorOccurred("Invalid new data during fragmentation");
+                m_socket->disconnectFromHost();
+                return;
+            }
+            if (opcode != 0x00 && opcode != 0x01 && opcode != 0x02) {
+                qWarning() << "[WebSocketClient] Malformed frame (unknown opcode):" << opcode;
+                emit errorOccurred("Malformed frame");
+                m_socket->disconnectFromHost();
+                return;
+            }
+            if (static_cast<quint64>(m_fragmentBuffer.size()) + payload.size() > 65536) {
+                qWarning() << "[WebSocketClient] Message too large";
+                emit errorOccurred("Message too large");
+                m_socket->disconnectFromHost();
+                return;
+            }
+        }
+
         // Handle frame by opcode
-        switch (opcode) {
-        case 0x01: // Text frame
-            emit textMessageReceived(QString::fromUtf8(payload));
-            break;
+        if (isControl) {
+            switch (opcode) {
+            case 0x08: // Close frame
+                qDebug() << "[WebSocketClient] Server sent close frame";
+                sendFrame(0x08, QByteArray());
+                m_socket->disconnectFromHost();
+                break;
+            case 0x09: // Ping frame
+                sendPong(payload);
+                break;
+            case 0x0A: // Pong frame
+                break;
+            default:
+                qWarning() << "[WebSocketClient] Unknown control frame:" << opcode;
+                emit errorOccurred("Malformed frame");
+                m_socket->disconnectFromHost();
+                return;
+            }
+        } else {
+            m_fragmentBuffer.append(payload);
+            if (opcode != 0x00) {
+                m_fragmentOpcode = opcode;
+            }
 
-        case 0x08: // Close frame
-            qDebug() << "[WebSocketClient] Server sent close frame";
-            sendFrame(0x08, QByteArray());
-            m_socket->disconnectFromHost();
-            break;
+            if (fin) {
+                QByteArray message = m_fragmentBuffer;
+                quint8 finalOpcode = m_fragmentOpcode;
+                m_fragmentBuffer.clear();
+                m_fragmentOpcode = 0;
 
-        case 0x09: // Ping frame -> respond with Pong containing identical payload
-            sendPong(payload);
-            break;
-
-        case 0x0A: // Pong frame
-            // Received response to client keepalive ping
-            break;
-
-        default:
-            break;
+                if (finalOpcode == 0x01) {
+                    emit textMessageReceived(QString::fromUtf8(message));
+                }
+            }
         }
     }
 }
@@ -336,6 +405,8 @@ void WebSocketClient::onSocketDisconnected() {
     setState(WebSocketState::Disconnected);
     m_handshakeComplete = false;
     m_readBuffer.clear();
+    m_fragmentBuffer.clear();
+    m_fragmentOpcode = 0;
 
     if (wasConnected) {
         emit disconnected();

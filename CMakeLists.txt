@@ -305,6 +305,7 @@ add_executable(NeoNectTests
     tests/test_services.h tests/test_services.cpp
     tests/test_messages.h tests/test_messages.cpp
     tests/mocks/mockhttptransport.h tests/mocks/mockhttptransport.cpp
+    tests/test_transport.h tests/test_transport.cpp
 
     # Common
     src/common/types.h
