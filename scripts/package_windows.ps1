@@ -4,7 +4,7 @@
 param(
     [string]$BuildDir = "build",
     [string]$Config = "Release",
-    [string]$QtDir = "C:\Qt\6.11.2\mingw_64",
+    [string]$QtDir = "",
     [string]$OutputDir = "dist"
 )
 
@@ -65,8 +65,17 @@ if (Test-Path "README.md") {
 
 # 5. Execute windeployqt
 Write-Host "[5/6] Deploying Qt Runtime with windeployqt..." -ForegroundColor Yellow
-$WinDeployQt = Join-Path $QtDir "bin\windeployqt.exe"
-if (Test-Path $WinDeployQt) {
+$WinDeployQt = ""
+if ($QtDir -and (Test-Path (Join-Path $QtDir "bin\windeployqt.exe"))) {
+    $WinDeployQt = Join-Path $QtDir "bin\windeployqt.exe"
+} else {
+    $Command = Get-Command "windeployqt.exe" -ErrorAction SilentlyContinue
+    if ($Command) {
+        $WinDeployQt = $Command.Source
+    }
+}
+
+if ($WinDeployQt) {
     try {
         $prevEAP = $ErrorActionPreference
         $ErrorActionPreference = "Continue"
@@ -76,23 +85,13 @@ if (Test-Path $WinDeployQt) {
         Write-Warning "windeployqt notice: $_"
     }
 } else {
-    Write-Warning "windeployqt not found at $WinDeployQt. Ensure Qt environment is set."
+    Write-Warning "windeployqt not found. Ensure Qt environment is set or pass -QtDir."
 }
 
-# Copy OpenSSL DLLs if present
-$OpenSslCandidateDirs = @(
-    if ($env:OPENSSL_ROOT_DIR) { Join-Path $env:OPENSSL_ROOT_DIR "bin" },
-    "C:\Program Files\OpenSSL\bin",
-    "C:\Program Files\OpenSSL-Win64\bin",
-    "C:\OpenSSL-Win64\bin",
-    "C:\OpenSSL\bin"
-)
-foreach ($d in $OpenSslCandidateDirs) {
-    if ($d -and (Test-Path $d)) {
-        Get-ChildItem -Path $d -Filter "*crypto*.dll" | ForEach-Object { Copy-Item $_.FullName -Destination $StagingDir -Force }
-        Get-ChildItem -Path $d -Filter "*ssl*.dll" | ForEach-Object { Copy-Item $_.FullName -Destination $StagingDir -Force }
-        break
-    }
+# Copy OpenSSL DLLs if present (CMake POST_BUILD copies them to BuildDir)
+if (Test-Path $BuildDir) {
+    Get-ChildItem -Path $BuildDir -Filter "*crypto*.dll" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination $StagingDir -Force }
+    Get-ChildItem -Path $BuildDir -Filter "*ssl*.dll" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName -Destination $StagingDir -Force }
 }
 
 # 6. Create Portable ZIP Distribution

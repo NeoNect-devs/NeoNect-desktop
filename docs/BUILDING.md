@@ -13,7 +13,7 @@ To build NeoNect from source, ensure the following software packages are install
 | **C++ Compiler** | C++17 compliant | GCC 11.0+, Clang 14.0+, or MSVC 2019/2022 (v142/v143) |
 | **CMake** | 3.20 or newer | Build system generator |
 | **Build Tool** | Ninja (recommended) | Fast multi-threaded builds |
-| **Qt Framework** | Qt 6.5.0+ (6.7+ recommended) | Modules: `Gui`, `Qml`, `Quick`, `Concurrent`, `Network`, `Test`, `Sql`, `Multimedia` |
+| **Qt Framework** | Qt 6.5.0+ (6.7+ recommended) | Modules: `Gui`, `Qml`, `Quick`, `Concurrent`, `Network`, `Test`, `Sql` |
 | **OpenSSL** | 3.0.0+ / 4.0.0 | Cryptographic engine for AES-256-GCM and PBKDF2 |
 | **Doxygen** | 1.10.0+ (1.13.2 recommended) | For building API documentation |
 | **Graphviz** | 9.0+ (`dot` executable) | For class hierarchies and dependency graphs |

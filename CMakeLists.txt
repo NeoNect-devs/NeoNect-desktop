@@ -37,134 +37,36 @@ set(QT_NO_AOT_COMPILATION ON CACHE BOOL "Disable QML AOT compiler" FORCE)
 set(QT_NO_CREATE_AOT_PLUGINS ON CACHE BOOL "Disable QML AOT plugins" FORCE)
 
 # =====================================================================
-# 3. OpenSSL 4.0.0 Windows Multi-Path Discovery & Target Bypass
+# 3. OpenSSL Discovery & Target Integration
 # =====================================================================
 if(WIN32)
-    set(TEST_PATHS
-        "$ENV{OPENSSL_ROOT_DIR}"
-        "C:/OpenSSL"
-        "C:/OpenSSL-Win64"
-        "C:/PROGRA~1/OpenSSL"
-        "C:/PROGRA~1/OpenSSL-Win64"
-        "C:/Program Files/OpenSSL"
-        "C:/Program Files/OpenSSL-Win64"
-    )
-
-    set(RESOLVED_OPENSSL_ROOT "")
-    foreach(PATH_CANDIDATE ${TEST_PATHS})
-        if(PATH_CANDIDATE AND EXISTS "${PATH_CANDIDATE}")
-            set(RESOLVED_OPENSSL_ROOT "${PATH_CANDIDATE}")
-            message(STATUS "➔ Found OpenSSL Root Directory at: ${RESOLVED_OPENSSL_ROOT}")
-            break()
-        endif()
-    endforeach()
-
-    if(RESOLVED_OPENSSL_ROOT MATCHES " ")
-        file(TO_NATIVE_PATH "${RESOLVED_OPENSSL_ROOT}" NATIVE_OPENSSL_ROOT)
-        execute_process(
-            COMMAND cmd.exe /c for %I in ("${NATIVE_OPENSSL_ROOT}") do @echo %~sI
-            OUTPUT_VARIABLE SHORT_OPENSSL_ROOT
-            OUTPUT_STRIP_TRAILING_WHITESPACE
-            ERROR_QUIET
-        )
-        if(SHORT_OPENSSL_ROOT AND EXISTS "${SHORT_OPENSSL_ROOT}")
-            file(TO_CMAKE_PATH "${SHORT_OPENSSL_ROOT}" RESOLVED_OPENSSL_ROOT)
-            message(STATUS "➔ Converted OpenSSL path to 8.3 short format: ${RESOLVED_OPENSSL_ROOT}")
-        endif()
+    if(NOT OPENSSL_ROOT_DIR AND DEFINED ENV{OPENSSL_ROOT_DIR})
+        set(OPENSSL_ROOT_DIR "$ENV{OPENSSL_ROOT_DIR}")
     endif()
 
-    if("${RESOLVED_OPENSSL_ROOT}" STREQUAL "")
-        find_package(OpenSSL REQUIRED)
-    else()
-        set(OPENSSL_ROOT_DIR "${RESOLVED_OPENSSL_ROOT}" CACHE PATH "OpenSSL Root Directory" FORCE)
-        set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "OpenSSL Include Directory" FORCE)
+    find_package(OpenSSL)
 
-        if(OPENSSL_INCLUDE_DIR MATCHES " ")
-            file(TO_NATIVE_PATH "${OPENSSL_INCLUDE_DIR}" NATIVE_INC)
-            execute_process(
-                COMMAND cmd.exe /c for %I in ("${NATIVE_INC}") do @echo %~sI
-                OUTPUT_VARIABLE SHORT_INC
-                OUTPUT_STRIP_TRAILING_WHITESPACE
-                ERROR_QUIET
-            )
-            if(SHORT_INC AND EXISTS "${SHORT_INC}")
-                file(TO_CMAKE_PATH "${SHORT_INC}" OPENSSL_INCLUDE_DIR)
-            endif()
-        endif()
-
-        file(GLOB_RECURSE FOUND_CRYPTO_FILES
-            "${OPENSSL_ROOT_DIR}/*crypto*.lib"
-            "${OPENSSL_ROOT_DIR}/*crypto*.a"
+    if(NOT OpenSSL_FOUND)
+        set(OPENSSL_FALLBACK_PATHS
+            "C:/OpenSSL-Win64"
+            "C:/Program Files/OpenSSL-Win64"
+            "C:/OpenSSL"
+            "C:/Program Files/OpenSSL"
         )
-        file(GLOB_RECURSE FOUND_SSL_FILES
-            "${OPENSSL_ROOT_DIR}/*ssl*.lib"
-            "${OPENSSL_ROOT_DIR}/*ssl*.a"
-        )
-
-        set(MANUAL_CRYPTO_LIB "")
-        foreach(FILE ${FOUND_CRYPTO_FILES})
-            if(NOT FILE MATCHES ".*/bin/.*" AND NOT FILE MATCHES ".*_static.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
-                set(MANUAL_CRYPTO_LIB "${FILE}")
-                break()
+        foreach(FALLBACK_PATH IN LISTS OPENSSL_FALLBACK_PATHS)
+            if(EXISTS "${FALLBACK_PATH}")
+                set(OPENSSL_ROOT_DIR "${FALLBACK_PATH}" CACHE PATH "OpenSSL Root Directory" FORCE)
+                find_package(OpenSSL)
+                if(OpenSSL_FOUND)
+                    message(STATUS "➔ Found OpenSSL via fallback path: ${FALLBACK_PATH}")
+                    break()
+                endif()
             endif()
         endforeach()
+    endif()
 
-        set(MANUAL_SSL_LIB "")
-        foreach(FILE ${FOUND_SSL_FILES})
-            if(NOT FILE MATCHES ".*/bin/.*" AND NOT FILE MATCHES ".*_static.*" AND (FILE MATCHES ".*\\.lib$" OR FILE MATCHES ".*\\.a$"))
-                set(MANUAL_SSL_LIB "${FILE}")
-                break()
-            endif()
-        endforeach()
-
-        if(NOT MANUAL_CRYPTO_LIB)
-            find_library(MANUAL_CRYPTO_LIB
-                NAMES libcrypto crypto libcrypto-3-x64 libcrypto-4-x64
-                PATHS
-                    "${OPENSSL_ROOT_DIR}/lib/VC/x64/MD"
-                    "${OPENSSL_ROOT_DIR}/lib/VC"
-                    "${OPENSSL_ROOT_DIR}/lib"
-                    "${OPENSSL_ROOT_DIR}"
-                NO_DEFAULT_PATH
-            )
-        endif()
-
-        if(NOT MANUAL_SSL_LIB)
-            find_library(MANUAL_SSL_LIB
-                NAMES libssl ssl libssl-3-x64 libssl-4-x64
-                PATHS
-                    "${OPENSSL_ROOT_DIR}/lib/VC/x64/MD"
-                    "${OPENSSL_ROOT_DIR}/lib/VC"
-                    "${OPENSSL_ROOT_DIR}/lib"
-                    "${OPENSSL_ROOT_DIR}"
-                NO_DEFAULT_PATH
-            )
-        endif()
-
-        if(MANUAL_CRYPTO_LIB AND MANUAL_SSL_LIB)
-            message(STATUS "➔ OpenSSL Crypto Lib: ${MANUAL_CRYPTO_LIB}")
-            message(STATUS "➔ OpenSSL SSL Lib: ${MANUAL_SSL_LIB}")
-            if(NOT TARGET OpenSSL::Crypto)
-                add_library(OpenSSL::Crypto UNKNOWN IMPORTED)
-                set_target_properties(OpenSSL::Crypto PROPERTIES
-                    INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
-                    INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
-                    IMPORTED_LOCATION "${MANUAL_CRYPTO_LIB}"
-                )
-            endif()
-
-            if(NOT TARGET OpenSSL::SSL)
-                add_library(OpenSSL::SSL UNKNOWN IMPORTED)
-                set_target_properties(OpenSSL::SSL PROPERTIES
-                    INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
-                    INTERFACE_INCLUDE_DIRECTORIES "${OPENSSL_INCLUDE_DIR}"
-                    IMPORTED_LOCATION "${MANUAL_SSL_LIB}"
-                    INTERFACE_LINK_LIBRARIES OpenSSL::Crypto
-                )
-            endif()
-        else()
-            find_package(OpenSSL REQUIRED)
-        endif()
+    if(NOT OpenSSL_FOUND)
+        message(FATAL_ERROR "OpenSSL could not be found. Please install OpenSSL and set OPENSSL_ROOT_DIR.")
     endif()
 else()
     find_package(OpenSSL REQUIRED)
@@ -374,11 +276,11 @@ endif()
 # 7. Automatic DLL Deployment (Windows Only)
 # =====================================================================
 if(WIN32)
+    # Derive OpenSSL bin directory from include directory
+    get_filename_component(OPENSSL_BIN_DIR "${OPENSSL_INCLUDE_DIR}/../bin" ABSOLUTE)
     file(GLOB OPENSSL_RUNTIME_DLLS
-        "${OPENSSL_ROOT_DIR}/bin/*crypto*.dll"
-        "${OPENSSL_ROOT_DIR}/bin/*ssl*.dll"
-        "${OPENSSL_ROOT_DIR}/*crypto*.dll"
-        "${OPENSSL_ROOT_DIR}/*ssl*.dll"
+        "${OPENSSL_BIN_DIR}/*crypto*.dll"
+        "${OPENSSL_BIN_DIR}/*ssl*.dll"
     )
     if(OPENSSL_RUNTIME_DLLS)
         add_custom_command(TARGET NeoNectApp POST_BUILD
@@ -569,7 +471,7 @@ endif()
 
 
 if(WIN32)
-    set_tests_properties(NeoNectTestSuite PROPERTIES ENVIRONMENT "PATH=C:/Qt/6.11.2/mingw_64/bin;C:/Qt/Tools/mingw1310_64/bin;${OPENSSL_ROOT_DIR}/bin;$ENV{PATH}")
+    set_tests_properties(NeoNectTestSuite PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>;$<TARGET_FILE_DIR:Qt6::Test>;${OPENSSL_BIN_DIR};$ENV{PATH}")
 endif()
 
 # ==============================================================================
@@ -617,6 +519,29 @@ elseif(UNIX AND NOT APPLE)
     set(CPACK_DEBIAN_PACKAGE_SECTION "net")
 endif()
 
+
+if(WIN32)
+    get_target_property(_qt_qmake_executable Qt6::qmake IMPORTED_LOCATION)
+    get_filename_component(_qt_bin_dir "${_qt_qmake_executable}" DIRECTORY)
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
+    if(WINDEPLOYQT_EXECUTABLE)
+        install(CODE "
+            execute_process(
+                COMMAND \"\${WINDEPLOYQT_EXECUTABLE}\" 
+                --qmldir \"\${CMAKE_CURRENT_SOURCE_DIR}/qml\" 
+                --release 
+                --no-translations 
+                --compiler-runtime 
+                \"\${CMAKE_INSTALL_PREFIX}/\${CMAKE_INSTALL_BINDIR}/NeoNectApp.exe\"
+            )
+        ")
+    endif()
+    
+    if(OPENSSL_RUNTIME_DLLS)
+        install(FILES ${OPENSSL_RUNTIME_DLLS} DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
+endif()
+
 include(CPack)
 
 # ==============================================================================
@@ -631,4 +556,4 @@ if(DOXYGEN_FOUND)
         VERBATIM
     )
 endif()
-
+
