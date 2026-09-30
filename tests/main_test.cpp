@@ -15,6 +15,7 @@
 #include "test_x3dh.h"
 #include "test_doubleratchet.h"
 #include "test_aead.h"
+#include "test_wirecodec.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -266,6 +267,12 @@ int main(int argc, char *argv[]) {
         TestAEAD taead;
         int res = QTest::qExec(&taead);
         std::cout << "[TestAEAD Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestWireCodec twc;
+        int res = QTest::qExec(&twc);
+        std::cout << "[TestWireCodec Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     std::cout << "\n==========================================" << std::endl;

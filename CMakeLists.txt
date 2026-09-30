@@ -121,6 +121,7 @@ qt_add_executable(NeoNectApp
     src/crypto/doubleratchet/DoubleRatchet.h src/crypto/doubleratchet/DoubleRatchet.cpp
     src/crypto/doubleratchet/IAEAD.h
     src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
+    src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
@@ -325,6 +326,7 @@ add_executable(NeoNectTests
     tests/test_x3dh_step3.h tests/test_x3dh_step3.cpp
     tests/test_doubleratchet.h tests/test_doubleratchet.cpp
     tests/test_aead.h tests/test_aead.cpp
+    tests/test_wirecodec.h tests/test_wirecodec.cpp
     tests/test_backend.h tests/test_backend.cpp
     tests/test_storage.h tests/test_storage.cpp
     tests/test_models.h tests/test_models.cpp
@@ -358,6 +360,7 @@ add_executable(NeoNectTests
     src/crypto/doubleratchet/DoubleRatchet.h src/crypto/doubleratchet/DoubleRatchet.cpp
     src/crypto/doubleratchet/IAEAD.h
     src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
+    src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
@@ -445,6 +448,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/crypto/doubleratchet/DoubleRatchet.h src/crypto/doubleratchet/DoubleRatchet.cpp
     src/crypto/doubleratchet/IAEAD.h
     src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
+    src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
@@ -514,6 +518,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/crypto/doubleratchet/DoubleRatchet.h src/crypto/doubleratchet/DoubleRatchet.cpp
     src/crypto/doubleratchet/IAEAD.h
     src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
+    src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
