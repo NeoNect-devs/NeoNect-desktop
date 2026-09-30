@@ -20,6 +20,7 @@ public:
     virtual void storeOneTimePreKeys(std::vector<OneTimePreKey> keys) = 0;
 
     virtual std::optional<OneTimePreKey> consumeOneTimePreKey(KeyId id) = 0;
+    virtual std::optional<OneTimePreKey> getOneTimePreKey(KeyId id) = 0;
     virtual size_t availableOneTimePreKeyCount() = 0;
 };
 

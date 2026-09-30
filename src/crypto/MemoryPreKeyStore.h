@@ -18,6 +18,7 @@ public:
     void storeOneTimePreKeys(std::vector<OneTimePreKey> keys) override;
 
     std::optional<OneTimePreKey> consumeOneTimePreKey(KeyId id) override;
+    std::optional<OneTimePreKey> getOneTimePreKey(KeyId id) override;
     size_t availableOneTimePreKeyCount() override;
 
 private:

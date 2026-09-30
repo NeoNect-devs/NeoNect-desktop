@@ -69,6 +69,22 @@ std::optional<OneTimePreKey> MemoryPreKeyStore::consumeOneTimePreKey(KeyId id) {
     return std::nullopt;
 }
 
+std::optional<OneTimePreKey> MemoryPreKeyStore::getOneTimePreKey(KeyId id) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto it = m_oneTimePreKeys.find(id);
+    if (it != m_oneTimePreKeys.end()) {
+        OneTimePreKey copy;
+        copy.id = it->second.id;
+        copy.publicKey.data = it->second.publicKey.data;
+        copy.privateKey.data.resize(it->second.privateKey.data.size());
+        if (copy.privateKey.data.size() > 0) {
+            std::memcpy(copy.privateKey.data.data(), it->second.privateKey.data.data(), it->second.privateKey.data.size());
+        }
+        return copy;
+    }
+    return std::nullopt;
+}
+
 size_t MemoryPreKeyStore::availableOneTimePreKeyCount() {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_oneTimePreKeys.size();

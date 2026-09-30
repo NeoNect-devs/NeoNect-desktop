@@ -12,6 +12,7 @@
 #include "test_transport.h"
 #include "test_xeddsa.h"
 #include "test_x3dh_step3.h"
+#include "test_x3dh.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -245,6 +246,12 @@ int main(int argc, char *argv[]) {
         TestX3DHStep3 tx3;
         int res = QTest::qExec(&tx3);
         std::cout << "[TestX3DHStep3 Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestX3DH tx4;
+        int res = QTest::qExec(&tx4);
+        std::cout << "[TestX3DH Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     std::cout << "\n==========================================" << std::endl;
