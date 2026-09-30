@@ -17,6 +17,7 @@
 #include <openssl/evp.h>
 #include <openssl/bio.h>
 #include <openssl/crypto.h>
+#include <openssl/kdf.h>
 
 namespace NeoNect {
 namespace Crypto {
@@ -53,6 +54,42 @@ struct EvpPkeyDeleter {
     }
 };
 
+struct EvpPkeyCtxDeleter {
+    void operator()(EVP_PKEY_CTX *ctx) const noexcept {
+        if (ctx) EVP_PKEY_CTX_free(ctx);
+    }
+};
+
+struct EvpMdCtxDeleter {
+    void operator()(EVP_MD_CTX *ctx) const noexcept {
+        if (ctx) EVP_MD_CTX_free(ctx);
+    }
+};
+
+struct EvpMacDeleter {
+    void operator()(EVP_MAC *mac) const noexcept {
+        if (mac) EVP_MAC_free(mac);
+    }
+};
+
+struct EvpMacCtxDeleter {
+    void operator()(EVP_MAC_CTX *ctx) const noexcept {
+        if (ctx) EVP_MAC_CTX_free(ctx);
+    }
+};
+
+struct EvpKdfDeleter {
+    void operator()(EVP_KDF *kdf) const noexcept {
+        if (kdf) EVP_KDF_free(kdf);
+    }
+};
+
+struct EvpKdfCtxDeleter {
+    void operator()(EVP_KDF_CTX *ctx) const noexcept {
+        if (ctx) EVP_KDF_CTX_free(ctx);
+    }
+};
+
 /**
  * @brief Custom deleter functor for OpenSSL `BIO` I/O streams.
  * @details Invokes `BIO_free_all` to cleanly unwind and deallocate the entire BIO chain.
@@ -80,6 +117,13 @@ using EvpCipherCtxPtr = std::unique_ptr<EVP_CIPHER_CTX, EvpCipherCtxDeleter>;
  * @details Ensures asymmetric key objects are freed when leaving scope.
  */
 using EvpPkeyPtr = std::unique_ptr<EVP_PKEY, EvpPkeyDeleter>;
+
+using EvpPkeyCtxPtr = std::unique_ptr<EVP_PKEY_CTX, EvpPkeyCtxDeleter>;
+using EvpMdCtxPtr = std::unique_ptr<EVP_MD_CTX, EvpMdCtxDeleter>;
+using EvpMacPtr = std::unique_ptr<EVP_MAC, EvpMacDeleter>;
+using EvpMacCtxPtr = std::unique_ptr<EVP_MAC_CTX, EvpMacCtxDeleter>;
+using EvpKdfPtr = std::unique_ptr<EVP_KDF, EvpKdfDeleter>;
+using EvpKdfCtxPtr = std::unique_ptr<EVP_KDF_CTX, EvpKdfCtxDeleter>;
 
 /**
  * @brief Unique ownership smart pointer for `BIO` streams.

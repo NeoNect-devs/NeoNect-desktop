@@ -102,6 +102,9 @@ qt_add_executable(NeoNectApp
     # Cryptography
     src/crypto/icryptoservice.h
     src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
+    src/crypto/CryptoTypes.h
+    src/crypto/ICryptoBackend.h
+    src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
@@ -300,6 +303,7 @@ enable_testing()
 add_executable(NeoNectTests
     tests/main_test.cpp
     tests/test_crypto.h tests/test_crypto.cpp
+    tests/test_backend.h tests/test_backend.cpp
     tests/test_storage.h tests/test_storage.cpp
     tests/test_models.h tests/test_models.cpp
     tests/test_services.h tests/test_services.cpp
@@ -315,6 +319,9 @@ add_executable(NeoNectTests
     # Cryptography
     src/crypto/icryptoservice.h
     src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
+    src/crypto/CryptoTypes.h
+    src/crypto/ICryptoBackend.h
+    src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
@@ -384,6 +391,9 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/common/openssl_raii.h
     src/crypto/icryptoservice.h
     src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
+    src/crypto/CryptoTypes.h
+    src/crypto/ICryptoBackend.h
+    src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
@@ -435,6 +445,9 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/common/openssl_raii.h
     src/crypto/icryptoservice.h
     src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
+    src/crypto/CryptoTypes.h
+    src/crypto/ICryptoBackend.h
+    src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp

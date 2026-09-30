@@ -4,6 +4,7 @@
 #include <iostream>
 #include <cstdio>
 #include "test_crypto.h"
+#include "test_backend.h"
 #include "test_storage.h"
 #include "test_models.h"
 #include "test_services.h"
@@ -28,6 +29,12 @@ int main(int argc, char *argv[]) {
         TestCrypto tc;
         int res = QTest::qExec(&tc);
         std::cout << "[TestCrypto Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestBackend tb;
+        int res = QTest::qExec(&tb);
+        std::cout << "[TestBackend Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     {
