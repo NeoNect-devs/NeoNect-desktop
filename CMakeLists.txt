@@ -109,6 +109,11 @@ qt_add_executable(NeoNectApp
     src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
     src/crypto/ICryptoBackend.h
     src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
+    src/crypto/PreKeyTypes.h
+    src/crypto/KeyEncoding.h src/crypto/KeyEncoding.cpp
+    src/crypto/IPreKeyStore.h
+    src/crypto/MemoryPreKeyStore.h src/crypto/MemoryPreKeyStore.cpp
+    src/crypto/KeyGenerationService.h src/crypto/KeyGenerationService.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
@@ -309,6 +314,7 @@ add_executable(NeoNectTests
     tests/main_test.cpp
     tests/test_crypto.h tests/test_crypto.cpp
     tests/test_xeddsa.cpp
+    tests/test_x3dh_step3.h tests/test_x3dh_step3.cpp
     tests/test_backend.h tests/test_backend.cpp
     tests/test_storage.h tests/test_storage.cpp
     tests/test_models.h tests/test_models.cpp
@@ -330,6 +336,11 @@ add_executable(NeoNectTests
     src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
     src/crypto/ICryptoBackend.h
     src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
+    src/crypto/PreKeyTypes.h
+    src/crypto/KeyEncoding.h src/crypto/KeyEncoding.cpp
+    src/crypto/IPreKeyStore.h
+    src/crypto/MemoryPreKeyStore.h src/crypto/MemoryPreKeyStore.cpp
+    src/crypto/KeyGenerationService.h src/crypto/KeyGenerationService.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
@@ -405,6 +416,11 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
     src/crypto/ICryptoBackend.h
     src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
+    src/crypto/PreKeyTypes.h
+    src/crypto/KeyEncoding.h src/crypto/KeyEncoding.cpp
+    src/crypto/IPreKeyStore.h
+    src/crypto/MemoryPreKeyStore.h src/crypto/MemoryPreKeyStore.cpp
+    src/crypto/KeyGenerationService.h src/crypto/KeyGenerationService.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
@@ -462,6 +478,11 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
     src/crypto/ICryptoBackend.h
     src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
+    src/crypto/PreKeyTypes.h
+    src/crypto/KeyEncoding.h src/crypto/KeyEncoding.cpp
+    src/crypto/IPreKeyStore.h
+    src/crypto/MemoryPreKeyStore.h src/crypto/MemoryPreKeyStore.cpp
+    src/crypto/KeyGenerationService.h src/crypto/KeyGenerationService.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
