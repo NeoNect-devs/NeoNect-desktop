@@ -75,6 +75,8 @@ endif()
 # =====================================================================
 # 4. Define the executable target (C++ ONLY)
 # =====================================================================
+add_subdirectory(third_party/libxeddsa)
+
 set(APP_ICON_RESOURCE "")
 if(WIN32)
     configure_file(
@@ -103,6 +105,8 @@ qt_add_executable(NeoNectApp
     src/crypto/icryptoservice.h
     src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
     src/crypto/CryptoTypes.h
+    src/crypto/IXEdDSA.h
+    src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
     src/crypto/ICryptoBackend.h
     src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
     src/services/messageservice.h src/services/messageservice.cpp
@@ -270,6 +274,7 @@ target_link_libraries(NeoNectApp PRIVATE
     Qt6::Sql
     OpenSSL::SSL
     OpenSSL::Crypto
+    xeddsa_static
 )
 if(WIN32)
     target_link_libraries(NeoNectApp PRIVATE winmm dwmapi)
@@ -303,6 +308,7 @@ enable_testing()
 add_executable(NeoNectTests
     tests/main_test.cpp
     tests/test_crypto.h tests/test_crypto.cpp
+    tests/test_xeddsa.cpp
     tests/test_backend.h tests/test_backend.cpp
     tests/test_storage.h tests/test_storage.cpp
     tests/test_models.h tests/test_models.cpp
@@ -320,6 +326,8 @@ add_executable(NeoNectTests
     src/crypto/icryptoservice.h
     src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
     src/crypto/CryptoTypes.h
+    src/crypto/IXEdDSA.h
+    src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
     src/crypto/ICryptoBackend.h
     src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
     src/services/messageservice.h src/services/messageservice.cpp
@@ -362,6 +370,7 @@ target_link_libraries(NeoNectTests PRIVATE
     Qt6::Test
     OpenSSL::SSL
     OpenSSL::Crypto
+    xeddsa_static
 )
 if(WIN32)
     target_link_libraries(NeoNectTests PRIVATE winmm dwmapi)
@@ -392,6 +401,8 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/crypto/icryptoservice.h
     src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
     src/crypto/CryptoTypes.h
+    src/crypto/IXEdDSA.h
+    src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
     src/crypto/ICryptoBackend.h
     src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
     src/services/messageservice.h src/services/messageservice.cpp
@@ -424,6 +435,7 @@ target_link_libraries(NeoNectStressTests PRIVATE
     Qt6::Concurrent
     OpenSSL::SSL
     OpenSSL::Crypto
+    xeddsa_static
 )
 option(ENABLE_SANITIZERS "Enable Address and Undefined sanitizers for stress tests" OFF)
 if(ENABLE_SANITIZERS)
@@ -446,6 +458,8 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/crypto/icryptoservice.h
     src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
     src/crypto/CryptoTypes.h
+    src/crypto/IXEdDSA.h
+    src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
     src/crypto/ICryptoBackend.h
     src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
     src/services/messageservice.h src/services/messageservice.cpp

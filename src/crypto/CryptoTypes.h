@@ -29,6 +29,15 @@ struct AeadTag {
     QByteArray data;
 };
 
+struct Signature64 {
+    QByteArray data;
+};
+
+struct ByteView {
+    const uint8_t* data;
+    size_t size;
+};
+
 struct AeadEncryptResult {
     bool success = false;
     QByteArray ciphertext;

@@ -10,6 +10,7 @@
 #include "test_services.h"
 #include "test_messages.h"
 #include "test_transport.h"
+#include "test_xeddsa.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -231,6 +232,12 @@ int main(int argc, char *argv[]) {
         NeoNect::Transport::TestTransport tt;
         int res = QTest::qExec(&tt);
         std::cout << "[TestTransport Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestXEdDSA txd;
+        int res = QTest::qExec(&txd);
+        std::cout << "[TestXEdDSA Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     std::cout << "\n==========================================" << std::endl;

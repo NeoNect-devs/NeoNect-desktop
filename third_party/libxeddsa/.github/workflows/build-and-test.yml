@@ -1,0 +1,216 @@
+name: Build & Test
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Download libsodium
+        shell: bash
+        run: |
+          curl -o libsodium-1.0.20-stable-msvc.zip https://download.libsodium.org/libsodium/releases/libsodium-1.0.20-stable-msvc.zip
+          unzip libsodium-1.0.20-stable-msvc.zip
+          mv libsodium/x64/Debug/v143 libsodium/x64/Debug/v144
+          mv libsodium/x64/Release/v143 libsodium/x64/Release/v144
+
+      - name: Run cmake
+        shell: bash
+        run: |
+          export sodium_DIR="$(pwd)/libsodium/"
+          mkdir build/
+          cd build/
+          cmake -T host=x64 -A x64 ..
+
+      - name: Run MSBuild
+        run: |
+          cd build
+          msbuild libxeddsa.sln
+
+      - name: Run ctest in Debug configuration
+        run: |
+          cd build
+          ctest -C Debug ..
+
+      - name: Run ctest in Release configuration
+        run: |
+          cd build
+          ctest -C Release ..
+
+      - name: Rename the binaries
+        run: |
+          cd bin/
+          mv xeddsa_static.lib libxeddsa-windows-amd64.lib
+          mv xeddsa.lib libxeddsa-windows-amd64.dll.lib
+          mv xeddsa.dll libxeddsa-windows-amd64.dll
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: libxeddsa-windows-amd64
+          path: |
+            bin/libxeddsa-windows-amd64.lib
+            bin/libxeddsa-windows-amd64.dll.lib
+            bin/libxeddsa-windows-amd64.dll
+
+  macos-amd64:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run cmake
+        run: |
+          mkdir build/
+          cd build/
+          FORCE_URANDOM= cmake ..
+
+      - name: Run make
+        run: |
+          cd build/
+          make
+
+      - name: Run ctest
+        run: |
+          cd build/
+          ctest ..
+
+      - name: Rename the binaries
+        run: |
+          cd bin/
+          mv static/libxeddsa.a      libxeddsa-macos-amd64.a
+          mv dynamic/libxeddsa.dylib libxeddsa-macos-amd64.dylib
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: libxeddsa-macos-amd64
+          path: |
+            bin/libxeddsa-macos-amd64.a
+            bin/libxeddsa-macos-amd64.dylib
+
+  macos-arm64:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libsodium
+        run: |
+          brew uninstall --ignore-dependencies libsodium
+          brew fetch --force --bottle-tag=arm64_sonoma libsodium | tee brew_output
+          downloaded_to=$(grep "Downloaded to" brew_output | tail -n 1)
+          downloaded_to_split=($downloaded_to)
+          brew install ${downloaded_to_split[2]}
+
+      - name: Run cmake
+        run: |
+          mkdir build/
+          cd build/
+          FORCE_URANDOM= cmake -DCMAKE_OSX_ARCHITECTURES=arm64 ..
+
+      - name: Run make
+        run: |
+          cd build/
+          make
+
+      - name: Rename the binaries
+        run: |
+          cd bin/
+          mv static/libxeddsa.a      libxeddsa-macos-arm64.a
+          mv dynamic/libxeddsa.dylib libxeddsa-macos-arm64.dylib
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: libxeddsa-macos-arm64
+          path: |
+            bin/libxeddsa-macos-arm64.a
+            bin/libxeddsa-macos-arm64.dylib
+
+  ubuntu-amd64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libsodium
+        run: sudo apt-get install -y libsodium-dev
+
+      - name: Run cmake
+        run: |
+          mkdir build/
+          cd build/
+          FORCE_URANDOM= cmake ..
+
+      - name: Run make
+        run: |
+          cd build/
+          make
+
+      - name: Run ctest
+        run: |
+          cd build/
+          ctest ..
+
+      - name: Rename the binaries
+        run: |
+          cd bin/
+          mv static/libxeddsa.a   libxeddsa-linux-amd64.a
+          mv dynamic/libxeddsa.so libxeddsa-linux-amd64.so
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: libxeddsa-linux-amd64
+          path: |
+            bin/libxeddsa-linux-amd64.a
+            bin/libxeddsa-linux-amd64.so
+
+  ubuntu-arm64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libsodium
+        run: sudo apt-get install -y libsodium-dev
+
+      - name: Run cmake
+        run: |
+          mkdir build/
+          cd build/
+          FORCE_URANDOM= cmake ..
+
+      - name: Run make
+        run: |
+          cd build/
+          make
+
+      - name: Run ctest
+        run: |
+          cd build/
+          ctest ..
+
+      - name: Rename the binaries
+        run: |
+          cd bin/
+          mv static/libxeddsa.a   libxeddsa-linux-arm64.a
+          mv dynamic/libxeddsa.so libxeddsa-linux-arm64.so
+
+      - name: Upload the binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: libxeddsa-linux-arm64
+          path: |
+            bin/libxeddsa-linux-arm64.a
+            bin/libxeddsa-linux-arm64.so
