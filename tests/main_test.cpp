@@ -17,6 +17,7 @@
 #include "test_aead.h"
 #include "test_wirecodec.h"
 #include "test_secure_storage.h"
+#include "test_step9_relay.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -24,6 +25,15 @@ int main(int argc, char *argv[]) {
     setvbuf(stderr, NULL, _IONBF, 0);
 
     QCoreApplication app(argc, argv);
+    app.setOrganizationName("NeoNect");
+    app.setApplicationName("NeoNect");
+    
+    if (argc > 1 && QString(argv[1]) == "TestStep9Relay") {
+        NeoNect::Tests::TestStep9Relay tsr;
+        int fakeArgc = 1;
+        return QTest::qExec(&tsr, fakeArgc, argv);
+    }
+
     app.setOrganizationName("NeoNect");
     app.setApplicationName("NeoNect");
     int status = 0;

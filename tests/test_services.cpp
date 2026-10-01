@@ -113,7 +113,7 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     storage->setUsername("alice");
     storage->setDeviceId("dev-alice");
 
-    NeoNect::Services::RelayService relayService(mockTransport, storage, crypto);
+    NeoNect::Services::RelayService relayService(mockTransport, storage, nullptr);
 
     // 1. Send relay message from Alice to Bob
     QSignalSpy spySend(&relayService, &NeoNect::Services::RelayService::secureMessageTransmitted);
@@ -165,7 +165,7 @@ void TestServices::testNetworkManagerFacadeIntegration() {
 
     auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
-    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
     NetworkManager nm(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
 
@@ -202,8 +202,8 @@ void TestServices::testTwoClientChatExchange() {
     storageBob->setDeviceId("mock-dev-bob");
     storageBob->setAuthToken("mock-token-bob");
 
-    NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, cryptoAlice);
-    NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, cryptoBob);
+    NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, nullptr);
+    NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, nullptr);
 
     QSignalSpy spyBobRecv(&relayBob, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
     QSignalSpy spyAliceRecv(&relayAlice, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
@@ -287,8 +287,8 @@ void TestServices::testTwoClientFriendRequestFlow() {
     storageBob->setFriends({});
     storageBob->setPendingRequests({});
 
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoAlice);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoBob);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
 
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob);
@@ -381,8 +381,8 @@ void TestServices::testTwoClientFriendRequestRejectFlow() {
     storageBob->setFriends({});
     storageBob->setPendingRequests({});
 
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoAlice);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoBob);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
 
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob);
@@ -481,8 +481,8 @@ void TestServices::testTwoClientMediaRequestApprovalFlow() {
     storageBob->setDeviceId("mock-dev-bob");
     storageBob->setAuthToken("mock-token-bob");
 
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoAlice);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoBob);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
 
     auto repoAlice = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
     auto repoBob = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
@@ -596,7 +596,7 @@ void TestServices::testBookmarkConnectFlow() {
 
     auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
-    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
     NetworkManager nm(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
 
@@ -714,7 +714,7 @@ void TestServices::testCiphertextDoesNotContainPlaintext() {
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
     crypto->setMasterKey(QByteArray(32, 1));
 
-    NeoNect::Services::RelayService relay(mockTransport, storage, crypto);
+    NeoNect::Services::RelayService relay(mockTransport, storage, nullptr);
 
     QSignalSpy spyRaw(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
 
@@ -788,8 +788,8 @@ void TestServices::testRelayServiceTamperedMessageRejection() {
     sharedTransport->seedUser("alice", "pass");
     sharedTransport->seedUser("bob", "pass");
 
-    NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, cryptoAlice);
-    NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, cryptoBob);
+    NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, nullptr);
+    NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, nullptr);
 
     sharedTransport->setAuthToken("token-alice");
     NeoNect::Domain::Message msg;
@@ -850,7 +850,7 @@ void TestServices::testPhase10ABackendProtocolCompliance() {
 
     NeoNect::Services::AuthService authService(mockTransport, storage);
     NeoNect::Services::DeviceService deviceService(mockTransport, storage);
-    NeoNect::Services::RelayService relayService(mockTransport, storage, crypto);
+    NeoNect::Services::RelayService relayService(mockTransport, storage, nullptr);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
     storage->setAuthToken("test_token");
@@ -1227,7 +1227,7 @@ void TestServices::testConnectivityAndOnlinePresence() {
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
     auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
-    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendServicePtr = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
 
     NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendServicePtr);
@@ -1251,7 +1251,7 @@ void TestServices::testOpenConversationsActivityOrdering() {
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
     auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
-    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
 
     NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
@@ -1305,7 +1305,7 @@ void TestServices::testOpenConversationsUnreadCountBadge() {
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
     auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
-    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
 
     NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
@@ -1377,8 +1377,8 @@ void TestServices::testSeenReceiptsAndUpdateCheckmark() {
     storageBob->setDeviceId("mock-dev-bob");
     storageBob->setAuthToken("mock-token-bob");
 
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoAlice);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoBob);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
 
     auto repoAlice = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
     auto repoBob = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
@@ -1464,7 +1464,7 @@ void TestServices::testSelfDirectMessageAndSavedMessagesFlow() {
 
     auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
-    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, crypto);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
 
     NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
@@ -1678,7 +1678,7 @@ void TestServices::testFunctionalOnlineIdleDndInvisibleStates() {
     auto cryptoService = std::make_shared<NeoNect::Crypto::CryptoService>();
     auto authService = std::make_shared<NeoNect::Services::AuthService>(transport, storage, nullptr);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(transport, storage, nullptr);
-    auto relayService = std::make_shared<NeoNect::Services::RelayService>(transport, storage, cryptoService, nullptr);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(transport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(transport, storage, nullptr);
 
     NetworkManager netMgr(transport, storage, cryptoService, authService, deviceService, relayService, friendService);
@@ -1806,8 +1806,8 @@ void TestServices::testRealtimeChatPresenceExchange() {
     auto authBob = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageBob, nullptr);
     auto devAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
     auto devBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoAlice);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoBob);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
 
@@ -1893,7 +1893,7 @@ void TestServices::testDisplayNameResolutionAndSync() {
     storageAlice->setPeerDisplayName("bob", "");
     auto authAlice = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageAlice, nullptr);
     auto deviceAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoService, nullptr);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
     NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoService, authAlice, deviceAlice, relayAlice, friendAlice);
 
@@ -1907,7 +1907,7 @@ void TestServices::testDisplayNameResolutionAndSync() {
     storageBob->setPeerDisplayName("alice", "");
     auto authBob = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageBob, nullptr);
     auto deviceBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoService, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
     NetworkManager netMgrBob(sharedTransport, storageBob, cryptoService, authBob, deviceBob, relayBob, friendBob);
 
@@ -1985,7 +1985,7 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     storageAlice->setPeerAvatarUrl("bob", "");
     auto authAlice = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageAlice, nullptr);
     auto deviceAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, cryptoService, nullptr);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
     NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoService, authAlice, deviceAlice, relayAlice, friendAlice);
 
@@ -1999,7 +1999,7 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     storageBob->setPeerAvatarUrl("alice", "");
     auto authBob = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageBob, nullptr);
     auto deviceBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, cryptoService, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
     NetworkManager netMgrBob(sharedTransport, storageBob, cryptoService, authBob, deviceBob, relayBob, friendBob);
 

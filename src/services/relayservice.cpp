@@ -36,12 +36,12 @@ static QString normalizeLocalFilePath(const QString &rawPath) {
 
 RelayService::RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
                            std::shared_ptr<Storage::ISettingsRepository> storage,
-                           std::shared_ptr<Crypto::ICryptoService> cryptoService,
+                           std::shared_ptr<Transport::IIncomingEnvelopeHandler> envelopeHandler,
                            QObject *parent)
     : QObject(parent),
       m_transport(std::move(transport)),
       m_storage(std::move(storage)),
-      m_cryptoService(std::move(cryptoService)),
+      m_envelopeHandler(std::move(envelopeHandler)),
       m_wsClient(std::make_unique<Transport::WebSocketClient>(this)),
       m_pollTimer(new QTimer(this)) {
 
@@ -145,124 +145,54 @@ void RelayService::handle401Error() {
 }
 
 void RelayService::sendDomainMessage(const Domain::Message &msg) {
+    qWarning() << "[RelayService] sendDomainMessage is deprecated and disconnected in Step 9. Use sendEncryptedEnvelope.";
+    emit secureMessageTransmitted(msg.conversationId, false);
+}
+
+void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
+                                         const QString &recipientDeviceId,
+                                         const QString &messageId,
+                                         const QByteArray &envelopeBytes) {
     QString token = m_storage->authToken();
     QString deviceId = m_storage->deviceId().trimmed();
-    if (deviceId.isEmpty()) {
-        QString prof = m_storage->profile();
-        QString user = m_storage->username().trimmed().toLower();
-        QString prefix = prof.isEmpty() ? "" : prof + "-";
-        if (!user.isEmpty()) prefix += user + "-";
-        deviceId = QString("neonect-dev-%1%2").arg(prefix,
-                                                    QUuid::createUuid().toString(QUuid::WithoutBraces));
-        m_storage->setDeviceId(deviceId);
-    }
-    QString currentUsername = m_storage->username();
     
-    QString targetUser;
-    if (msg.conversationId.startsWith("dms:")) {
-        targetUser = msg.conversationId.mid(4);
-    } else {
-        // Fallback for unexpected format (backend enforces target users)
-        targetUser = msg.conversationId;
-    }
-
-    if (targetUser.compare("saved-messages", Qt::CaseInsensitive) == 0) {
-        qDebug() << "[RelayService] sendDomainMessage: Skipping network relay for saved-messages.";
-        emit secureMessageTransmitted(targetUser, true);
-        emit messageTransmissionStatus(targetUser, msg.id, true, "");
+    if (token.isEmpty() || recipientUsername.isEmpty()) {
+        qDebug() << "[RelayService] sendEncryptedEnvelope failed: Missing token or recipient";
+        emit secureMessageTransmitted(recipientUsername, false);
+        emit messageTransmissionStatus(recipientUsername, messageId, false, "Missing session token or recipient");
         return;
     }
 
-    if (token.isEmpty() || targetUser.isEmpty()) {
-        qDebug() << "[RelayService] sendDomainMessage failed: token.isEmpty()=" << token.isEmpty() << "targetUser=" << targetUser << "conversationId=" << msg.conversationId;
-        emit secureMessageTransmitted(targetUser, false);
-        emit messageTransmissionStatus(targetUser, msg.id, false, "Missing session token or recipient");
-        return;
-    }
-
-    QJsonObject packet;
-    packet["sender"] = currentUsername;
-    packet["target"] = targetUser;
-    packet["messageId"] = msg.id;
-    packet["timestamp"] = msg.timestamp > 0 ? (msg.timestamp < 100000000000LL ? msg.timestamp * 1000LL : msg.timestamp) : QDateTime::currentMSecsSinceEpoch();
-    packet["type"] = msg.type;
-    if (m_storage) {
-        QString myDisplayName = m_storage->displayName().trimmed();
-        if (!myDisplayName.isEmpty()) {
-            packet["displayName"] = myDisplayName;
-        }
-        QString myAvatarUrl = m_storage->avatarUrl().trimmed();
-        if (!myAvatarUrl.isEmpty()) {
-            QString localPath = normalizeLocalFilePath(myAvatarUrl);
-            if (!localPath.startsWith("//") && !localPath.startsWith("\\\\") && QFile::exists(localPath)) {
-                QFile f(localPath);
-                if (f.open(QIODevice::ReadOnly)) {
-                    QByteArray avBytes = f.readAll();
-                    f.close();
-                    if (!avBytes.isEmpty() && avBytes.size() <= 1024 * 1024) {
-                        packet["avatarData"] = QString::fromLatin1(avBytes.toBase64());
-                    }
-                }
-            }
-        }
-    }
-    packet["content"] = msg.text;
-    packet["text"] = msg.text;
-    
-    if (!msg.mediaUrl.isEmpty()) {
-        packet["mediaUrl"] = msg.mediaUrl;
-        if (msg.type != "media_request") {
-            QString localPath = normalizeLocalFilePath(msg.mediaUrl);
-            if (!localPath.startsWith("//") && !localPath.startsWith("\\\\") && QFile::exists(localPath)) {
-                QFileInfo fi(localPath);
-                if (fi.isFile() && fi.size() > 0 && fi.size() <= 2800000) {
-                    QFile f(localPath);
-                    if (f.open(QIODevice::ReadOnly)) {
-                        QByteArray fileBytes = f.readAll();
-                        f.close();
-                        if (!fileBytes.isEmpty()) {
-                            packet["fileData"] = QString::fromLatin1(fileBytes.toBase64());
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if (!msg.fileName.isEmpty()) packet["fileName"] = msg.fileName;
-    if (msg.fileSize > 0) packet["fileSize"] = msg.fileSize;
-    if (msg.duration > 0) packet["duration"] = msg.duration;
-    if (!msg.errorText.isEmpty()) packet["mediaType"] = msg.errorText;
-    
-    QJsonArray waveArray = QJsonDocument::fromJson(msg.waveform).array();
-    if (!waveArray.isEmpty()) packet["waveform"] = waveArray;
-
-    QByteArray packetBytes = QJsonDocument(packet).toJson(QJsonDocument::Compact);
-
-    auto encrypted = m_cryptoService->encryptAesGcm(packetBytes);
-    if (!encrypted.success) {
-        qDebug() << "[RelayService] sendDomainMessage failed - E2EE encryption error:" << encrypted.errorMessage;
-        emit secureMessageTransmitted(targetUser, false);
-        emit messageTransmissionStatus(targetUser, msg.id, false, "E2EE Encryption failed: " + encrypted.errorMessage);
+    if (envelopeBytes.size() > Constants::WS_MAX_MESSAGE_SIZE) {
+        qDebug() << "[RelayService] sendEncryptedEnvelope failed: envelope exceeds max size";
+        emit secureMessageTransmitted(recipientUsername, false);
+        emit messageTransmissionStatus(recipientUsername, messageId, false, "Envelope exceeds maximum payload size");
         return;
     }
 
     QJsonObject payload;
     payload["from_device_id"] = deviceId;
-    payload["to_username"] = targetUser;
+    payload["to_username"] = recipientUsername;
     payload["protocol_version"] = 1;
-    payload["ciphertext"] = QString::fromLatin1(encrypted.envelope.toBase64());
+    payload["ciphertext"] = QString::fromLatin1(envelopeBytes.toBase64());
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
+    
+    if (!messageId.isEmpty()) {
+        payload["message_id"] = messageId;
+    }
+    if (!recipientDeviceId.isEmpty()) {
+        payload["to_device_id"] = recipientDeviceId;
+    }
 
     QByteArray postData = QJsonDocument(payload).toJson(QJsonDocument::Compact);
-    QString msgId = msg.id;
 
-    qDebug() << "[RelayService] Transmitting domain message to:" << targetUser << "from device:" << deviceId << "type:" << msg.type << "msgId:" << msgId;
+    qDebug() << "[RelayService] Transmitting opaque envelope to:" << recipientUsername << "deviceId:" << recipientDeviceId << "msgId:" << messageId;
 
-    m_transport->post(Constants::EP_RELAY_SEND, postData, this, [this, targetUser, msgId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->post(Constants::EP_RELAY_SEND, postData, this, [this, recipientUsername, messageId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         bool ok = (error == QNetworkReply::NoError || statusCode == 200 || statusCode == 201);
         QString errorMsg = ok ? "" : (errStr.isEmpty() ? "Network relay transmission failed" : errStr);
         if (ok) {
-            qDebug() << "[RelayService] sendRelayMessage succeeded for" << targetUser << "status:" << statusCode;
+            qDebug() << "[RelayService] sendEncryptedEnvelope succeeded for" << recipientUsername;
         } else {
             auto doc = QJsonDocument::fromJson(data);
             if (!doc.isNull() && doc.object().contains("error")) {
@@ -276,13 +206,13 @@ void RelayService::sendDomainMessage(const Domain::Message &msg) {
             } else if (statusCode == 403) {
                 errorMsg = "Forbidden: Cannot message user without mutual friendship";
             }
-            qDebug() << "[RelayService] sendRelayMessage failed for" << targetUser << "Error:" << errorMsg << "Status:" << statusCode;
+            qDebug() << "[RelayService] sendEncryptedEnvelope failed for" << recipientUsername << "Error:" << errorMsg << "Status:" << statusCode;
             if (statusCode == 401) {
                 handle401Error();
             }
         }
-        emit secureMessageTransmitted(targetUser, ok);
-        emit messageTransmissionStatus(targetUser, msgId, ok, errorMsg);
+        emit secureMessageTransmitted(recipientUsername, ok);
+        emit messageTransmissionStatus(recipientUsername, messageId, ok, errorMsg);
     });
 }
 
@@ -323,9 +253,7 @@ void RelayService::pollPendingMessages() {
         for (const QJsonValue &val : messages) {
             if (!val.isObject()) continue;
             QJsonObject msgObj = val.toObject();
-            qint64 msgId = msgObj.value("id").toInteger();
-            QString base64Cipher = msgObj.value("ciphertext").toString();
-            processIncomingRelayItem(msgId, base64Cipher);
+            processIncomingRelayItem(msgObj);
         }
     });
 }
@@ -335,19 +263,18 @@ void RelayService::onWebSocketMessageReceived(const QString &text) {
     if (doc.isNull() || !doc.isObject()) return;
 
     QJsonObject msgObj = doc.object();
+    qDebug() << "[RelayService] WebSocket real-time delivery received. MsgId:" << msgObj.value("id").toInteger();
+    processIncomingRelayItem(msgObj);
+}
+
+void RelayService::processIncomingRelayItem(const QJsonObject &msgObj) {
     qint64 msgId = msgObj.value("id").toInteger();
     QString base64Cipher = msgObj.value("ciphertext").toString();
 
-    qDebug() << "[RelayService] WebSocket real-time delivery received. MsgId:" << msgId;
-    processIncomingRelayItem(msgId, base64Cipher);
-}
-
-void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64Cipher) {
     if (m_processedMessageIds.find(msgId) != m_processedMessageIds.end()) {
         acknowledgeMessage(msgId);
         return;
     }
-    m_processedMessageIds.insert(msgId);
 
     if (base64Cipher.isEmpty()) {
         acknowledgeMessage(msgId);
@@ -356,212 +283,36 @@ void RelayService::processIncomingRelayItem(qint64 msgId, const QString &base64C
 
     QByteArray envelopeBytes = QByteArray::fromBase64(base64Cipher.toLatin1());
     
-    QByteArray decodedBytes = m_cryptoService->decryptAesGcmEnvelope(envelopeBytes);
-    if (decodedBytes.isEmpty()) {
-        qDebug() << "[RelayService] Failed to decrypt message (authentication failed or missing key)";
-        acknowledgeMessage(msgId);
+    if (envelopeBytes.size() > Constants::WS_MAX_MESSAGE_SIZE) {
+        qDebug() << "[RelayService] Incoming envelope exceeds maximum payload size limit.";
+        acknowledgeMessage(msgId); // Discard oversized message
         return;
     }
 
-    QString textContent = QString::fromUtf8(decodedBytes);
-    QString sender = "Anonymous";
-    QString target = "dms:" + m_storage->username();
-    QString type = "text";
-    QString mediaUrl = "";
-    QString fileName = "";
-    QString mediaCategory = "";
-    qint64 fileSize = 0;
-    int duration = 0;
-    QVariantList waveform;
-    QString messageUuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    qint64 timestamp = 0;
-    QString displayName = "";
+    if (m_envelopeHandler) {
+        Transport::TransportMetadata metadata;
+        metadata.messageId = msgId;
+        // The server might send these fields; fallback to empty if missing
+        metadata.senderDeviceId = msgObj.value("sender_device_id").toString();
+        metadata.recipientDeviceId = msgObj.value("recipient_device_id").toString();
 
-    auto packetDoc = QJsonDocument::fromJson(decodedBytes);
-    if (!packetDoc.isNull() && packetDoc.isObject()) {
-        QJsonObject packetObj = packetDoc.object();
-        if (packetObj.contains("sender")) sender = packetObj.value("sender").toString();
-        if (packetObj.contains("target")) target = packetObj.value("target").toString();
-        if (packetObj.contains("content")) textContent = packetObj.value("content").toString();
-        else if (packetObj.contains("text")) textContent = packetObj.value("text").toString();
-        if (packetObj.contains("type")) type = packetObj.value("type").toString();
-        if (packetObj.contains("mediaUrl")) mediaUrl = packetObj.value("mediaUrl").toString();
-        if (packetObj.contains("fileName")) fileName = packetObj.value("fileName").toString();
-        if (packetObj.contains("displayName")) displayName = packetObj.value("displayName").toString().trimmed();
-        if (packetObj.contains("fileSize")) fileSize = packetObj.value("fileSize").toInteger();
-        if (packetObj.contains("duration")) duration = static_cast<int>(packetObj.value("duration").toInteger());
-        if (packetObj.contains("waveform")) waveform = packetObj.value("waveform").toArray().toVariantList();
-        if (packetObj.contains("messageId")) messageUuid = packetObj.value("messageId").toString();
-        if (packetObj.contains("mediaType")) mediaCategory = packetObj.value("mediaType").toString();
-        if (packetObj.contains("timestamp")) {
-            timestamp = packetObj.value("timestamp").toVariant().toLongLong();
-            if (timestamp > 0 && timestamp < 100000000000LL) {
-                timestamp *= 1000LL;
+        auto result = m_envelopeHandler->handleEnvelope(envelopeBytes, metadata);
+        if (result.success) {
+            // ACK only after successful acceptance boundary
+            acknowledgeMessage(msgId);
+            m_processedMessageIds.insert(msgId);
+        } else {
+            // Log rejection, but do not retry malformed envelopes if they are fundamentally invalid.
+            qDebug() << "[RelayService] Envelope processing failed:" << result.message;
+            if (result.message == "invalid envelope" || result.message.contains("malformed", Qt::CaseInsensitive)) {
+                // If the message is irreversibly malformed, just ACK it to stop retry loops
+                acknowledgeMessage(msgId);
+                m_processedMessageIds.insert(msgId);
             }
         }
-        if (packetObj.contains("fileData")) {
-            QByteArray rawBytes = QByteArray::fromBase64(packetObj.value("fileData").toString().toLatin1());
-            if (!rawBytes.isEmpty()) {
-                QString profile = m_storage->profile();
-                QString userDir = m_storage->username().trimmed().toLower();
-                QString mediaSub = (profile.isEmpty() ? "" : profile + "/") + (userDir.isEmpty() ? "" : userDir + "/");
-                QString mediaDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/media/" + mediaSub;
-                QDir().mkpath(mediaDir);
-
-                QString safeName = fileName.trimmed();
-                if (safeName.isEmpty()) {
-                    safeName = messageUuid + (type == "image" ? ".png" : (type == "voice" || type == "audio" ? ".wav" : ".bin"));
-                } else {
-                    safeName = QFileInfo(safeName).fileName();
-                }
-
-                QString localFilePath = mediaDir + safeName;
-                QFile outFile(localFilePath);
-                if (outFile.open(QIODevice::WriteOnly)) {
-                    outFile.write(rawBytes);
-                    outFile.close();
-                    mediaUrl = QUrl::fromLocalFile(localFilePath).toString();
-                    qDebug() << "[RelayService] Successfully saved incoming file to local storage:" << mediaUrl;
-                }
-            }
-        }
-        if (packetObj.contains("avatarData")) {
-            QString avatarBase64 = packetObj.value("avatarData").toString().trimmed();
-            if (!avatarBase64.isEmpty() && !sender.isEmpty() && sender != "Anonymous") {
-                QByteArray avBytes = QByteArray::fromBase64(avatarBase64.toLatin1());
-                if (!avBytes.isEmpty() && avBytes.size() <= 1024 * 1024) {
-                    QString profile = m_storage ? m_storage->profile() : "";
-                    QString avatarDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/avatars/peers/";
-                    QDir().mkpath(avatarDir);
-                    QString safeSender = sender.trimmed().toLower();
-                    QString peerAvatarPath = avatarDir + (profile.isEmpty() ? "" : profile + "_") + safeSender + "_avatar.jpg";
-                    QFile outFile(peerAvatarPath);
-                    if (outFile.open(QIODevice::WriteOnly)) {
-                        outFile.write(avBytes);
-                        outFile.close();
-                        QString peerUrl = QUrl::fromLocalFile(peerAvatarPath).toString();
-                        if (m_storage) {
-                            m_storage->setPeerAvatarUrl(safeSender, peerUrl);
-                        }
-                        emit peerAvatarUpdated(safeSender, peerUrl);
-                        qDebug() << "[RelayService] Successfully saved incoming peer avatar for:" << safeSender << "to:" << peerUrl;
-                    }
-                }
-            }
-        }
+    } else {
+        qWarning() << "[RelayService] No envelope handler registered. Dropping packet.";
     }
-
-    if (timestamp <= 0) {
-        timestamp = QDateTime::currentMSecsSinceEpoch();
-    }
-
-    if (!displayName.isEmpty() && !sender.isEmpty() && sender != "Anonymous" && m_storage) {
-        m_storage->setPeerDisplayName(sender.toLower(), displayName);
-    }
-
-    qDebug() << "[RelayService] Decrypted packet from:" << sender << "type:" << type << "displayName:" << displayName;
-
-    if (type == "avatar_update") {
-        acknowledgeMessage(msgId);
-        return;
-    }
-
-    if (type == "profile_update" || type == "display_name_update") {
-        QString newDisplayName = textContent.trimmed();
-        if (!displayName.isEmpty()) newDisplayName = displayName;
-        if (!newDisplayName.isEmpty() && !sender.isEmpty() && sender != "Anonymous" && m_storage) {
-            m_storage->setPeerDisplayName(sender.toLower(), newDisplayName);
-        }
-        acknowledgeMessage(msgId);
-        return;
-    }
-
-    if (type == "friend_request" || type == "friend_accept" || type == "friend_reject") {
-        Domain::Message friendMsg;
-        friendMsg.serverId = msgId;
-        friendMsg.id = messageUuid;
-        friendMsg.senderId = sender;
-        friendMsg.type = type;
-        friendMsg.text = textContent;
-        friendMsg.timestamp = timestamp;
-        friendMsg.conversationId = "dms:" + sender.toLower();
-
-        qDebug() << "[RelayService] Emitting incomingFriendPacket for:" << sender << "type:" << type;
-        emit incomingFriendPacket(friendMsg);
-        acknowledgeMessage(msgId);
-        return;
-    }
-
-    if (type == "typing_start" || type == "typing_stop") {
-        Domain::Message typingMsg;
-        typingMsg.serverId = msgId;
-        typingMsg.id = messageUuid;
-        typingMsg.senderId = sender;
-        typingMsg.conversationId = "dms:" + sender.toLower();
-        typingMsg.type = type;
-        typingMsg.timestamp = timestamp;
-
-        emit incomingDomainMessagesReceived({typingMsg});
-        acknowledgeMessage(msgId);
-        return;
-    }
-
-    if (type == "message_seen") {
-        Domain::Message seenMsg;
-        seenMsg.serverId = msgId;
-        seenMsg.id = messageUuid;
-        seenMsg.senderId = sender;
-        seenMsg.conversationId = "dms:" + sender.toLower();
-        seenMsg.type = type;
-        seenMsg.text = textContent;
-        seenMsg.timestamp = timestamp;
-
-        emit incomingDomainMessagesReceived({seenMsg});
-        acknowledgeMessage(msgId);
-        return;
-    }
-
-    if (type == "presence_status") {
-        Domain::Message presenceMsg;
-        presenceMsg.serverId = msgId;
-        presenceMsg.id = messageUuid;
-        presenceMsg.senderId = sender;
-        presenceMsg.conversationId = "dms:" + sender.toLower();
-        presenceMsg.type = type;
-        presenceMsg.text = textContent;
-        presenceMsg.timestamp = timestamp;
-
-        emit incomingDomainMessagesReceived({presenceMsg});
-        acknowledgeMessage(msgId);
-        return;
-    }
-
-    Domain::Message domainMsg;
-    domainMsg.serverId = msgId;
-    domainMsg.id = messageUuid;
-    domainMsg.senderId = sender;
-    domainMsg.type = type;
-    domainMsg.text = textContent;
-    domainMsg.mediaUrl = mediaUrl;
-    domainMsg.fileName = fileName;
-    domainMsg.fileSize = fileSize;
-    domainMsg.duration = duration;
-    domainMsg.errorText = mediaCategory;
-    
-    QJsonArray waveArray;
-    for (const QVariant &v : waveform) waveArray.append(v.toInt());
-    if (!waveArray.isEmpty()) {
-        domainMsg.waveform = QJsonDocument(waveArray).toJson(QJsonDocument::Compact);
-    }
-    
-    domainMsg.status = (type == "media_request") ? Domain::MessageStatus::Pending : Domain::MessageStatus::Seen;
-    domainMsg.timestamp = timestamp;
-    
-    domainMsg.conversationId = "dms:" + domainMsg.senderId.toLower();
-
-    emit incomingDomainMessageReceived(domainMsg);
-    emit incomingDomainMessagesReceived({domainMsg});
-    acknowledgeMessage(msgId);
 }
 
 void RelayService::acknowledgeMessage(qint64 messageId) {

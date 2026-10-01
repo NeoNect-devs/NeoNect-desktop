@@ -62,7 +62,7 @@ void NetworkManager::initializeCustom(std::shared_ptr<NeoNect::Transport::IHttpT
 
     m_authService = std::make_shared<NeoNect::Services::AuthService>(m_transport, m_storage, nullptr);
     m_deviceService = std::make_shared<NeoNect::Services::DeviceService>(m_transport, m_storage, nullptr);
-    m_relayService = std::make_shared<NeoNect::Services::RelayService>(m_transport, m_storage, m_cryptoService, nullptr);
+    m_relayService = std::make_shared<NeoNect::Services::RelayService>(m_transport, m_storage, nullptr, nullptr);
     m_friendService = std::make_shared<NeoNect::Services::FriendService>(m_transport, m_storage, nullptr);
 
     setupServiceSignals();

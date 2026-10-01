@@ -27,6 +27,7 @@
 #include "../storage/isettingsrepository.h"
 #include "../crypto/icryptoservice.h"
 #include "../domain/message.h"
+#include "../transport/IIncomingEnvelopeHandler.h"
 
 namespace NeoNect {
 namespace Services {
@@ -47,7 +48,7 @@ public:
      */
     explicit RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
                           std::shared_ptr<Storage::ISettingsRepository> storage,
-                          std::shared_ptr<Crypto::ICryptoService> cryptoService,
+                          std::shared_ptr<Transport::IIncomingEnvelopeHandler> envelopeHandler,
                           QObject *parent = nullptr);
 
     /**
@@ -93,6 +94,18 @@ public slots:
      */
     void sendDomainMessage(const Domain::Message &msg);
 
+    /**
+     * @brief Sends an opaque encrypted envelope through the relay network.
+     * @param recipientUsername Target user.
+     * @param recipientDeviceId Target device identifier.
+     * @param messageId Transport message identifier for deduplication.
+     * @param envelopeBytes Opaque cryptographic envelope.
+     */
+    void sendEncryptedEnvelope(const QString &recipientUsername,
+                               const QString &recipientDeviceId,
+                               const QString &messageId,
+                               const QByteArray &envelopeBytes);
+
 signals:
     /** @brief Emitted when a single decrypted chat message arrives from the network. */
     void incomingDomainMessageReceived(const NeoNect::Domain::Message &msg);
@@ -120,16 +133,18 @@ private:
     /** @brief Internal handler for 401 errors, executing exponential backoff or logout signaling. */
     void handle401Error();
     /** @brief Decrypts and processes a base64-encoded encrypted envelope from the server. */
-    void processIncomingRelayItem(qint64 msgId, const QString &base64Cipher);
+    void processIncomingRelayItem(const QJsonObject &msgObj);
     /** @brief Slot handling incoming text frames from WebSocketClient. */
+private slots:
     void onWebSocketMessageReceived(const QString &text);
 
+private:
     /** @brief HTTP transport layer. */
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     /** @brief Settings repository. */
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
     /** @brief Cryptographic engine. */
-    std::shared_ptr<Crypto::ICryptoService> m_cryptoService;
+    std::shared_ptr<Transport::IIncomingEnvelopeHandler> m_envelopeHandler;
     /** @brief Native WebSocket client. */
     std::unique_ptr<Transport::WebSocketClient> m_wsClient;
     /** @brief Polling timer for HTTP fallback. */
