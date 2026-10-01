@@ -355,6 +355,7 @@ add_executable(NeoNectTests
     tests/test_transport.h tests/test_transport.cpp
     tests/test_step9_relay.h tests/test_step9_relay.cpp
     tests/test_session_manager.h tests/test_session_manager.cpp
+    tests/test_messaging_core.h tests/test_messaging_core.cpp
 
     # Common
     src/common/types.h
@@ -384,6 +385,9 @@ add_executable(NeoNectTests
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/crypto/session/SessionManager.h src/crypto/session/SessionManager.cpp
     src/services/messageservice.h src/services/messageservice.cpp
+    src/core/messaging/Message.h
+    src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
 
     # Storage
     src/storage/isettingsrepository.h

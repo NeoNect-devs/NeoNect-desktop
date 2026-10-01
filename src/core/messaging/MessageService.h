@@ -1,0 +1,40 @@
+#pragma once
+#include "Message.h"
+#include "MessageStorage.h"
+#include <memory>
+#include <QByteArray>
+#include <functional>
+#include "../../crypto/session/SessionManager.h"
+#include "../../transport/IIncomingEnvelopeHandler.h"
+
+namespace NeoNect {
+namespace Core {
+namespace Messaging {
+
+class MessageService {
+public:
+    using MessageReceivedCallback = std::function<void(const Message&)>;
+
+    MessageService(std::shared_ptr<IMessageStorage> storage, 
+                   std::shared_ptr<Crypto::Session::SessionManager> sessionManager);
+
+    // Sends a message
+    bool sendMessage(Message& msg);
+
+    // Receives a validated plaintext message from SessionManager (callback bound)
+    void receiveMessage(const QString& sessionId, const QByteArray& plaintext);
+
+    // Updates delivery state (e.g. from network acks)
+    bool updateDeliveryState(const QString& messageId, MessageState newState);
+
+    void setOnMessageReceived(MessageReceivedCallback cb) { m_onMessageReceived = cb; }
+
+private:
+    std::shared_ptr<IMessageStorage> m_storage;
+    std::shared_ptr<Crypto::Session::SessionManager> m_sessionManager;
+    MessageReceivedCallback m_onMessageReceived;
+};
+
+} // namespace Messaging
+} // namespace Core
+} // namespace NeoNect
