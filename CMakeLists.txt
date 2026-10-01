@@ -128,6 +128,7 @@ qt_add_executable(NeoNectApp
     src/crypto/doubleratchet/IAEAD.h
     src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
+    src/crypto/session/SessionManager.h src/crypto/session/SessionManager.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
@@ -353,6 +354,7 @@ add_executable(NeoNectTests
     tests/mocks/mockhttptransport.h tests/mocks/mockhttptransport.cpp
     tests/test_transport.h tests/test_transport.cpp
     tests/test_step9_relay.h tests/test_step9_relay.cpp
+    tests/test_session_manager.h tests/test_session_manager.cpp
 
     # Common
     src/common/types.h
@@ -380,6 +382,7 @@ add_executable(NeoNectTests
     src/crypto/doubleratchet/IAEAD.h
     src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
+    src/crypto/session/SessionManager.h src/crypto/session/SessionManager.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage

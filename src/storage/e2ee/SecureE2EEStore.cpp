@@ -420,8 +420,8 @@ ServiceResult<E2EEOneTimePreKey> SecureE2EEStore::getOneTimePreKey(qint64 key_id
 }
 
 ServiceResult<std::monostate> SecureE2EEStore::saveSession(const E2EESession& session) {
-    if (session.remote_identity_key.size() != 32 || session.DHs.size() != 32 || session.DHr.size() != 32 ||
-        session.RK.size() != 32 || session.CKs.size() != 32 || session.CKr.size() != 32) {
+    if (session.remote_identity_key.size() != 32 || (session.DHs.size() != 32 && session.DHs.size() != 64 && session.DHs.size() != 0) || (session.DHr.size() != 32 && session.DHr.size() != 0) ||
+        session.RK.size() != 32 || (session.CKs.size() != 32 && session.CKs.size() != 0) || (session.CKr.size() != 32 && session.CKr.size() != 0)) {
         return ServiceResult<std::monostate>::fail("Invalid session key length");
     }
 
@@ -493,8 +493,8 @@ ServiceResult<E2EESession> SecureE2EEStore::getSession(const QString& session_id
 }
 
 ServiceResult<std::monostate> SecureE2EEStore::updateSessionState(const SessionUpdateTx& tx) {
-    if (tx.session.remote_identity_key.size() != 32 || tx.session.DHs.size() != 32 || tx.session.DHr.size() != 32 ||
-        tx.session.RK.size() != 32 || tx.session.CKs.size() != 32 || tx.session.CKr.size() != 32) {
+    if (tx.session.remote_identity_key.size() != 32 || (tx.session.DHs.size() != 32 && tx.session.DHs.size() != 64 && tx.session.DHs.size() != 0) || (tx.session.DHr.size() != 32 && tx.session.DHr.size() != 0) ||
+        tx.session.RK.size() != 32 || (tx.session.CKs.size() != 32 && tx.session.CKs.size() != 0) || (tx.session.CKr.size() != 32 && tx.session.CKr.size() != 0)) {
         return ServiceResult<std::monostate>::fail("Invalid session key length");
     }
     for (const auto& key : tx.new_skipped_keys) {

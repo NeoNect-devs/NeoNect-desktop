@@ -18,6 +18,7 @@
 #include "test_wirecodec.h"
 #include "test_secure_storage.h"
 #include "test_step9_relay.h"
+#include "test_session_manager.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -32,6 +33,12 @@ int main(int argc, char *argv[]) {
         NeoNect::Tests::TestStep9Relay tsr;
         int fakeArgc = 1;
         return QTest::qExec(&tsr, fakeArgc, argv);
+    }
+    
+    if (argc > 1 && QString(argv[1]) == "TestSessionManager") {
+        TestSessionManager tsm;
+        int fakeArgc = 1;
+        return QTest::qExec(&tsm, fakeArgc, argv);
     }
 
     app.setOrganizationName("NeoNect");
