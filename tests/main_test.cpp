@@ -16,6 +16,7 @@
 #include "test_doubleratchet.h"
 #include "test_aead.h"
 #include "test_wirecodec.h"
+#include "test_secure_storage.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -273,6 +274,12 @@ int main(int argc, char *argv[]) {
         TestWireCodec twc;
         int res = QTest::qExec(&twc);
         std::cout << "[TestWireCodec Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestSecureStorage tss;
+        int res = QTest::qExec(&tss);
+        std::cout << "[TestSecureStorage Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     std::cout << "\n==========================================" << std::endl;

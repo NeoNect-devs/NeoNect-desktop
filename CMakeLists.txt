@@ -70,12 +70,18 @@ if(WIN32)
     endif()
 else()
     find_package(OpenSSL REQUIRED)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
+    if(NOT LIBSECRET_FOUND)
+        message(WARNING "libsecret-1 not found. Secure storage will fail closed.")
+    endif()
 endif()
 
 # =====================================================================
 # 4. Define the executable target (C++ ONLY)
 # =====================================================================
 add_subdirectory(third_party/libxeddsa)
+add_subdirectory(third_party/sqlcipher)
 
 set(APP_ICON_RESOURCE "")
 if(WIN32)
@@ -128,6 +134,12 @@ qt_add_executable(NeoNectApp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
     src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
+    src/storage/e2ee/IOSSecretStore.h
+    src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
+    src/storage/e2ee/IMasterKeyProvider.h
+    src/storage/e2ee/MasterKeyProvider.h src/storage/e2ee/MasterKeyProvider.cpp
+    src/storage/e2ee/ISecureE2EEStore.h
+    src/storage/e2ee/SecureE2EEStore.h src/storage/e2ee/SecureE2EEStore.cpp
 
     # Transport
     src/transport/ihttptransport.h
@@ -288,7 +300,12 @@ target_link_libraries(NeoNectApp PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     xeddsa_static
+    sqlcipher_static
 )
+if(LIBSECRET_FOUND)
+    target_link_libraries(NeoNectApp PRIVATE PkgConfig::LIBSECRET)
+    target_compile_definitions(NeoNectApp PRIVATE HAS_LIBSECRET)
+endif()
 if(WIN32)
     target_link_libraries(NeoNectApp PRIVATE winmm dwmapi)
 endif()
@@ -329,6 +346,7 @@ add_executable(NeoNectTests
     tests/test_wirecodec.h tests/test_wirecodec.cpp
     tests/test_backend.h tests/test_backend.cpp
     tests/test_storage.h tests/test_storage.cpp
+    tests/test_secure_storage.h tests/test_secure_storage.cpp
     tests/test_models.h tests/test_models.cpp
     tests/test_services.h tests/test_services.cpp
     tests/test_messages.h tests/test_messages.cpp
@@ -367,6 +385,12 @@ add_executable(NeoNectTests
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
     src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
+    src/storage/e2ee/IOSSecretStore.h
+    src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
+    src/storage/e2ee/IMasterKeyProvider.h
+    src/storage/e2ee/MasterKeyProvider.h src/storage/e2ee/MasterKeyProvider.cpp
+    src/storage/e2ee/ISecureE2EEStore.h
+    src/storage/e2ee/SecureE2EEStore.h src/storage/e2ee/SecureE2EEStore.cpp
 
     # Transport
     src/transport/ihttptransport.h
@@ -402,7 +426,12 @@ target_link_libraries(NeoNectTests PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     xeddsa_static
+    sqlcipher_static
 )
+if(LIBSECRET_FOUND)
+    target_link_libraries(NeoNectTests PRIVATE PkgConfig::LIBSECRET)
+    target_compile_definitions(NeoNectTests PRIVATE HAS_LIBSECRET)
+endif()
 if(WIN32)
     target_link_libraries(NeoNectTests PRIVATE winmm dwmapi)
 endif()
@@ -453,6 +482,12 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
     src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
+    src/storage/e2ee/IOSSecretStore.h
+    src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
+    src/storage/e2ee/IMasterKeyProvider.h
+    src/storage/e2ee/MasterKeyProvider.h src/storage/e2ee/MasterKeyProvider.cpp
+    src/storage/e2ee/ISecureE2EEStore.h
+    src/storage/e2ee/SecureE2EEStore.h src/storage/e2ee/SecureE2EEStore.cpp
     src/transport/ihttptransport.h
     src/transport/httptransport.h src/transport/httptransport.cpp
     src/transport/websocketclient.h src/transport/websocketclient.cpp
@@ -480,7 +515,12 @@ target_link_libraries(NeoNectStressTests PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     xeddsa_static
+    sqlcipher_static
 )
+if(LIBSECRET_FOUND)
+    target_link_libraries(NeoNectStressTests PRIVATE PkgConfig::LIBSECRET)
+    target_compile_definitions(NeoNectStressTests PRIVATE HAS_LIBSECRET)
+endif()
 option(ENABLE_SANITIZERS "Enable Address and Undefined sanitizers for stress tests" OFF)
 if(ENABLE_SANITIZERS)
     if(NOT MINGW)
@@ -523,6 +563,12 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
     src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
+    src/storage/e2ee/IOSSecretStore.h
+    src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
+    src/storage/e2ee/IMasterKeyProvider.h
+    src/storage/e2ee/MasterKeyProvider.h src/storage/e2ee/MasterKeyProvider.cpp
+    src/storage/e2ee/ISecureE2EEStore.h
+    src/storage/e2ee/SecureE2EEStore.h src/storage/e2ee/SecureE2EEStore.cpp
     src/transport/ihttptransport.h
     src/transport/httptransport.h src/transport/httptransport.cpp
     src/transport/websocketclient.h src/transport/websocketclient.cpp
@@ -549,7 +595,12 @@ target_link_libraries(NeoNectBenchmarks PRIVATE
     Qt6::Test
     OpenSSL::SSL
     OpenSSL::Crypto
+    sqlcipher_static
 )
+if(LIBSECRET_FOUND)
+    target_link_libraries(NeoNectBenchmarks PRIVATE PkgConfig::LIBSECRET)
+    target_compile_definitions(NeoNectBenchmarks PRIVATE HAS_LIBSECRET)
+endif()
 if(WIN32)
     target_link_libraries(NeoNectBenchmarks PRIVATE winmm dwmapi)
 endif()
