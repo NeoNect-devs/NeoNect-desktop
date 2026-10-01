@@ -10,8 +10,9 @@ namespace Core {
 namespace Messaging {
 
 MessageService::MessageService(std::shared_ptr<IMessageStorage> storage, 
-                               std::shared_ptr<Crypto::Session::SessionManager> sessionManager)
-    : m_storage(std::move(storage)), m_sessionManager(std::move(sessionManager)) 
+                               std::shared_ptr<Crypto::Session::SessionManager> sessionManager,
+                               std::shared_ptr<IMessageQueue> offlineQueue)
+    : m_storage(std::move(storage)), m_sessionManager(std::move(sessionManager)), m_offlineQueue(std::move(offlineQueue))
 {
 }
 
@@ -52,7 +53,14 @@ bool MessageService::sendMessage(Message& msg) {
         "default_device" // Do NOT implement multi-device, mock device id
     );
 
-    if (!result.success) {
+    bool queued = false;
+    if (m_offlineQueue) {
+        queued = m_offlineQueue->getEntry(msg.messageId).has_value();
+    } else {
+        queued = result.success;
+    }
+
+    if (!result.success || !queued) {
         // Encryption or transport failed.
         // Task: "If encryption fails: message is not marked SENT"
         // Task: "If transport fails: message becomes FAILED"

@@ -20,6 +20,7 @@
 #include "test_step9_relay.h"
 #include "test_session_manager.h"
 #include "test_messaging_core.h"
+#include "test_offline_queue.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -46,6 +47,12 @@ int main(int argc, char *argv[]) {
         TestMessagingCore tmc;
         int fakeArgc = 1;
         return QTest::qExec(&tmc, fakeArgc, argv);
+    }
+    
+    if (argc > 1 && QString(argv[1]) == "TestOfflineQueue") {
+        TestOfflineQueue toq;
+        int fakeArgc = 1;
+        return QTest::qExec(&toq, fakeArgc, argv);
     }
 
     app.setOrganizationName("NeoNect");

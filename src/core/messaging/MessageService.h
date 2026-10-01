@@ -6,6 +6,7 @@
 #include <functional>
 #include "../../crypto/session/SessionManager.h"
 #include "../../transport/IIncomingEnvelopeHandler.h"
+#include "OfflineQueue.h"
 
 namespace NeoNect {
 namespace Core {
@@ -16,7 +17,8 @@ public:
     using MessageReceivedCallback = std::function<void(const Message&)>;
 
     MessageService(std::shared_ptr<IMessageStorage> storage, 
-                   std::shared_ptr<Crypto::Session::SessionManager> sessionManager);
+                   std::shared_ptr<Crypto::Session::SessionManager> sessionManager,
+                   std::shared_ptr<IMessageQueue> offlineQueue = nullptr);
 
     // Sends a message
     bool sendMessage(Message& msg);
@@ -32,6 +34,7 @@ public:
 private:
     std::shared_ptr<IMessageStorage> m_storage;
     std::shared_ptr<Crypto::Session::SessionManager> m_sessionManager;
+    std::shared_ptr<IMessageQueue> m_offlineQueue;
     MessageReceivedCallback m_onMessageReceived;
 };
 

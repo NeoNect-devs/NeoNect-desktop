@@ -356,6 +356,7 @@ add_executable(NeoNectTests
     tests/test_step9_relay.h tests/test_step9_relay.cpp
     tests/test_session_manager.h tests/test_session_manager.cpp
     tests/test_messaging_core.h tests/test_messaging_core.cpp
+    tests/test_offline_queue.h tests/test_offline_queue.cpp
 
     # Common
     src/common/types.h
@@ -388,6 +389,7 @@ add_executable(NeoNectTests
     src/core/messaging/Message.h
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
     src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
+    src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
 
     # Storage
     src/storage/isettingsrepository.h
