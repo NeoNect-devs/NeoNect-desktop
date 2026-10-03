@@ -6,6 +6,8 @@
 #include <QUuid>
 #include <QVariant>
 #include <QDateTime>
+#include <QThread>
+#include <QtAssert>
 
 namespace NeoNect {
 namespace Core {
@@ -13,14 +15,12 @@ namespace Messaging {
 
 MessageQueue::MessageQueue(const QString& dbPath) : m_dbPath(dbPath) {
     m_connectionName = QUuid::createUuid().toString();
+    m_owningThread = QThread::currentThread();
     initDatabase();
 }
 
 MessageQueue::~MessageQueue() {
-    {
-        QSqlDatabase db = QSqlDatabase::database(m_connectionName);
-        if (db.isOpen()) db.close();
-    }
+    Q_ASSERT(QThread::currentThread() == m_owningThread);
     QSqlDatabase::removeDatabase(m_connectionName);
 }
 
@@ -68,6 +68,7 @@ bool MessageQueue::isValidTransition(QueueState from, QueueState to) const {
 }
 
 bool MessageQueue::enqueue(const QString& messageId, const QByteArray& envelopeBytes, const QString& recipientUsername, const QString& recipientDeviceId) {
+    Q_ASSERT(QThread::currentThread() == m_owningThread);
     QSqlDatabase db = QSqlDatabase::database(m_connectionName);
     if (!db.isOpen() && !db.open()) return false;
 
@@ -96,6 +97,7 @@ bool MessageQueue::enqueue(const QString& messageId, const QByteArray& envelopeB
 }
 
 bool MessageQueue::updateState(const QString& messageId, QueueState newState) {
+    Q_ASSERT(QThread::currentThread() == m_owningThread);
     QSqlDatabase db = QSqlDatabase::database(m_connectionName);
     if (!db.isOpen() && !db.open()) return false;
 
@@ -116,6 +118,7 @@ bool MessageQueue::updateState(const QString& messageId, QueueState newState) {
 }
 
 bool MessageQueue::incrementRetry(const QString& messageId) {
+    Q_ASSERT(QThread::currentThread() == m_owningThread);
     QSqlDatabase db = QSqlDatabase::database(m_connectionName);
     if (!db.isOpen() && !db.open()) return false;
 
@@ -127,6 +130,7 @@ bool MessageQueue::incrementRetry(const QString& messageId) {
 }
 
 std::optional<QueueEntry> MessageQueue::getEntry(const QString& messageId) {
+    Q_ASSERT(QThread::currentThread() == m_owningThread);
     QSqlDatabase db = QSqlDatabase::database(m_connectionName);
     if (!db.isOpen() && !db.open()) return std::nullopt;
 
@@ -150,6 +154,7 @@ std::optional<QueueEntry> MessageQueue::getEntry(const QString& messageId) {
 }
 
 std::vector<QueueEntry> MessageQueue::getPendingEntries(int limit, qint64 afterCreatedAt, const QString& afterMessageId) {
+    Q_ASSERT(QThread::currentThread() == m_owningThread);
     QSqlDatabase db = QSqlDatabase::database(m_connectionName);
     if (!db.isOpen() && !db.open()) return {};
 

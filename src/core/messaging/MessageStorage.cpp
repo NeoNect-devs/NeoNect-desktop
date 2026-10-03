@@ -17,10 +17,6 @@ SqliteMessageStorage::SqliteMessageStorage(const QString& dbPath) : m_dbPath(dbP
 SqliteMessageStorage::~SqliteMessageStorage() {
     QMutexLocker locker(&m_mutex);
     for (const QString& name : m_connectionNames.values()) {
-        {
-            QSqlDatabase db = QSqlDatabase::database(name);
-            if (db.isOpen()) db.close();
-        }
         QSqlDatabase::removeDatabase(name);
     }
 }

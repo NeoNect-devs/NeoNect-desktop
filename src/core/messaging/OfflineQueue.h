@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QThread>
 #include <QByteArray>
 #include <vector>
 #include <functional>
@@ -25,6 +26,7 @@ public:
 private:
     QString m_dbPath;
     QString m_connectionName;
+    QThread* m_owningThread;
     void initDatabase();
     bool isValidTransition(QueueState from, QueueState to) const;
 };
