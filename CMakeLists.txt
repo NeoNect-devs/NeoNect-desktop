@@ -158,7 +158,8 @@ qt_add_executable(NeoNectApp
     src/core/application.h src/core/application.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
-    src/core/cryptomanager.h src/core/cryptomanager.cpp
+    src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
     src/core/notificationmanager.h src/core/notificationmanager.cpp
@@ -416,7 +417,8 @@ add_executable(NeoNectTests
     # Core & Facade
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
-    src/core/cryptomanager.h src/core/cryptomanager.cpp
+    src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
     src/core/notificationmanager.h src/core/notificationmanager.cpp
@@ -507,7 +509,8 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/services/friendservice.h src/services/friendservice.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
-    src/core/cryptomanager.h src/core/cryptomanager.cpp
+    src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
     src/core/notificationmanager.h src/core/notificationmanager.cpp
@@ -588,7 +591,8 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/services/friendservice.h src/services/friendservice.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
-    src/core/cryptomanager.h src/core/cryptomanager.cpp
+    src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
     src/core/notificationmanager.h src/core/notificationmanager.cpp

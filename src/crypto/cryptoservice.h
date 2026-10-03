@@ -30,7 +30,6 @@ namespace Crypto {
  * @details
  * Thread safety: Reads from master key (`getMasterKey`, `encryptAesGcm`, `decryptAesGcm`)
  * acquire a shared lock (`std::shared_lock`), while key mutations (`setMasterKey`,
- * `deriveKeyFromPassphrase`) acquire an exclusive lock (`std::unique_lock`).
  */
 class CryptoService : public ICryptoService {
 public:
@@ -76,7 +75,6 @@ public:
      * @par Performance Constraint:
      * - PBKDF2 executes 100,000 iterations of HMAC-SHA256; may take 10-30ms of CPU time.
      */
-    bool deriveKeyFromPassphrase(const QString &passphrase, const QByteArray &salt = QByteArray()) override;
 
     /**
      * @brief Encrypts data using AES-256-GCM with a newly generated random 12-byte IV.
@@ -113,7 +111,6 @@ public:
      *
      * @pre `envelope.size() >= 28`
      */
-    QByteArray decryptAesGcmEnvelope(const QByteArray &envelope, const QByteArray &keyOverride = QByteArray()) override;
 
     /**
      * @brief Generates cryptographically strong random bytes via `RAND_bytes`.

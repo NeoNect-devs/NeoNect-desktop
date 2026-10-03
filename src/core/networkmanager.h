@@ -86,7 +86,7 @@ public:
      */
     explicit NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
                             std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
-                            std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService,
+                            
                             std::shared_ptr<NeoNect::Services::AuthService> authService,
                             std::shared_ptr<NeoNect::Services::DeviceService> deviceService,
                             std::shared_ptr<NeoNect::Services::RelayService> relayService,
@@ -483,7 +483,6 @@ private:
 
     std::shared_ptr<NeoNect::Transport::IHttpTransport> m_transport;
     std::shared_ptr<NeoNect::Storage::ISettingsRepository> m_storage;
-    std::shared_ptr<NeoNect::Crypto::ICryptoService> m_cryptoService;
 
     std::shared_ptr<NeoNect::Services::AuthService> m_authService;
     std::shared_ptr<NeoNect::Services::DeviceService> m_deviceService;

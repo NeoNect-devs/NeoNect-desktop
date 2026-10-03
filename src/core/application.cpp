@@ -5,7 +5,6 @@
 // src/core/application.cpp
 #include "application.h"
 #include "networkmanager.h"
-#include "cryptomanager.h"
 #include "chatmessagemodel.h"
 #include "audiomanager.h"
 #include "notificationmanager.h"
@@ -168,11 +167,10 @@ void Application::initializeServices() {
 
     auto authService = std::make_shared<Services::AuthService>(m_transport, m_storage);
     auto deviceService = std::make_shared<Services::DeviceService>(m_transport, m_storage);
-    m_relayService = std::make_shared<Services::RelayService>(m_transport, m_storage, m_cryptoService);
+    m_relayService = std::make_shared<Services::RelayService>(m_transport, m_storage, nullptr);
     auto friendService = std::make_shared<Services::FriendService>(m_transport, m_storage);
 
-    m_networkManager = std::make_unique<NetworkManager>(m_transport, m_storage, m_cryptoService, authService, deviceService, m_relayService, friendService);
-    m_cryptoManager = std::make_unique<CryptoManager>(m_cryptoService, m_storage);
+    m_networkManager = std::make_unique<NetworkManager>(m_transport, m_storage, authService, deviceService, m_relayService, friendService);
 
     // Phase 3 & 4 Message Storage and Services
     QString initialUser = m_networkManager->currentUsername().trimmed().toLower();
@@ -352,7 +350,6 @@ void Application::registerQmlTypes() {
     m_engine->rootContext()->setContextProperty("appProfile", m_profile);
 
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NetworkManager", m_networkManager.get());
-    qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "CryptoManager", m_cryptoManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "AudioManager", m_audioManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", m_notificationManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "MessageService", m_messageService.get());

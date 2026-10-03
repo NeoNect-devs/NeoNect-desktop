@@ -1,6 +1,5 @@
 // src/core/networkmanager.cpp
 #include "networkmanager.h"
-#include "cryptomanager.h"
 #include "../transport/httptransport.h"
 #include "../storage/settingsrepository.h"
 #include "../crypto/cryptoservice.h"
@@ -18,14 +17,14 @@
 
 NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
                                std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
-                               std::shared_ptr<NeoNect::Crypto::ICryptoService> cryptoService,
+                               
                                std::shared_ptr<NeoNect::Services::AuthService> authService,
                                std::shared_ptr<NeoNect::Services::DeviceService> deviceService,
                                std::shared_ptr<NeoNect::Services::RelayService> relayService,
                                std::shared_ptr<NeoNect::Services::FriendService> friendService,
                                QObject *parent)
     : QObject(parent), m_transport(std::move(transport)),
-      m_storage(std::move(storage)), m_cryptoService(std::move(cryptoService)),
+      m_storage(std::move(storage)),
       m_authService(std::move(authService)), m_deviceService(std::move(deviceService)),
       m_relayService(std::move(relayService)), m_friendService(std::move(friendService))
 {

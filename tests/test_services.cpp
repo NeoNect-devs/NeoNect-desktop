@@ -167,7 +167,7 @@ void TestServices::testNetworkManagerFacadeIntegration() {
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
-    NetworkManager nm(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    NetworkManager nm(mockTransport, storage, authService, deviceService, relayService, friendService);
 
     QSignalSpy spyVerify(&nm, &NetworkManager::verificationResult);
     nm.verifyServer("http://localhost:8080");
@@ -598,7 +598,7 @@ void TestServices::testBookmarkConnectFlow() {
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
-    NetworkManager nm(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    NetworkManager nm(mockTransport, storage, authService, deviceService, relayService, friendService);
 
     // 1. Verify that auto-login is completely removed: token starts empty!
     QVERIFY(nm.token().isEmpty());
@@ -845,7 +845,7 @@ void TestServices::testRequestCancellationOnServiceDestruction() {
 void TestServices::testPhase10ABackendProtocolCompliance() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>();
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
-    crypto->deriveKeyFromPassphrase("testpass", "salt");
+    crypto->setMasterKey(QByteArray(32, 1));
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>();
 
     NeoNect::Services::AuthService authService(mockTransport, storage);
@@ -1230,7 +1230,7 @@ void TestServices::testConnectivityAndOnlinePresence() {
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendServicePtr = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
 
-    NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendServicePtr);
+    NetworkManager netMgr(mockTransport, storage, authService, deviceService, relayService, friendServicePtr);
     QSignalSpy spyNetConnected(&netMgr, &NetworkManager::isConnectedChanged);
 
     QVERIFY(!netMgr.isConnected());
@@ -1254,7 +1254,7 @@ void TestServices::testOpenConversationsActivityOrdering() {
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
 
-    NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    NetworkManager netMgr(mockTransport, storage, authService, deviceService, relayService, friendService);
     QSignalSpy spyOpenChanged(&netMgr, &NetworkManager::openConversationsChanged);
 
     // 1. Open chat with Alice at t=1000
@@ -1290,7 +1290,7 @@ void TestServices::testOpenConversationsActivityOrdering() {
     QCOMPARE(netMgr.openConversations().at(0).toMap().value("name").toString(), QString("alice"));
 
     // 5. Verify persistence across new NetworkManager instance
-    NetworkManager netMgr2(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    NetworkManager netMgr2(mockTransport, storage, authService, deviceService, relayService, friendService);
     QCOMPARE(netMgr2.openConversations().size(), 1);
     QCOMPARE(netMgr2.openConversations().at(0).toMap().value("name").toString(), QString("alice"));
 
@@ -1308,7 +1308,7 @@ void TestServices::testOpenConversationsUnreadCountBadge() {
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
 
-    NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    NetworkManager netMgr(mockTransport, storage, authService, deviceService, relayService, friendService);
 
     // Initial state: 0 unread for anyone
     QCOMPARE(netMgr.unreadCount("alice"), 0);
@@ -1348,7 +1348,7 @@ void TestServices::testOpenConversationsUnreadCountBadge() {
     netMgr.incrementUnreadCount("alice");
     QCOMPARE(netMgr.unreadCount("alice"), 1);
 
-    NetworkManager netMgr2(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    NetworkManager netMgr2(mockTransport, storage, authService, deviceService, relayService, friendService);
     QCOMPARE(netMgr2.unreadCount("alice"), 1);
     QCOMPARE(netMgr2.unreadCount("bob"), 0);
 
@@ -1467,7 +1467,7 @@ void TestServices::testSelfDirectMessageAndSavedMessagesFlow() {
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
 
-    NetworkManager netMgr(mockTransport, storage, crypto, authService, deviceService, relayService, friendService);
+    NetworkManager netMgr(mockTransport, storage, authService, deviceService, relayService, friendService);
 
     // 1. Verify netMgr rejects opening DM with oneself ("alice")
     netMgr.openDirectConversation("alice", 1000);
@@ -1693,7 +1693,7 @@ void TestServices::testFunctionalOnlineIdleDndInvisibleStates() {
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(transport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(transport, storage, nullptr);
 
-    NetworkManager netMgr(transport, storage, cryptoService, authService, deviceService, relayService, friendService);
+    NetworkManager netMgr(transport, storage, authService, deviceService, relayService, friendService);
     QSignalSpy spyStatus(&netMgr, &NetworkManager::effectiveStatusChanged);
     QSignalSpy spyIdle(&netMgr, &NetworkManager::isIdleChanged);
     QSignalSpy spyDnd(&netMgr, &NetworkManager::isDndChanged);
@@ -1823,8 +1823,8 @@ void TestServices::testRealtimeChatPresenceExchange() {
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
 
-    NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoAlice, authAlice, devAlice, relayAlice, friendAlice);
-    NetworkManager netMgrBob(sharedTransport, storageBob, cryptoBob, authBob, devBob, relayBob, friendBob);
+    NetworkManager netMgrAlice(sharedTransport, storageAlice, authAlice, devAlice, relayAlice, friendAlice);
+    NetworkManager netMgrBob(sharedTransport, storageBob, authBob, devBob, relayBob, friendBob);
 
     auto msgRepoAlice = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
     auto msgRepoBob = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
@@ -1907,7 +1907,7 @@ void TestServices::testDisplayNameResolutionAndSync() {
     auto deviceAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
     auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
-    NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoService, authAlice, deviceAlice, relayAlice, friendAlice);
+    NetworkManager netMgrAlice(sharedTransport, storageAlice, authAlice, deviceAlice, relayAlice, friendAlice);
 
     // Client Bob
     auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_dn");
@@ -1921,7 +1921,7 @@ void TestServices::testDisplayNameResolutionAndSync() {
     auto deviceBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
     auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
-    NetworkManager netMgrBob(sharedTransport, storageBob, cryptoService, authBob, deviceBob, relayBob, friendBob);
+    NetworkManager netMgrBob(sharedTransport, storageBob, authBob, deviceBob, relayBob, friendBob);
 
     // Set Alice display name
     netMgrAlice.setDisplayName("Alice in Wonderland");
@@ -1999,7 +1999,7 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     auto deviceAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
     auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice, nullptr);
-    NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoService, authAlice, deviceAlice, relayAlice, friendAlice);
+    NetworkManager netMgrAlice(sharedTransport, storageAlice, authAlice, deviceAlice, relayAlice, friendAlice);
 
     // Client Bob
     auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_avatar");
@@ -2013,7 +2013,7 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     auto deviceBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
     auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
-    NetworkManager netMgrBob(sharedTransport, storageBob, cryptoService, authBob, deviceBob, relayBob, friendBob);
+    NetworkManager netMgrBob(sharedTransport, storageBob, authBob, deviceBob, relayBob, friendBob);
 
     // 1. Create a non-square, high-resolution test image (e.g. 1000 x 500)
     QImage testImg(1000, 500, QImage::Format_RGB32);

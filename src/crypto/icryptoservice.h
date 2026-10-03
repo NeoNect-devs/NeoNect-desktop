@@ -87,7 +87,6 @@ public:
      * - Derivation iteration count is strictly pinned to `Constants::PBKDF2_ITERATIONS` (100,000 rounds) to resist GPU/ASIC brute-force dictionary attacks.
      * - Salt must be at least 16 bytes (128 bits) to eliminate rainbow-table precomputation attacks.
      */
-    virtual bool deriveKeyFromPassphrase(const QString &passphrase, const QByteArray &salt = QByteArray()) = 0;
 
     /**
      * @brief Encrypts plaintext data using AES-256-GCM authenticated encryption.
@@ -135,7 +134,6 @@ public:
      * - `[Bytes 12..27]`: 16-byte Authentication Tag.
      * - `[Bytes 28..N]`: AES-GCM Ciphertext.
      */
-    virtual QByteArray decryptAesGcmEnvelope(const QByteArray &envelope, const QByteArray &keyOverride = QByteArray()) = 0;
 
     /**
      * @brief Generates cryptographically secure random bytes using OpenSSL CSPRNG (`RAND_bytes`).

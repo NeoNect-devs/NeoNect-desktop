@@ -33,11 +33,9 @@
 #include <QString>
 #include <memory>
 
-class CryptoManager;
 class NetworkManager;
 class AudioManager;
 #include "services/messageservice.h"
-#include "storage/imessagerepository.h"
 
 namespace NeoNect {
 
@@ -145,7 +143,6 @@ private:
 
     // Facades & Managers
     /** @brief Cryptographic facade exposed to QML. */
-    std::unique_ptr<::CryptoManager> m_cryptoManager;
     /** @brief Master networking facade exposed to QML. */
     std::unique_ptr<::NetworkManager> m_networkManager;
     /** @brief Audio capture and playback manager exposed to QML. */

@@ -112,7 +112,7 @@ private slots:
         auto settings = std::make_shared<Storage::SettingsRepository>(m_tempDir.path() + "/settings.ini");
         settings->setAuthToken("token");
         settings->setDeviceId("dev");
-        Services::RelayService relay(transport, settings, crypto);
+        Services::RelayService relay(transport, settings, nullptr);
         crypto->setMasterKey(QByteArray(32, 'a'));
         
         QJsonArray msgs;
@@ -180,7 +180,7 @@ private slots:
         auto settings = std::make_shared<Storage::SettingsRepository>(m_tempDir.path() + "/settings_401.ini");
         settings->setAuthToken("token");
         settings->setDeviceId("dev");
-        Services::RelayService relay(transport, settings, crypto);
+        Services::RelayService relay(transport, settings, nullptr);
         crypto->setMasterKey(QByteArray(32, 'a'));
         settings->setAuthToken("bad_token");
         
@@ -206,7 +206,7 @@ private slots:
         settings->setDeviceId("dev");
             auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(m_tempDir.path() + QString("/db_%1.sqlite").arg(i));
             
-            auto relay = std::make_unique<Services::RelayService>(transport, settings, crypto);
+            auto relay = std::make_unique<Services::RelayService>(transport, settings, nullptr);
             auto msgSvc = std::make_unique<Services::MessageService>(repo);
             
             transport->nextStatus = 200;
@@ -266,7 +266,7 @@ private slots:
         auto settings = std::make_shared<Storage::SettingsRepository>(m_tempDir.path() + "/fuzz.ini");
         settings->setAuthToken("token");
         settings->setDeviceId("dev");
-        Services::RelayService relay(transport, settings, crypto);
+        Services::RelayService relay(transport, settings, nullptr);
         crypto->setMasterKey(QByteArray(32, 'a'));
         crypto->setMasterKey(QByteArray(32, 'a'));
         
