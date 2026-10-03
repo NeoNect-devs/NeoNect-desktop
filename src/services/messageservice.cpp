@@ -11,7 +11,8 @@
 #include <QSet>
 #include <QImageReader>
 #include <QFile>
-
+#include <QThread>
+#include <QPointer>
 namespace NeoNect {
 namespace Services {
 
@@ -39,6 +40,11 @@ static qint64 determineFileSize(const QString &mediaUrl, qint64 providedSize) {
 MessageService::MessageService(std::shared_ptr<NeoNect::Core::Messaging::IMessageStorage> storage, QObject* parent)
     : QObject(parent), m_storage(std::move(storage))
 {
+    m_workerThread = new QThread(this);
+    m_workerThread->setObjectName("MessageServiceWorker");
+    m_workerContext = new QObject();
+    m_workerContext->moveToThread(m_workerThread);
+    m_workerThread->start();
 }
 
 MessageService::~MessageService() {
@@ -51,6 +57,10 @@ MessageService::~MessageService() {
         timer->stop();
         delete timer;
     }
+    
+    m_workerContext->deleteLater();
+    m_workerThread->quit();
+    m_workerThread->wait();
 }
 
 void MessageService::setCurrentUserId(const QString &userId) {
@@ -815,42 +825,78 @@ static NeoNect::Domain::MessageStatus mapState(NeoNect::Core::Messaging::Message
 void MessageService::saveMessageAsync(const Domain::Message &msg, const QObject* context, std::function<void(bool)> callback) {
     NeoNect::Core::Messaging::Message coreMsg;
     coreMsg.messageId = msg.id;
+    coreMsg.serverId = msg.serverId;
     coreMsg.conversationId = msg.conversationId;
     coreMsg.senderId = msg.senderId;
     coreMsg.timestamp = msg.timestamp;
+    coreMsg.plaintext = msg.text;
     coreMsg.state = mapStatus(msg.status);
-    bool success = m_storage->saveMessage(coreMsg);
-    if (callback) {
-        auto cb = callback;
-        QTimer::singleShot(0, [cb, success]() { cb(success); });
-    }
+    
+    QPointer<MessageService> self(this);
+    QPointer<const QObject> ctx(context);
+    auto storage = m_storage;
+    
+    QMetaObject::invokeMethod(m_workerContext, [self, coreMsg, ctx, callback, storage]() {
+        bool success = storage->saveMessage(coreMsg);
+        if (callback && self) {
+            QMetaObject::invokeMethod(self, [ctx, callback, success]() {
+                if (ctx) callback(success);
+            });
+        }
+    });
 }
 
 void MessageService::saveMessagesAsync(const std::vector<Domain::Message> &msgs, const QObject* context, std::function<void(bool)> callback) {
+    std::vector<NeoNect::Core::Messaging::Message> coreMsgs;
     for (const auto& msg : msgs) {
         NeoNect::Core::Messaging::Message coreMsg;
         coreMsg.messageId = msg.id;
+        coreMsg.serverId = msg.serverId;
         coreMsg.conversationId = msg.conversationId;
         coreMsg.senderId = msg.senderId;
         coreMsg.timestamp = msg.timestamp;
+        coreMsg.plaintext = msg.text;
         coreMsg.state = mapStatus(msg.status);
-        m_storage->saveMessage(coreMsg);
+        coreMsgs.push_back(coreMsg);
     }
-    if (callback) {
-        auto cb = callback;
-        QTimer::singleShot(0, [cb]() { cb(true); });
-    }
+    
+    QPointer<MessageService> self(this);
+    QPointer<const QObject> ctx(context);
+    auto storage = m_storage;
+    
+    QMetaObject::invokeMethod(m_workerContext, [self, coreMsgs, ctx, callback, storage]() {
+        bool allSuccess = true;
+        for (const auto& coreMsg : coreMsgs) {
+            if (!storage->saveMessage(coreMsg)) {
+                allSuccess = false;
+            }
+        }
+        if (callback && self) {
+            QMetaObject::invokeMethod(self, [ctx, callback, allSuccess]() {
+                if (ctx) callback(allSuccess);
+            });
+        }
+    });
 }
 
 void MessageService::updateMessageStatusAsync(const QString &id, Domain::MessageStatus status, const QString &errorText, const QObject* context, std::function<void(bool)> callback) {
-    bool success = m_storage->updateMessageState(id, mapStatus(status));
-    if (callback) {
-        auto cb = callback;
-        QTimer::singleShot(0, [cb, success]() { cb(success); });
-    }
+    auto coreStatus = mapStatus(status);
+    QPointer<MessageService> self(this);
+    QPointer<const QObject> ctx(context);
+    auto storage = m_storage;
+    
+    QMetaObject::invokeMethod(m_workerContext, [self, id, coreStatus, ctx, callback, storage]() {
+        bool success = storage->updateMessageState(id, coreStatus);
+        if (callback && self) {
+            QMetaObject::invokeMethod(self, [ctx, callback, success]() {
+                if (ctx) callback(success);
+            });
+        }
+    });
 }
 
 void MessageService::markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context, std::function<void(bool)> callback) {
+    // Current implementation mock behavior
     if (callback) {
         auto cb = callback;
         QTimer::singleShot(0, [cb]() { cb(true); });
@@ -858,42 +904,66 @@ void MessageService::markMessagesSeenAsync(const QString &conversationId, const 
 }
 
 void MessageService::deleteMessageAsync(const QString &id) {
+    auto storage = m_storage;
+    QMetaObject::invokeMethod(m_workerContext, [storage, id]() {
+        storage->deleteMessage(id);
+    });
 }
 
 void MessageService::getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, std::function<void(const std::vector<Domain::Message>&)> callback) {
-    auto coreMsgs = m_storage->getConversationMessages(conversationId);
-    std::vector<Domain::Message> messages;
-    for (const auto& cm : coreMsgs) {
-        Domain::Message dm;
-        dm.id = cm.messageId;
-        dm.conversationId = cm.conversationId;
-        dm.senderId = cm.senderId;
-        dm.timestamp = cm.timestamp;
-        dm.status = mapState(cm.state);
-        messages.push_back(dm);
-    }
-    if (callback) {
-        auto cb = callback;
-        QTimer::singleShot(0, [cb, messages]() { cb(messages); });
-    }
+    QPointer<MessageService> self(this);
+    QPointer<const QObject> ctx(context);
+    auto storage = m_storage;
+    
+    QMetaObject::invokeMethod(m_workerContext, [self, conversationId, ctx, callback, storage]() {
+        auto coreMsgs = storage->getConversationMessages(conversationId);
+        std::vector<Domain::Message> messages;
+        for (const auto& cm : coreMsgs) {
+            Domain::Message dm;
+            dm.id = cm.messageId;
+            dm.serverId = cm.serverId;
+            dm.conversationId = cm.conversationId;
+            dm.senderId = cm.senderId;
+            dm.timestamp = cm.timestamp;
+            dm.text = cm.plaintext;
+            dm.status = mapState(cm.state);
+            messages.push_back(dm);
+        }
+        
+        if (callback && self) {
+            QMetaObject::invokeMethod(self, [ctx, callback, messages]() {
+                if (ctx) callback(messages);
+            });
+        }
+    });
 }
 
 void MessageService::getMessageByIdAsync(const QString &id, const QObject* context, std::function<void(const std::optional<Domain::Message>&)> callback) {
-    auto cmOpt = m_storage->getMessage(id);
-    std::optional<Domain::Message> optMsg;
-    if (cmOpt) {
-        Domain::Message dm;
-        dm.id = cmOpt->messageId;
-        dm.conversationId = cmOpt->conversationId;
-        dm.senderId = cmOpt->senderId;
-        dm.timestamp = cmOpt->timestamp;
-        dm.status = mapState(cmOpt->state);
-        optMsg = dm;
-    }
-    if (callback) {
-        auto cb = callback;
-        QTimer::singleShot(0, [cb, optMsg]() { cb(optMsg); });
-    }
+    QPointer<MessageService> self(this);
+    QPointer<const QObject> ctx(context);
+    auto storage = m_storage;
+    
+    QMetaObject::invokeMethod(m_workerContext, [self, id, ctx, callback, storage]() {
+        auto cmOpt = storage->getMessage(id);
+        std::optional<Domain::Message> optMsg;
+        if (cmOpt) {
+            Domain::Message dm;
+            dm.id = cmOpt->messageId;
+            dm.serverId = cmOpt->serverId;
+            dm.conversationId = cmOpt->conversationId;
+            dm.senderId = cmOpt->senderId;
+            dm.timestamp = cmOpt->timestamp;
+            dm.text = cmOpt->plaintext;
+            dm.status = mapState(cmOpt->state);
+            optMsg = dm;
+        }
+        
+        if (callback && self) {
+            QMetaObject::invokeMethod(self, [ctx, callback, optMsg]() {
+                if (ctx) callback(optMsg);
+            });
+        }
+    });
 }
 
 }

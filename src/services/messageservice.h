@@ -27,7 +27,7 @@
 #include "domain/message.h"
 
 class QTimer;
-
+class QThread;
 namespace NeoNect {
 
 /**
@@ -211,6 +211,9 @@ private:
 
     /** @brief Local SQLite message repository. */
     std::shared_ptr<NeoNect::Core::Messaging::IMessageStorage> m_storage;
+    
+    QThread* m_workerThread;
+    QObject* m_workerContext;
 
     void saveMessageAsync(const Domain::Message &msg, const QObject* context, std::function<void(bool)> callback);
     void saveMessagesAsync(const std::vector<Domain::Message> &msgs, const QObject* context, std::function<void(bool)> callback);

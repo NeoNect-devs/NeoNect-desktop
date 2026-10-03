@@ -1,0 +1,28 @@
+********* Start testing of TestServices *********
+Config: Using QtTest library 6.10.2, Qt 6.10.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 15.2.0), ubuntu 26.04
+INFO   : TestServices::initTestCase() entering
+PASS   : TestServices::initTestCase()
+INFO   : TestServices::testDisplayNameResolutionAndSync() entering
+INFO   : TestServices::testDisplayNameResolutionAndSync() QCOMPARE(netMgrAlice.displayName(), QString("Alice in Wonderland"))
+   Loc: [/home/dani/Desktop/NeoNect-desktop/tests/test_services.cpp(1928)]
+INFO   : TestServices::testDisplayNameResolutionAndSync() QCOMPARE(netMgrAlice.getDisplayName("alice"), QString("Alice in Wonderland"))
+   Loc: [/home/dani/Desktop/NeoNect-desktop/tests/test_services.cpp(1929)]
+INFO   : TestServices::testDisplayNameResolutionAndSync() QCOMPARE(netMgrBob.displayName(), QString("Bobby Tables"))
+   Loc: [/home/dani/Desktop/NeoNect-desktop/tests/test_services.cpp(1933)]
+INFO   : TestServices::testDisplayNameResolutionAndSync() QCOMPARE(netMgrBob.getDisplayName("bob"), QString("Bobby Tables"))
+   Loc: [/home/dani/Desktop/NeoNect-desktop/tests/test_services.cpp(1934)]
+INFO   : TestServices::testDisplayNameResolutionAndSync() QCOMPARE(netMgrBob.getDisplayName("alice"), QString("Alice"))
+   Loc: [/home/dani/Desktop/NeoNect-desktop/tests/test_services.cpp(1937)]
+INFO   : TestServices::testDisplayNameResolutionAndSync() QCOMPARE(netMgrAlice.getDisplayName("bob"), QString("Bob"))
+   Loc: [/home/dani/Desktop/NeoNect-desktop/tests/test_services.cpp(1938)]
+QWARN  : TestServices::testDisplayNameResolutionAndSync() [RelayService] sendDomainMessage is deprecated and disconnected in Step 9. Use sendEncryptedEnvelope.
+INFO   : TestServices::testDisplayNameResolutionAndSync() QCOMPARE(netMgrBob.getDisplayName("alice"), QString("Alice in Wonderland"))
+   Loc: [/home/dani/Desktop/NeoNect-desktop/tests/test_services.cpp(1957)]
+FAIL!  : TestServices::testDisplayNameResolutionAndSync() Compared values are not the same
+   Actual   (netMgrBob.getDisplayName("alice")): "Alice"
+   Expected (QString("Alice in Wonderland"))   : "Alice in Wonderland"
+   Loc: [/home/dani/Desktop/NeoNect-desktop/tests/test_services.cpp(1957)]
+INFO   : TestServices::cleanupTestCase() entering
+PASS   : TestServices::cleanupTestCase()
+Totals: 2 passed, 1 failed, 0 skipped, 0 blacklisted, 161ms
+********* Finished testing of TestServices *********

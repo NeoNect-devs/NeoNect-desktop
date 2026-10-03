@@ -1,0 +1,15 @@
+********* Start testing of TestStorage *********
+Config: Using QtTest library 6.10.2, Qt 6.10.2 (x86_64-little_endian-lp64 shared (dynamic) release build; by GCC 15.2.0), ubuntu 26.04
+PASS   : TestStorage::initTestCase()
+PASS   : TestStorage::testProfileIsolation()
+PASS   : TestStorage::testGettersAndSetters()
+PASS   : TestStorage::testClearSession()
+PASS   : TestStorage::testBookmarks()
+PASS   : TestStorage::testOpenConversationsPersistence()
+PASS   : TestStorage::testAccountScopedConversations()
+PASS   : TestStorage::testAccountScopedFriends()
+PASS   : TestStorage::testDisplayNamePersistence()
+PASS   : TestStorage::testAvatarUrlPersistence()
+PASS   : TestStorage::cleanupTestCase()
+Totals: 11 passed, 0 failed, 0 skipped, 0 blacklisted, 46ms
+********* Finished testing of TestStorage *********

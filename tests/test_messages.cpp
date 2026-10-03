@@ -102,6 +102,7 @@ void TestMessages::testDuplicateServerIdHandling() {
     
     NeoNect::Core::Messaging::Message cm;
     cm.messageId = msg.id;
+    cm.serverId = msg.serverId;
     cm.conversationId = msg.conversationId;
     cm.senderId = msg.senderId;
     cm.timestamp = msg.timestamp;
@@ -117,6 +118,7 @@ void TestMessages::testDuplicateServerIdHandling() {
     
     NeoNect::Core::Messaging::Message cm2;
     cm2.messageId = msg2.id;
+    cm2.serverId = msg2.serverId;
     cm2.conversationId = msg2.conversationId;
     cm2.senderId = msg2.senderId;
     cm2.timestamp = msg2.timestamp;

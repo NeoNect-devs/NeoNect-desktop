@@ -16,6 +16,7 @@ enum class MessageState {
 
 struct Message {
     QString messageId;
+    qint64 serverId = 0;
     QString conversationId;
     QString senderId;
     QString receiverId;

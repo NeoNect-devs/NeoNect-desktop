@@ -21,6 +21,10 @@
 #include "../src/core/notificationmanager.h"
 #include "../src/core/chatmessagemodel.h"
 
+void TestServices::initTestCase() {
+    QCoreApplication::setApplicationName("NeoNect");
+}
+
 void TestServices::testAuthServiceFlow() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_auth");
