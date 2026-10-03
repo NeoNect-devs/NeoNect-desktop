@@ -6,7 +6,7 @@
 #include <QJsonArray>
 #include <QUuid>
 #include "../../src/crypto/cryptoservice.h"
-#include "../../src/storage/sqlmessagerepository.h"
+#include "../../src/core/messaging/MessageStorage.h"
 #include "../../src/domain/message.h"
 #include "../../src/core/chatmessagemodel.h"
 
@@ -69,14 +69,14 @@ class BenchmarkSql : public QObject {
     Q_OBJECT
 
 private:
-    std::shared_ptr<SqlMessageRepository> m_repo;
+    std::shared_ptr<NeoNect::Core::Messaging::SqliteMessageStorage> m_repo;
     QString m_dbPath;
 
 private slots:
     void init() {
         m_dbPath = "test_bench_db.db";
         QFile::remove(m_dbPath);
-        m_repo = std::make_shared<SqlMessageRepository>(m_dbPath);
+        m_repo = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(m_dbPath);
     }
 
     void cleanup() {

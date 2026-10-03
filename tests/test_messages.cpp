@@ -2,7 +2,7 @@
 #include <QEventLoop>
 #include <QDir>
 #include "test_messages.h"
-#include "storage/sqlmessagerepository.h"
+#include "core/messaging/MessageStorage.h"
 #include "services/messageservice.h"
 #include "core/chatmessagemodel.h"
 
@@ -21,7 +21,7 @@ void TestMessages::cleanupTestCase() {
 void TestMessages::testSqliteInsertAndRetrieve() {
     QString dbPath = "test_messages_db/test1.db";
     QFile::remove(dbPath);
-    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
     
     Domain::Message msg;
     msg.id = "msg1";
@@ -30,21 +30,23 @@ void TestMessages::testSqliteInsertAndRetrieve() {
     msg.text = "Hello!";
     msg.timestamp = 1000;
     
-    QEventLoop loop;
-    bool successResult = false;
-    repo->saveMessageAsync(msg, this, [&](bool success) {
-        successResult = success;
-        loop.quit();
-    });
-    loop.exec();
+    NeoNect::Core::Messaging::Message cm;
+    cm.messageId = msg.id;
+    cm.conversationId = msg.conversationId;
+    cm.senderId = msg.senderId;
+    cm.timestamp = msg.timestamp;
+    cm.plaintext = msg.text;
+    bool successResult = repo->saveMessage(cm);
     QVERIFY(successResult);
 
     std::vector<Domain::Message> fetched;
-    repo->getMessagesAsync("dms:alice", 50, 0, this, [&](const std::vector<Domain::Message>& msgs) {
-        fetched = msgs;
-        loop.quit();
-    });
-    loop.exec();
+    auto coreMsgs = repo->getConversationMessages("dms:alice");
+    for (const auto& cm : coreMsgs) {
+        Domain::Message dm;
+        dm.id = cm.messageId;
+        dm.text = cm.plaintext;
+        fetched.push_back(dm);
+    }
     
     QCOMPARE(fetched.size(), 1);
     QCOMPARE(fetched[0].id, QString("msg1"));
@@ -54,8 +56,7 @@ void TestMessages::testSqliteInsertAndRetrieve() {
 void TestMessages::testMessageOrdering() {
     QString dbPath = "test_messages_db/test2.db";
     QFile::remove(dbPath);
-    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
-    QEventLoop loop;
+    auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
     
     for (int i = 1; i <= 3; ++i) {
         Domain::Message msg;
@@ -64,16 +65,23 @@ void TestMessages::testMessageOrdering() {
         msg.senderId = "bob";
         msg.timestamp = i * 1000; // 1000, 2000, 3000
         
-        repo->saveMessageAsync(msg, this, [&](bool) { loop.quit(); });
-        loop.exec();
+        NeoNect::Core::Messaging::Message cm;
+    cm.messageId = msg.id;
+    cm.conversationId = msg.conversationId;
+    cm.senderId = msg.senderId;
+    cm.timestamp = msg.timestamp;
+    cm.plaintext = msg.text;
+    bool successResult = repo->saveMessage(cm);
     }
     
     std::vector<Domain::Message> fetched;
-    repo->getMessagesAsync("dms:bob", 50, 0, this, [&](const std::vector<Domain::Message>& msgs) {
-        fetched = msgs;
-        loop.quit();
-    });
-    loop.exec();
+    auto coreMsgs = repo->getConversationMessages("dms:bob");
+    for (const auto& cm : coreMsgs) {
+        Domain::Message dm;
+        dm.id = cm.messageId;
+        dm.text = cm.plaintext;
+        fetched.push_back(dm);
+    }
     
     QCOMPARE(fetched.size(), 3);
     // Should be returned in chronological order by getMessagesAsync because of prepend
@@ -84,8 +92,7 @@ void TestMessages::testMessageOrdering() {
 void TestMessages::testDuplicateServerIdHandling() {
     QString dbPath = "test_messages_db/test3.db";
     QFile::remove(dbPath);
-    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
-    QEventLoop loop;
+    auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
     
     Domain::Message msg;
     msg.id = "local1";
@@ -93,8 +100,13 @@ void TestMessages::testDuplicateServerIdHandling() {
     msg.conversationId = "dms:charlie";
     msg.senderId = "charlie";
     
-    repo->saveMessageAsync(msg, this, [&](bool) { loop.quit(); });
-    loop.exec();
+    NeoNect::Core::Messaging::Message cm;
+    cm.messageId = msg.id;
+    cm.conversationId = msg.conversationId;
+    cm.senderId = msg.senderId;
+    cm.timestamp = msg.timestamp;
+    cm.plaintext = msg.text;
+    bool successResult = repo->saveMessage(cm);
     
     // Insert another with same server ID
     Domain::Message msg2;
@@ -103,22 +115,25 @@ void TestMessages::testDuplicateServerIdHandling() {
     msg2.conversationId = "dms:charlie";
     msg2.senderId = "charlie";
     
-    bool saveSuccess = true;
-    repo->saveMessageAsync(msg2, this, [&](bool success) { 
-        saveSuccess = success;
-        loop.quit(); 
-    });
-    loop.exec();
+    NeoNect::Core::Messaging::Message cm2;
+    cm2.messageId = msg2.id;
+    cm2.conversationId = msg2.conversationId;
+    cm2.senderId = msg2.senderId;
+    cm2.timestamp = msg2.timestamp;
+    cm2.plaintext = msg2.text;
+    bool saveSuccess = repo->saveMessage(cm2);
     
     // SQLite UNIQUE constraint on server_id > 0 with INSERT OR REPLACE replaces it
     QVERIFY(saveSuccess);
     
     std::vector<Domain::Message> fetched;
-    repo->getMessagesAsync("dms:charlie", 50, 0, this, [&](const std::vector<Domain::Message>& msgs) {
-        fetched = msgs;
-        loop.quit();
-    });
-    loop.exec();
+    auto coreMsgs = repo->getConversationMessages("dms:charlie");
+    for (const auto& cm : coreMsgs) {
+        Domain::Message dm;
+        dm.id = cm.messageId;
+        dm.text = cm.plaintext;
+        fetched.push_back(dm);
+    }
     
     QCOMPARE(fetched.size(), 1);
     QCOMPARE(fetched[0].id, QString("local2"));
@@ -128,25 +143,31 @@ void TestMessages::testRepositoryReopenPersistence() {
     QString dbPath = "test_messages_db/test4.db";
     QFile::remove(dbPath);
     
-    QEventLoop loop;
     {
-        auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+        auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
         Domain::Message msg;
         msg.id = "persist1";
         msg.conversationId = "dms:dave";
         msg.senderId = "dave";
-        repo->saveMessageAsync(msg, this, [&](bool) { loop.quit(); });
-        loop.exec();
+        NeoNect::Core::Messaging::Message cm;
+    cm.messageId = msg.id;
+    cm.conversationId = msg.conversationId;
+    cm.senderId = msg.senderId;
+    cm.timestamp = msg.timestamp;
+    cm.plaintext = msg.text;
+    bool successResult = repo->saveMessage(cm);
     } // repo destroyed
     
     {
-        auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+        auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
         std::vector<Domain::Message> fetched;
-        repo->getMessagesAsync("dms:dave", 50, 0, this, [&](const std::vector<Domain::Message>& msgs) {
-            fetched = msgs;
-            loop.quit();
-        });
-        loop.exec();
+        auto coreMsgs = repo->getConversationMessages("dms:dave");
+    for (const auto& cm : coreMsgs) {
+        Domain::Message dm;
+        dm.id = cm.messageId;
+        dm.text = cm.plaintext;
+        fetched.push_back(dm);
+    }
         QCOMPARE(fetched.size(), 1);
         QCOMPARE(fetched[0].id, QString("persist1"));
     }
@@ -155,7 +176,7 @@ void TestMessages::testRepositoryReopenPersistence() {
 void TestMessages::testMessageServiceIntegration() {
     QString dbPath = "test_messages_db/test5.db";
     QFile::remove(dbPath);
-    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
     Services::MessageService service(repo);
     service.setCurrentUserId("me");
     
@@ -202,7 +223,7 @@ void TestMessages::testMessageModelPopulation() {
 void TestMessages::testTypingStatusTransmissionAndHandling() {
     QString dbPath = "test_messages_db/test6.db";
     QFile::remove(dbPath);
-    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
     Services::MessageService service(repo);
     service.setCurrentUserId("me");
 
@@ -251,7 +272,7 @@ void TestMessages::testTypingStatusTransmissionAndHandling() {
 void TestMessages::testMessageDeliveryStatusTransitions() {
     QString dbPath = "test_messages_db/test7.db";
     QFile::remove(dbPath);
-    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
     Services::MessageService service(repo);
     service.setCurrentUserId("me");
 
@@ -279,7 +300,7 @@ void TestMessages::testMessageDeliveryStatusTransitions() {
 void TestMessages::testMediaTransferProgressSenderSide() {
     QString dbPath = "test_messages_db/test8.db";
     QFile::remove(dbPath);
-    auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+    auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
     Services::MessageService service(repo);
     service.setCurrentUserId("me");
 

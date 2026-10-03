@@ -14,7 +14,7 @@
 #include "../src/services/relayservice.h"
 #include "../src/services/friendservice.h"
 #include "../src/services/messageservice.h"
-#include "../src/storage/sqlmessagerepository.h"
+#include "../src/core/messaging/MessageStorage.h"
 #include "../src/core/audiomanager.h"
 #include "../src/core/networkmanager.h"
 #include <iostream>
@@ -484,8 +484,8 @@ void TestServices::testTwoClientMediaRequestApprovalFlow() {
     auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
     auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
 
-    auto repoAlice = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
-    auto repoBob = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto repoAlice = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
+    auto repoBob = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
 
     auto msgAlice = std::make_shared<NeoNect::Services::MessageService>(repoAlice);
     msgAlice->setCurrentUserId("alice");
@@ -1380,8 +1380,8 @@ void TestServices::testSeenReceiptsAndUpdateCheckmark() {
     auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
     auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
 
-    auto repoAlice = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
-    auto repoBob = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto repoAlice = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
+    auto repoBob = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
 
     auto msgAlice = std::make_shared<NeoNect::Services::MessageService>(repoAlice);
     msgAlice->setCurrentUserId("alice");
@@ -1485,7 +1485,7 @@ void TestServices::testSelfDirectMessageAndSavedMessagesFlow() {
     QCOMPARE(netMgr.unreadCount("alice"), 0);
 
     // 4. Test MessageService with saved-messages: saved locally as Sent, NO network transmission
-    auto repo = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto repo = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
     auto msgService = std::make_shared<NeoNect::Services::MessageService>(repo);
     msgService->setCurrentUserId("alice");
 
@@ -1530,7 +1530,7 @@ void TestServices::testSelfDirectMessageAndSavedMessagesFlow() {
 }
 
 void TestServices::testRetryMessageFlow() {
-    auto repo = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto repo = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
     auto msgService = std::make_shared<NeoNect::Services::MessageService>(repo);
     msgService->setCurrentUserId("alice");
 
@@ -1624,7 +1624,13 @@ void TestServices::testRetryMessageFlow() {
     coldMsg.errorText = "P2P transfer aborted";
     coldMsg.timestamp = 1700000000;
 
-    repo->saveMessageAsync(coldMsg, nullptr, [](bool) {});
+    NeoNect::Core::Messaging::Message cmCold;
+    cmCold.messageId = coldMsg.id;
+    cmCold.conversationId = coldMsg.conversationId;
+    cmCold.senderId = coldMsg.senderId;
+    cmCold.timestamp = coldMsg.timestamp;
+    cmCold.state = NeoNect::Core::Messaging::MessageState::FAILED;
+    repo->saveMessage(cmCold);
     QTest::qWait(200);
 
     // Create a new MessageService instance with same repo so memory cache is empty
@@ -1655,7 +1661,13 @@ void TestServices::testRetryMessageFlow() {
     savedMsg.status = NeoNect::Domain::MessageStatus::Failed;
     savedMsg.timestamp = 1700000050;
 
-    repo->saveMessageAsync(savedMsg, nullptr, [](bool) {});
+    NeoNect::Core::Messaging::Message cmSaved;
+    cmSaved.messageId = savedMsg.id;
+    cmSaved.conversationId = savedMsg.conversationId;
+    cmSaved.senderId = savedMsg.senderId;
+    cmSaved.timestamp = savedMsg.timestamp;
+    cmSaved.state = NeoNect::Core::Messaging::MessageState::FAILED;
+    repo->saveMessage(cmSaved);
     QTest::qWait(200);
 
     freshSpyUpdated.clear();
@@ -1733,7 +1745,7 @@ void TestServices::testFunctionalOnlineIdleDndInvisibleStates() {
     QCOMPARE(notifMgr.unreadCount(), 1);
 
     // 4. Invisible / Offline state
-    auto msgRepo = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto msgRepo = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
     NeoNect::Services::MessageService msgService(msgRepo);
     msgService.setCurrentUserId("alice");
     QObject::connect(&netMgr, &NetworkManager::isInvisibleChanged,
@@ -1814,8 +1826,8 @@ void TestServices::testRealtimeChatPresenceExchange() {
     NetworkManager netMgrAlice(sharedTransport, storageAlice, cryptoAlice, authAlice, devAlice, relayAlice, friendAlice);
     NetworkManager netMgrBob(sharedTransport, storageBob, cryptoBob, authBob, devBob, relayBob, friendBob);
 
-    auto msgRepoAlice = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
-    auto msgRepoBob = std::make_shared<NeoNect::Storage::SqlMessageRepository>(":memory:");
+    auto msgRepoAlice = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
+    auto msgRepoBob = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
     NeoNect::Services::MessageService msgAlice(msgRepoAlice);
     NeoNect::Services::MessageService msgBob(msgRepoBob);
     msgAlice.setCurrentUserId("alice");

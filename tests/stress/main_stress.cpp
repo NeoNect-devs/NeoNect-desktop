@@ -12,7 +12,7 @@
 #include <QFile>
 
 #include "../../src/crypto/cryptoservice.h"
-#include "../../src/storage/sqlmessagerepository.h"
+#include "../../src/core/messaging/MessageStorage.h"
 #include "../../src/storage/settingsrepository.h"
 #include "../../src/domain/message.h"
 #include "../../src/core/chatmessagemodel.h"
@@ -76,7 +76,7 @@ private slots:
     // 1. 100k Workloads
     void testLargeSqlWorkload() {
         QString dbPath = m_tempDir.path() + "/stress.db";
-        auto repo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
+        auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
         
         std::vector<Message> msgs;
         int count = 100000;
@@ -141,7 +141,7 @@ private slots:
     // 3. Rapid Send/Receive
     void testRapidSendReceive() {
         auto transport = std::make_shared<StressHttpTransport>();
-        auto repo = std::make_shared<Storage::SqlMessageRepository>(m_tempDir.path() + "/rapid.db");
+        auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(m_tempDir.path() + "/rapid.db");
         auto crypto = std::make_shared<Crypto::CryptoService>();
         auto settings = std::make_shared<Storage::SettingsRepository>(m_tempDir.path() + "/settings_rapid.ini");
         settings->setAuthToken("token");
@@ -204,7 +204,7 @@ private slots:
             auto settings = std::make_shared<Storage::SettingsRepository>(m_tempDir.path() + QString("/set_%1.ini").arg(i));
         settings->setAuthToken("token");
         settings->setDeviceId("dev");
-            auto repo = std::make_shared<Storage::SqlMessageRepository>(m_tempDir.path() + QString("/db_%1.sqlite").arg(i));
+            auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(m_tempDir.path() + QString("/db_%1.sqlite").arg(i));
             
             auto relay = std::make_unique<Services::RelayService>(transport, settings, crypto);
             auto msgSvc = std::make_unique<Services::MessageService>(repo);
@@ -291,7 +291,7 @@ private slots:
     // 10. Database Failure
     void testDbFailure() {
         // Use read-only or invalid dir
-        auto repo = std::make_shared<Storage::SqlMessageRepository>("/invalid_dir/db.sqlite");
+        auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>("/invalid_dir/db.sqlite");
         
         QEventLoop loop;
         Message msg;
