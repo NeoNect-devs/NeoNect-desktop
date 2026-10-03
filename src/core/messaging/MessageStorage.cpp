@@ -55,12 +55,15 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
+    if (!db.transaction()) return false;
+
     // Check for duplicate
     QSqlQuery checkQuery(db);
     checkQuery.prepare("SELECT 1 FROM messages WHERE id = :id");
     checkQuery.bindValue(":id", msg.messageId);
     if (checkQuery.exec() && checkQuery.next()) {
         // duplicate exists, do not overwrite, but return true
+        db.rollback();
         return true;
     }
 
@@ -69,7 +72,10 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
         delQuery.prepare("DELETE FROM messages WHERE server_id = :srv AND id != :id");
         delQuery.bindValue(":srv", msg.serverId);
         delQuery.bindValue(":id", msg.messageId);
-        delQuery.exec();
+        if (!delQuery.exec()) {
+            db.rollback();
+            return false;
+        }
     }
 
     QSqlQuery query(db);
@@ -84,7 +90,13 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
     query.bindValue(":state", static_cast<int>(msg.state));
     query.bindValue(":created_at", msg.timestamp);
     query.bindValue(":updated_at", msg.timestamp);
-    return query.exec();
+    
+    if (query.exec()) {
+        return db.commit();
+    } else {
+        db.rollback();
+        return false;
+    }
 }
 
 std::optional<Message> SqliteMessageStorage::getMessage(const QString& messageId) {
@@ -113,6 +125,7 @@ bool SqliteMessageStorage::updateMessageState(const QString& messageId, MessageS
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
+    // Single statement, SQLite handles atomicity for a single UPDATE.
     QSqlQuery query(db);
     query.prepare("UPDATE messages SET state = :state, updated_at = :updated_at WHERE id = :id");
     query.bindValue(":state", static_cast<int>(newState));
@@ -152,6 +165,7 @@ bool SqliteMessageStorage::deleteMessage(const QString& messageId) {
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
+    // Single statement, SQLite handles atomicity for a single DELETE.
     QSqlQuery query(db);
     query.prepare("DELETE FROM messages WHERE id = :id");
     query.bindValue(":id", messageId);

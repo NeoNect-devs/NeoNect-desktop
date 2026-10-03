@@ -1,3 +1,5 @@
+#include <QSqlQuery>
+#include <QSqlError>
 #include "test_messaging_core.h"
 #include <QtTest>
 #include "../src/core/messaging/Message.h"
@@ -129,14 +131,50 @@ void TestMessagingCore::testRestartPersistence() {
 
 void TestMessagingCore::testDatabaseFailureAtomicity() {
     SqliteMessageStorage storage("test_messaging_core.db");
-    Message msg;
-    // Missing ID, SQLite should reject if we enforce constraints, but SQLite allows empty strings.
-    // However, if we fail to insert, it returns false.
-    // Actually, testing sqlite failure atomicity requires failing a transaction.
-    // We didn't use explicit BEGIN/COMMIT in saveMessage since it's a single statement.
-    // So atomic by default.
-    QVERIFY(true);
+    
+    Message msg1;
+    msg1.messageId = "atomic-test-1";
+    msg1.serverId = 2000;
+    msg1.conversationId = "conv-1";
+    msg1.senderId = "sender";
+    msg1.receiverId = "receiver";
+    msg1.plaintext = "original";
+    msg1.state = MessageState::SENT;
+    msg1.timestamp = 1000;
+    QVERIFY(storage.saveMessage(msg1));
+    
+    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "test_trigger_conn");
+    db.setDatabaseName("test_messaging_core.db");
+    QVERIFY(db.open());
+    QSqlQuery query(db);
+    // Add a trigger that forces an abort on the next insert
+    query.exec("CREATE TRIGGER IF NOT EXISTS fail_insert BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT, 'intentional failure'); END;");
+    
+    // Attempt to save a message that will trigger the duplicate server_id deletion, 
+    // but the insert itself will fail.
+    Message msg2;
+    msg2.messageId = "atomic-test-2";
+    msg2.serverId = 2000;
+    msg2.conversationId = "conv-1";
+    msg2.senderId = "sender";
+    msg2.receiverId = "receiver";
+    msg2.plaintext = "new";
+    msg2.state = MessageState::SENT;
+    msg2.timestamp = 1001;
+    
+    // The insert should fail, so saveMessage should return false
+    QVERIFY(!storage.saveMessage(msg2));
+    
+    // Remove the trigger to allow normal reads/operations again (though reads don't trigger it)
+    query.exec("DROP TRIGGER fail_insert");
+    
+    // Because of atomicity, the DELETE of msg1 (due to server_id collision) MUST HAVE BEEN ROLLED BACK!
+    auto retrieved = storage.getMessage("atomic-test-1");
+    QVERIFY(retrieved.has_value());
+    QCOMPARE(retrieved->serverId, 2000);
 }
+
+
 
 // For testing MessageService without full crypto deps, we will just test the logic that we can test safely.
 void TestMessagingCore::testSuccessfulSendPipeline() {
