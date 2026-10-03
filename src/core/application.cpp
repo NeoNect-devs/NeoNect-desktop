@@ -17,6 +17,19 @@
 #include "../transport/httptransport.h"
 #include "../crypto/cryptoservice.h"
 
+// E2EE Production Graph Includes
+#include "../storage/e2ee/PlatformSecretStore.h"
+#include "../storage/e2ee/MasterKeyProvider.h"
+#include "../storage/e2ee/SecureE2EEStore.h"
+#include "../crypto/x3dh/X3DH.h"
+#include "../crypto/doubleratchet/DoubleRatchet.h"
+#include "../crypto/doubleratchet/AEAD.h"
+#include "../crypto/OpenSSLBackend.h"
+#include "../crypto/XEdDSAAdapter.h"
+#include "messaging/OfflineQueue.h"
+#include "messaging/MessageService.h"
+#include "../crypto/session/SessionManager.h"
+
 #include <QQmlContext>
 #include <QQuickWindow>
 #include <QIcon>
@@ -187,14 +200,76 @@ void Application::initializeServices() {
     });
     m_messageService->setCurrentUserId(initialUser); // Initial set
     
+    // E2EE Production Object Graph
+    QString secureDbName = m_profile.isEmpty() ? QString("e2ee_%1.db").arg(initialUser.isEmpty() ? "guest" : initialUser) : QString("e2ee_%1_%2.db").arg(m_profile, initialUser.isEmpty() ? "guest" : initialUser);
+    QString secureDbPath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(secureDbName);
+    
+    auto secretStore = std::make_shared<Storage::PlatformSecretStore>();
+    auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(secretStore);
+    m_secureStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
+    m_secureStore->initialize(secureDbPath);
+
+    auto backend = std::make_shared<Crypto::OpenSSLBackend>();
+    auto xeddsa = std::make_shared<Crypto::XEdDSAAdapter>();
+    auto x3dh = std::make_shared<Crypto::X3DHImpl>();
+    auto ratchet = std::make_shared<Crypto::DoubleRatchet::Engine>(backend);
+    auto aead = std::make_shared<Crypto::DoubleRatchet::AEAD>(backend.get());
+
+    m_messageQueue = std::make_shared<Core::Messaging::MessageQueue>(dbPath);
+    m_offlineQueueService = std::make_shared<Core::Messaging::OfflineQueueService>(
+        m_messageQueue,
+        [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) {
+            if (m_relayService) {
+                m_relayService->sendEncryptedEnvelope(rUser, rDev, msgId, env);
+                return true;
+            }
+            return false;
+        }
+    );
+
+    m_sessionManager = std::make_shared<Crypto::Session::SessionManager>(
+        m_secureStore, x3dh, ratchet, aead, backend, nullptr, xeddsa,
+        [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) {
+            if (m_offlineQueueService) m_offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
+        },
+        nullptr // Incoming E2EE deferred to A8.2
+    );
+
+    m_coreMessageService = std::make_shared<Core::Messaging::MessageService>(m_messageStorage, m_sessionManager, m_messageQueue);
+
     // RelayService -> MessageService (Incoming)
     QObject::connect(m_relayService.get(), &Services::RelayService::incomingDomainMessagesReceived, m_messageService.get(), &Services::MessageService::handleIncomingMessages);
     QObject::connect(m_relayService.get(), &Services::RelayService::messageTransmissionStatus, m_messageService.get(), [this](const QString &, const QString &messageId, bool success, const QString &errorMessage) {
         m_messageService->handleMessageDeliveryStatus(messageId, success, errorMessage);
+        if (m_offlineQueueService) {
+            if (success) {
+                m_offlineQueueService->handleAck(messageId);
+            } else {
+                m_offlineQueueService->handleTransportFailure(messageId);
+            }
+        }
     });
     
-    // MessageService -> RelayService (Outgoing)
-    QObject::connect(m_messageService.get(), &Services::MessageService::transmitMessage, m_relayService.get(), &Services::RelayService::sendDomainMessage);
+    // MessageService -> RelayService (Outgoing E2EE Adapter)
+    QObject::connect(m_messageService.get(), &Services::MessageService::transmitMessage, m_relayService.get(), [this](const NeoNect::Domain::Message& msg) {
+        Core::Messaging::Message coreMsg;
+        coreMsg.messageId = msg.id;
+        coreMsg.conversationId = msg.conversationId;
+        coreMsg.senderId = msg.senderId;
+        
+        // Extract plain username if it's a DM prefix
+        if (msg.conversationId.startsWith("dms:")) {
+            coreMsg.receiverId = msg.conversationId.mid(4);
+        } else {
+            coreMsg.receiverId = msg.conversationId; // fallback
+        }
+        
+        coreMsg.timestamp = msg.timestamp;
+        coreMsg.plaintext = msg.text;
+        coreMsg.state = Core::Messaging::MessageState::CREATED;
+        
+        m_coreMessageService->sendMessage(coreMsg);
+    });
 
     // Broadcast presence status changes to active chat peers and friends
     auto broadcastPresence = [this]() {

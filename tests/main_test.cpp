@@ -21,6 +21,7 @@
 #include "test_session_manager.h"
 #include "test_messaging_core.h"
 #include "test_offline_queue.h"
+#include "test_production_e2ee.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -311,6 +312,12 @@ int main(int argc, char *argv[]) {
         TestSecureStorage tss;
         int res = QTest::qExec(&tss);
         std::cout << "[TestSecureStorage Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestProductionE2EE tpe;
+        int res = QTest::qExec(&tpe);
+        std::cout << "[TestProductionE2EE Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     std::cout << "\n==========================================" << std::endl;

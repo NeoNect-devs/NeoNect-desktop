@@ -19,15 +19,27 @@ MessageService::MessageService(std::shared_ptr<IMessageStorage> storage,
 bool MessageService::sendMessage(Message& msg) {
     if (msg.state != MessageState::CREATED) return false;
     
-    // Save to DB initially
+    // Save to DB initially, or proceed if already saved by the legacy facade
     if (!m_storage->saveMessage(msg)) {
-        return false;
+        auto existing = m_storage->getMessage(msg.messageId);
+        if (!existing) {
+            qDebug() << "[CoreMessageService] No existing message found for ID:" << msg.messageId;
+            return false;
+        }
+        if (existing->state != MessageState::CREATED) {
+            qDebug() << "[CoreMessageService] Existing message has state:" << static_cast<int>(existing->state);
+            return false;
+        }
     }
 
     // Attempt state transition
-    if (!isValidTransition(msg.state, MessageState::ENCRYPTING)) return false;
+    if (!isValidTransition(msg.state, MessageState::ENCRYPTING)) {
+        qDebug() << "[CoreMessageService] Invalid transition to ENCRYPTING from:" << static_cast<int>(msg.state);
+        return false;
+    }
     msg.state = MessageState::ENCRYPTING;
     if (!m_storage->updateMessageState(msg.messageId, msg.state)) {
+        qDebug() << "[CoreMessageService] updateMessageState to ENCRYPTING failed!";
         return false;
     }
 

@@ -39,10 +39,18 @@ class AudioManager;
 
 namespace NeoNect {
 
-namespace Storage { class SettingsRepository; }
-namespace Crypto { class ICryptoService; }
+namespace Storage { class SettingsRepository; class SecureE2EEStore; }
+namespace Crypto { class ICryptoService; namespace Session { class SessionManager; } }
 namespace Transport { class IHttpTransport; }
-namespace Core { class NotificationManager; class VersionInfo; }
+namespace Core { 
+    class NotificationManager; 
+    class VersionInfo; 
+    namespace Messaging {
+        class MessageQueue;
+        class OfflineQueueService;
+        class MessageService;
+    }
+}
 namespace Services { class RelayService; }
 
 /**
@@ -136,6 +144,14 @@ private:
     std::shared_ptr<Storage::SettingsRepository> m_storage;
     /** @brief Asynchronous SQLite message history repository. */
     std::shared_ptr<Core::Messaging::IMessageStorage> m_messageStorage;
+    
+    // E2EE Production Graph Objects
+    std::shared_ptr<Storage::SecureE2EEStore> m_secureStore;
+    std::shared_ptr<Crypto::Session::SessionManager> m_sessionManager;
+    std::shared_ptr<Core::Messaging::MessageQueue> m_messageQueue;
+    std::shared_ptr<Core::Messaging::OfflineQueueService> m_offlineQueueService;
+    std::shared_ptr<Core::Messaging::MessageService> m_coreMessageService;
+
     /** @brief Concrete OpenSSL cryptographic service. */
     std::shared_ptr<Crypto::ICryptoService> m_cryptoService;
     /** @brief Production HTTP network transport. */

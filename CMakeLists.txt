@@ -358,6 +358,7 @@ add_executable(NeoNectTests
     tests/test_session_manager.h tests/test_session_manager.cpp
     tests/test_messaging_core.h tests/test_messaging_core.cpp
     tests/test_offline_queue.h tests/test_offline_queue.cpp
+    tests/test_production_e2ee.h tests/test_production_e2ee.cpp
 
     # Common
     src/common/types.h
