@@ -55,6 +55,15 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
+    // Check for duplicate
+    QSqlQuery checkQuery(db);
+    checkQuery.prepare("SELECT 1 FROM messages WHERE id = :id");
+    checkQuery.bindValue(":id", msg.messageId);
+    if (checkQuery.exec() && checkQuery.next()) {
+        // duplicate exists, do not overwrite, but return true
+        return true;
+    }
+
     if (msg.serverId > 0) {
         QSqlQuery delQuery(db);
         delQuery.prepare("DELETE FROM messages WHERE server_id = :srv AND id != :id");
