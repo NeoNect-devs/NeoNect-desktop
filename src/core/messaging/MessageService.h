@@ -6,7 +6,7 @@
 #include <functional>
 #include "../../crypto/session/SessionManager.h"
 #include "../../transport/IIncomingEnvelopeHandler.h"
-#include "OfflineQueue.h"
+#include "IMessageQueue.h"
 
 namespace NeoNect {
 namespace Core {
