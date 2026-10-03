@@ -2,8 +2,11 @@
 #include <QString>
 #include <vector>
 #include <optional>
-#include "Message.h"
+#include <QMutex>
+#include <QHash>
+#include <QThread>
 #include <QSqlDatabase>
+#include "Message.h"
 
 namespace NeoNect {
 namespace Core {
@@ -32,6 +35,9 @@ public:
 
 private:
     QString m_dbPath;
+    QMutex m_mutex;
+    QHash<Qt::HANDLE, QString> m_connectionNames;
+
     QSqlDatabase getDatabase();
 };
 

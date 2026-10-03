@@ -5,64 +5,76 @@
 #include <QVariant>
 #include <QUuid>
 #include <QDateTime>
-#include <QThread>
 
 namespace NeoNect {
 namespace Core {
 namespace Messaging {
 
 SqliteMessageStorage::SqliteMessageStorage(const QString& dbPath) : m_dbPath(dbPath) {
-    getDatabase();
 }
 
 SqliteMessageStorage::~SqliteMessageStorage() {
+    QMutexLocker locker(&m_mutex);
+    for (const QString& name : m_connectionNames.values()) {
+        {
+            QSqlDatabase db = QSqlDatabase::database(name);
+            if (db.isOpen()) db.close();
+        }
+        QSqlDatabase::removeDatabase(name);
+    }
 }
 
 QSqlDatabase SqliteMessageStorage::getDatabase() {
-    thread_local QHash<QString, QString> connectionNames;
-    if (!connectionNames.contains(m_dbPath)) {
-        connectionNames[m_dbPath] = QString("SqliteMessageStorage_%1").arg(QUuid::createUuid().toString());
+    QMutexLocker locker(&m_mutex);
+    Qt::HANDLE threadId = QThread::currentThreadId();
+    if (!m_connectionNames.contains(threadId)) {
+        QString name = QUuid::createUuid().toString();
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);
+        db.setDatabaseName(m_dbPath);
+        if (db.open()) {
+            QSqlQuery query(db);
+            query.exec("CREATE TABLE IF NOT EXISTS messages ("
+                       "id TEXT PRIMARY KEY, "
+                       "server_id INTEGER, "
+                       "conversation_id TEXT, "
+                       "sender_id TEXT, "
+                       "receiver_id TEXT, "
+                       "plaintext TEXT, "
+                       "state INTEGER, "
+                       "created_at INTEGER, "
+                       "updated_at INTEGER)");
+            query.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_server_id ON messages (server_id) WHERE server_id > 0");
+        }
+        m_connectionNames.insert(threadId, name);
+        return db;
     }
-    QString name = connectionNames[m_dbPath];
-    if (QSqlDatabase::contains(name)) {
-        return QSqlDatabase::database(name);
-    }
-    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);
-    db.setDatabaseName(m_dbPath);
-    if (db.open()) {
-        QSqlQuery query(db);
-        query.exec("CREATE TABLE IF NOT EXISTS messages ("
-                   "id TEXT PRIMARY KEY, "
-                   "server_id INTEGER DEFAULT 0, "
-                   "conversation_id TEXT, "
-                   "sender_id TEXT, "
-                   "receiver_id TEXT, "
-                   "state INTEGER, "
-                   "created_at INTEGER, "
-                   "updated_at INTEGER, "
-                   "plaintext TEXT)");
-        query.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_server_id ON messages(server_id) WHERE server_id > 0");
-    }
-    return db;
+    return QSqlDatabase::database(m_connectionNames.value(threadId));
 }
 
 bool SqliteMessageStorage::saveMessage(const Message& msg) {
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
-    // We do INSERT OR REPLACE to handle duplicate server_id or id updates seamlessly
+    if (msg.serverId > 0) {
+        QSqlQuery delQuery(db);
+        delQuery.prepare("DELETE FROM messages WHERE server_id = :srv AND id != :id");
+        delQuery.bindValue(":srv", msg.serverId);
+        delQuery.bindValue(":id", msg.messageId);
+        delQuery.exec();
+    }
+
     QSqlQuery query(db);
-    query.prepare("INSERT OR REPLACE INTO messages (id, server_id, conversation_id, sender_id, receiver_id, state, created_at, updated_at, plaintext) "
-                  "VALUES (:id, :server_id, :cid, :sid, :rid, :state, :created_at, :updated_at, :plaintext)");
+    query.prepare("INSERT OR REPLACE INTO messages (id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, updated_at) "
+                  "VALUES (:id, :srv, :cid, :sid, :rid, :txt, :state, :created_at, :updated_at)");
     query.bindValue(":id", msg.messageId);
-    query.bindValue(":server_id", msg.serverId);
+    query.bindValue(":srv", msg.serverId);
     query.bindValue(":cid", msg.conversationId);
     query.bindValue(":sid", msg.senderId);
     query.bindValue(":rid", msg.receiverId);
+    query.bindValue(":txt", msg.plaintext);
     query.bindValue(":state", static_cast<int>(msg.state));
     query.bindValue(":created_at", msg.timestamp);
     query.bindValue(":updated_at", msg.timestamp);
-    query.bindValue(":plaintext", msg.plaintext);
     return query.exec();
 }
 
@@ -71,7 +83,7 @@ std::optional<Message> SqliteMessageStorage::getMessage(const QString& messageId
     if (!db.isOpen() && !db.open()) return std::nullopt;
 
     QSqlQuery query(db);
-    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, state, created_at, plaintext FROM messages WHERE id = :id");
+    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at FROM messages WHERE id = :id");
     query.bindValue(":id", messageId);
     if (query.exec() && query.next()) {
         Message msg;
@@ -80,9 +92,9 @@ std::optional<Message> SqliteMessageStorage::getMessage(const QString& messageId
         msg.conversationId = query.value(2).toString();
         msg.senderId = query.value(3).toString();
         msg.receiverId = query.value(4).toString();
-        msg.state = static_cast<MessageState>(query.value(5).toInt());
-        msg.timestamp = query.value(6).toLongLong();
-        msg.plaintext = query.value(7).toString();
+        msg.plaintext = query.value(5).toString();
+        msg.state = static_cast<MessageState>(query.value(6).toInt());
+        msg.timestamp = query.value(7).toLongLong();
         return msg;
     }
     return std::nullopt;
@@ -107,7 +119,7 @@ std::vector<Message> SqliteMessageStorage::getConversationMessages(const QString
     std::vector<Message> results;
     QSqlQuery query(db);
     // ordered by timestamp, then messageId tie breaker
-    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, state, created_at, plaintext FROM messages "
+    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at FROM messages "
                   "WHERE conversation_id = :cid ORDER BY created_at ASC, id ASC");
     query.bindValue(":cid", conversationId);
     if (query.exec()) {
@@ -118,9 +130,9 @@ std::vector<Message> SqliteMessageStorage::getConversationMessages(const QString
             msg.conversationId = query.value(2).toString();
             msg.senderId = query.value(3).toString();
             msg.receiverId = query.value(4).toString();
-            msg.state = static_cast<MessageState>(query.value(5).toInt());
-            msg.timestamp = query.value(6).toLongLong();
-            msg.plaintext = query.value(7).toString();
+            msg.plaintext = query.value(5).toString();
+            msg.state = static_cast<MessageState>(query.value(6).toInt());
+            msg.timestamp = query.value(7).toLongLong();
             results.push_back(msg);
         }
     }
