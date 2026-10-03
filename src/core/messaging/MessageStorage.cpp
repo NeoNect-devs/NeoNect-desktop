@@ -2,6 +2,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QDebug>
 #include <QVariant>
 #include <QUuid>
 #include <QDateTime>
@@ -32,6 +33,16 @@ QSqlDatabase SqliteMessageStorage::getDatabase() {
         QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);
         db.setDatabaseName(m_dbPath);
         if (db.open()) {
+            QSqlQuery pragmaQuery(db);
+            if (!pragmaQuery.exec("PRAGMA journal_mode = WAL;")) {
+                qWarning() << "Failed to set WAL mode for MessageStorage:" << pragmaQuery.lastError().text();
+            }
+            if (!pragmaQuery.exec("PRAGMA synchronous = NORMAL;")) {
+                qWarning() << "Failed to set synchronous mode for MessageStorage:" << pragmaQuery.lastError().text();
+            }
+            if (!pragmaQuery.exec("PRAGMA busy_timeout = 5000;")) {
+                qWarning() << "Failed to set busy_timeout for MessageStorage:" << pragmaQuery.lastError().text();
+            }
             QSqlQuery query(db);
             query.exec("CREATE TABLE IF NOT EXISTS messages ("
                        "id TEXT PRIMARY KEY, "

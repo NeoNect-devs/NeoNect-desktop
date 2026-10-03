@@ -1,6 +1,8 @@
 #include "OfflineQueue.h"
 #include <QSqlDatabase>
 #include <QSqlQuery>
+#include <QSqlError>
+#include <QDebug>
 #include <QUuid>
 #include <QVariant>
 #include <QDateTime>
@@ -26,6 +28,16 @@ void MessageQueue::initDatabase() {
     QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", m_connectionName);
     db.setDatabaseName(m_dbPath);
     if (db.open()) {
+        QSqlQuery pragmaQuery(db);
+        if (!pragmaQuery.exec("PRAGMA journal_mode = WAL;")) {
+            qWarning() << "Failed to set WAL mode for OfflineQueue:" << pragmaQuery.lastError().text();
+        }
+        if (!pragmaQuery.exec("PRAGMA synchronous = NORMAL;")) {
+            qWarning() << "Failed to set synchronous mode for OfflineQueue:" << pragmaQuery.lastError().text();
+        }
+        if (!pragmaQuery.exec("PRAGMA busy_timeout = 5000;")) {
+            qWarning() << "Failed to set busy_timeout for OfflineQueue:" << pragmaQuery.lastError().text();
+        }
         QSqlQuery query(db);
         query.exec("CREATE TABLE IF NOT EXISTS offline_queue ("
                    "message_id TEXT PRIMARY KEY, "
