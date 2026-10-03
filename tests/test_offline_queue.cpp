@@ -1,4 +1,6 @@
 #include "test_offline_queue.h"
+#include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QtTest>
 #include "../src/core/messaging/OfflineQueue.h"
 #include <QFile>
@@ -149,4 +151,66 @@ void TestOfflineQueue::testAtomicFailure() {
     
     // If update fails, it returns false
     QVERIFY(!queue->updateState("does_not_exist", QueueState::SENDING));
+}
+
+void TestOfflineQueue::testBatchPagination() {
+    auto queue = std::make_shared<MessageQueue>("test_offline_queue.db");
+    
+    // Clear out any previous data for a clean test
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "clean_conn");
+        db.setDatabaseName("test_offline_queue.db");
+        if (db.open()) {
+            QSqlQuery query(db);
+            query.exec("DELETE FROM offline_queue");
+        }
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("clean_conn");
+    
+    // Insert 150 items directly
+    for (int i = 0; i < 150; ++i) {
+        QString id = QString("batch_msg_%1").arg(i, 3, 10, QChar('0'));
+        queue->enqueue(id, "data", "user", "dev");
+    }
+    
+    // Validate we can retrieve them in batches of 50
+    auto batch1 = queue->getPendingEntries(50);
+    QCOMPARE(batch1.size(), 50);
+    QCOMPARE(batch1.front().messageId, QString("batch_msg_000"));
+    
+    qint64 lastCreated = batch1.back().createdAt;
+    QString lastId = batch1.back().messageId;
+    
+    auto batch2 = queue->getPendingEntries(50, lastCreated, lastId);
+    QCOMPARE(batch2.size(), 50);
+    
+    lastCreated = batch2.back().createdAt;
+    lastId = batch2.back().messageId;
+    
+    auto batch3 = queue->getPendingEntries(50, lastCreated, lastId);
+    QCOMPARE(batch3.size(), 50);
+    
+    lastCreated = batch3.back().createdAt;
+    lastId = batch3.back().messageId;
+    
+    auto batch4 = queue->getPendingEntries(50, lastCreated, lastId);
+    QCOMPARE(batch4.size(), 0);
+    
+    // Validate resume processes all 150 items
+    int processedCount = 0;
+    OfflineQueueService service(queue, [&](auto, auto, auto, auto) {
+        processedCount++;
+        return true;
+    });
+    
+    service.resume();
+    QCOMPARE(processedCount, 150);
+    
+    // Verify they are all ACK_PENDING
+    auto allNow = queue->getPendingEntries(200);
+    QCOMPARE(allNow.size(), 150);
+    for (const auto& entry : allNow) {
+        QCOMPARE(entry.state, QueueState::ACK_PENDING);
+    }
 }

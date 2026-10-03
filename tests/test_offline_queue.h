@@ -17,4 +17,5 @@ private slots:
     void testRetryLimit();
     void testCrashRecovery();
     void testAtomicFailure();
+    void testBatchPagination();
 };

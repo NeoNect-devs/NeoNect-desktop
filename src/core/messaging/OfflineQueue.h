@@ -36,7 +36,7 @@ public:
     virtual bool updateState(const QString& messageId, QueueState newState) = 0;
     virtual bool incrementRetry(const QString& messageId) = 0;
     virtual std::optional<QueueEntry> getEntry(const QString& messageId) = 0;
-    virtual std::vector<QueueEntry> getPendingEntries() = 0; // returns entries in QUEUED, SENDING, ACK_PENDING
+    virtual std::vector<QueueEntry> getPendingEntries(int limit = 50, qint64 afterCreatedAt = -1, const QString& afterMessageId = QString()) = 0; // returns entries in QUEUED, SENDING, ACK_PENDING
 };
 
 class MessageQueue : public IMessageQueue {
@@ -48,7 +48,7 @@ public:
     bool updateState(const QString& messageId, QueueState newState) override;
     bool incrementRetry(const QString& messageId) override;
     std::optional<QueueEntry> getEntry(const QString& messageId) override;
-    std::vector<QueueEntry> getPendingEntries() override;
+    std::vector<QueueEntry> getPendingEntries(int limit = 50, qint64 afterCreatedAt = -1, const QString& afterMessageId = QString()) override;
 
 private:
     QString m_dbPath;
