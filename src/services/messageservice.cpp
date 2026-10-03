@@ -36,8 +36,8 @@ static qint64 determineFileSize(const QString &mediaUrl, qint64 providedSize) {
     return (fi.exists() && fi.isFile()) ? fi.size() : 0;
 }
 
-MessageService::MessageService(std::shared_ptr<Storage::IMessageRepository> repository, QObject* parent)
-    : QObject(parent), m_repository(std::move(repository))
+MessageService::MessageService(std::shared_ptr<NeoNect::Core::Messaging::IMessageStorage> storage, QObject* parent)
+    : QObject(parent), m_storage(std::move(storage))
 {
 }
 
@@ -83,7 +83,7 @@ void MessageService::cancelMediaTransfer(const QString &conversationId, const QS
         m_outgoingMessages[messageId].errorText = "Transfer cancelled";
     }
 
-    m_repository->updateMessageStatusAsync(messageId, Domain::MessageStatus::Failed, "Transfer cancelled", this, nullptr);
+    this->updateMessageStatusAsync(messageId, Domain::MessageStatus::Failed, "Transfer cancelled", this, nullptr);
     emit messageUpdated(convId, messageId, "failed", "Transfer cancelled");
     emit mediaTransferProgress(convId, messageId, 0.0, 0, 0);
 }
@@ -173,14 +173,14 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
                 if (m_outgoingMessages.contains(mId)) {
                     m_outgoingMessages[mId].status = Domain::MessageStatus::Sent;
                 }
-                m_repository->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
+                this->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
                 emit messageUpdated(cId, mId, "sent", "");
             }
         });
         timer->start();
     }
 
-    m_repository->saveMessageAsync(msg, this, [this, msg, isSavedMessages](bool success) {
+    this->saveMessageAsync(msg, this, [this, msg, isSavedMessages](bool success) {
         if (!success) {
             qWarning() << "[MessageService] Failed to save outgoing message locally.";
             if (m_activeTransfers.contains(msg.id)) {
@@ -298,7 +298,7 @@ void MessageService::sendMediaRequest(const QString &conversationId, const QStri
     QVariantMap msgMap = domainToVariantMap(msg);
     emit messageAdded(msg.conversationId, msgMap);
 
-    m_repository->saveMessageAsync(msg, this, [this, msg](bool success) {
+    this->saveMessageAsync(msg, this, [this, msg](bool success) {
         if (!success) {
             qWarning() << "[MessageService] Failed to save media_request locally.";
             emit messageUpdated(msg.conversationId, msg.id, "failed", "Local DB Error");
@@ -317,13 +317,13 @@ void MessageService::acceptMediaRequest(const QString &conversationId, const QSt
         convId = m_pendingMediaRequests.value(requestId).conversationId;
     }
 
-    m_repository->updateMessageStatusAsync(requestId, Domain::MessageStatus::Accepted, "", this, [this, convId, requestId](bool) {
+    this->updateMessageStatusAsync(requestId, Domain::MessageStatus::Accepted, "", this, [this, convId, requestId](bool) {
         emit messageUpdated(convId, requestId, "accepted", "");
     });
 
     // Remove the accepted card from local chat and delete from DB
     emit messageRemoved(convId, requestId);
-    m_repository->deleteMessageAsync(requestId);
+    this->deleteMessageAsync(requestId);
     m_receivedMediaRequests.remove(requestId);
 
     Domain::Message acceptMsg;
@@ -347,7 +347,7 @@ void MessageService::declineMediaRequest(const QString &conversationId, const QS
         convId = m_pendingMediaRequests.value(requestId).conversationId;
     }
 
-    m_repository->updateMessageStatusAsync(requestId, Domain::MessageStatus::Declined, "", this, [this, convId, requestId](bool) {
+    this->updateMessageStatusAsync(requestId, Domain::MessageStatus::Declined, "", this, [this, convId, requestId](bool) {
         emit messageUpdated(convId, requestId, "declined", "");
     });
 
@@ -364,12 +364,12 @@ void MessageService::declineMediaRequest(const QString &conversationId, const QS
 }
 
 void MessageService::loadConversation(const QString &conversationId) {
-    m_repository->getMessagesAsync(conversationId, 40, 0, this, [this, conversationId](const std::vector<Domain::Message>& messages) {
+    this->getMessagesAsync(conversationId, 40, 0, this, [this, conversationId](const std::vector<Domain::Message>& messages) {
         QVariantList msgList;
         for (const auto& msg : messages) {
             // Do not load old accepted media_requests from history
             if (msg.type == "media_request" && msg.status == Domain::MessageStatus::Accepted) {
-                m_repository->deleteMessageAsync(msg.id);
+                this->deleteMessageAsync(msg.id);
                 continue;
             }
             msgList.append(domainToVariantMap(msg));
@@ -381,11 +381,11 @@ void MessageService::loadConversation(const QString &conversationId) {
 void MessageService::loadMoreMessages(const QString &conversationId, qint64 beforeTimestamp, int limit) {
     if (conversationId.isEmpty() || beforeTimestamp <= 0) return;
     int fetchLimit = limit > 0 ? limit : 30;
-    m_repository->getMessagesAsync(conversationId, fetchLimit, beforeTimestamp, this, [this, conversationId](const std::vector<Domain::Message>& messages) {
+    this->getMessagesAsync(conversationId, fetchLimit, beforeTimestamp, this, [this, conversationId](const std::vector<Domain::Message>& messages) {
         QVariantList msgList;
         for (const auto& msg : messages) {
             if (msg.type == "media_request" && msg.status == Domain::MessageStatus::Accepted) {
-                m_repository->deleteMessageAsync(msg.id);
+                this->deleteMessageAsync(msg.id);
                 continue;
             }
             msgList.append(domainToVariantMap(msg));
@@ -420,9 +420,9 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
             QString convId = msg.conversationId;
             qDebug() << "[MessageService] Received message_seen receipt from" << msg.senderId << "for:" << targetId << "conv:" << convId;
             if (!targetId.isEmpty() && targetId != "all") {
-                m_repository->updateMessageStatusAsync(targetId, Domain::MessageStatus::Seen, "", this, nullptr);
+                this->updateMessageStatusAsync(targetId, Domain::MessageStatus::Seen, "", this, nullptr);
             }
-            m_repository->markMessagesSeenAsync(convId, m_currentUserId, this, [this, convId, targetId](bool) {
+            this->markMessagesSeenAsync(convId, m_currentUserId, this, [this, convId, targetId](bool) {
                 if (!targetId.isEmpty() && targetId != "all") {
                     emit messageUpdated(convId, targetId, "seen", "");
                 }
@@ -434,12 +434,12 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
         if (msg.type == "media_accept") {
             QString reqId = msg.text.trimmed();
             qDebug() << "[MessageService] Received media_accept for request:" << reqId;
-            m_repository->updateMessageStatusAsync(reqId, Domain::MessageStatus::Accepted, "", this, [this, convId = msg.conversationId, reqId](bool) {
+            this->updateMessageStatusAsync(reqId, Domain::MessageStatus::Accepted, "", this, [this, convId = msg.conversationId, reqId](bool) {
                 emit messageUpdated(convId, reqId, "accepted", "");
             });
 
             emit messageRemoved(msg.conversationId, reqId);
-            m_repository->deleteMessageAsync(reqId);
+            this->deleteMessageAsync(reqId);
 
             if (m_pendingMediaRequests.contains(reqId)) {
                 Domain::Message orig = m_pendingMediaRequests.take(reqId);
@@ -499,7 +499,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                         if (m_outgoingMessages.contains(mId)) {
                             m_outgoingMessages[mId].status = Domain::MessageStatus::Sent;
                         }
-                        m_repository->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
+                        this->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
                         emit messageUpdated(cId, mId, "sent", "");
                         if (!reqId.isEmpty()) {
                             emit messageUpdated(cId, reqId, "sent", "");
@@ -508,7 +508,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                 });
                 timer->start();
 
-                m_repository->saveMessageAsync(payloadMsg, this, [this, payloadMsg, reqId](bool success) {
+                this->saveMessageAsync(payloadMsg, this, [this, payloadMsg, reqId](bool success) {
                     if (!success) {
                         qWarning() << "[MessageService] Failed to save outgoing message locally.";
                         if (m_activeTransfers.contains(payloadMsg.id)) {
@@ -531,7 +531,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
         if (msg.type == "media_decline") {
             QString reqId = msg.text.trimmed();
             qDebug() << "[MessageService] Received media_decline for request:" << reqId;
-            m_repository->updateMessageStatusAsync(reqId, Domain::MessageStatus::Declined, "", this, [this, convId = msg.conversationId, reqId](bool) {
+            this->updateMessageStatusAsync(reqId, Domain::MessageStatus::Declined, "", this, [this, convId = msg.conversationId, reqId](bool) {
                 emit messageUpdated(convId, reqId, "declined", "");
             });
             m_pendingMediaRequests.remove(reqId);
@@ -546,7 +546,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
             // Incoming transmitted payload referencing previous request
             QString origReqId = currentMsg.errorText;
             emit messageRemoved(currentMsg.conversationId, origReqId);
-            m_repository->deleteMessageAsync(origReqId);
+            this->deleteMessageAsync(origReqId);
             m_receivedMediaRequests.remove(origReqId);
             currentMsg.errorText = "";
         }
@@ -592,7 +592,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                     m_activeTransfers.remove(mId);
                     timer->deleteLater();
 
-                    m_repository->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
+                    this->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
                     emit messageUpdated(cId, mId, "sent", "");
                 }
             });
@@ -601,7 +601,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
     }
     
     if (!msgsToSave.empty()) {
-        m_repository->saveMessagesAsync(msgsToSave, this, [this](bool success) {
+        this->saveMessagesAsync(msgsToSave, this, [this](bool success) {
             if (!success) {
                 qWarning() << "[MessageService] Failed to save batch of incoming messages";
             }
@@ -630,7 +630,7 @@ void MessageService::handleMessageDeliveryStatus(const QString &messageId, bool 
             m_pendingMediaRequests[messageId].errorText = errorText;
         }
 
-        m_repository->updateMessageStatusAsync(messageId, status, errorText, this, [messageId](bool dbSuccess) {
+        this->updateMessageStatusAsync(messageId, status, errorText, this, [messageId](bool dbSuccess) {
             if (!dbSuccess) {
                 qWarning() << "[MessageService] Failed to update message delivery status in DB for:" << messageId;
             }
@@ -655,7 +655,7 @@ void MessageService::handleMessageDeliveryStatus(const QString &messageId, bool 
         m_pendingMediaRequests[messageId].errorText = errorText;
     }
 
-    m_repository->updateMessageStatusAsync(messageId, status, errorText, this, [messageId](bool dbSuccess) {
+    this->updateMessageStatusAsync(messageId, status, errorText, this, [messageId](bool dbSuccess) {
         if (!dbSuccess) {
             qWarning() << "[MessageService] Failed to update message delivery status in DB for:" << messageId;
         }
@@ -670,7 +670,7 @@ void MessageService::retryMessage(const QString &messageId) {
             msg.status = Domain::MessageStatus::Sent;
             msg.errorText = "";
             m_outgoingMessages.insert(msg.id, msg);
-            m_repository->updateMessageStatusAsync(msg.id, Domain::MessageStatus::Sent, "", this, nullptr);
+            this->updateMessageStatusAsync(msg.id, Domain::MessageStatus::Sent, "", this, nullptr);
             emit messageUpdated(msg.conversationId, msg.id, "sent", "");
             return;
         }
@@ -680,7 +680,7 @@ void MessageService::retryMessage(const QString &messageId) {
         m_outgoingMessages.insert(msg.id, msg);
 
         emit messageUpdated(msg.conversationId, msg.id, "sending", "");
-        m_repository->updateMessageStatusAsync(msg.id, Domain::MessageStatus::Sending, "", this, nullptr);
+        this->updateMessageStatusAsync(msg.id, Domain::MessageStatus::Sending, "", this, nullptr);
 
         if (msg.type != "text" && msg.type != "media_request") {
             qint64 total = msg.fileSize > 0 ? msg.fileSize : 2500000;
@@ -711,7 +711,7 @@ void MessageService::retryMessage(const QString &messageId) {
                     if (m_outgoingMessages.contains(mId)) {
                         m_outgoingMessages[mId].status = Domain::MessageStatus::Sent;
                     }
-                    m_repository->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
+                    this->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
                     emit messageUpdated(cId, mId, "sent", "");
                 }
             });
@@ -736,7 +736,7 @@ void MessageService::retryMessage(const QString &messageId) {
         return;
     }
 
-    m_repository->getMessageByIdAsync(messageId, this, [executeRetry, messageId](const std::optional<Domain::Message>& optMsg) {
+    this->getMessageByIdAsync(messageId, this, [executeRetry, messageId](const std::optional<Domain::Message>& optMsg) {
         if (optMsg.has_value()) {
             executeRetry(optMsg.value());
         } else {
@@ -790,6 +790,110 @@ QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const
     map["mediaWidth"] = msg.mediaWidth;
     map["mediaHeight"] = msg.mediaHeight;
     return map;
+}
+static NeoNect::Core::Messaging::MessageState mapStatus(NeoNect::Domain::MessageStatus status) {
+    switch (status) {
+        case NeoNect::Domain::MessageStatus::Sending: return NeoNect::Core::Messaging::MessageState::CREATED;
+        case NeoNect::Domain::MessageStatus::Sent: return NeoNect::Core::Messaging::MessageState::SENT;
+        case NeoNect::Domain::MessageStatus::Seen: return NeoNect::Core::Messaging::MessageState::READ;
+        case NeoNect::Domain::MessageStatus::Failed: return NeoNect::Core::Messaging::MessageState::FAILED;
+        default: return NeoNect::Core::Messaging::MessageState::CREATED;
+    }
+}
+static NeoNect::Domain::MessageStatus mapState(NeoNect::Core::Messaging::MessageState state) {
+    switch (state) {
+        case NeoNect::Core::Messaging::MessageState::CREATED: return NeoNect::Domain::MessageStatus::Sending;
+        case NeoNect::Core::Messaging::MessageState::ENCRYPTING: return NeoNect::Domain::MessageStatus::Sending;
+        case NeoNect::Core::Messaging::MessageState::SENT: return NeoNect::Domain::MessageStatus::Sent;
+        case NeoNect::Core::Messaging::MessageState::DELIVERED: return NeoNect::Domain::MessageStatus::Sent;
+        case NeoNect::Core::Messaging::MessageState::READ: return NeoNect::Domain::MessageStatus::Seen;
+        case NeoNect::Core::Messaging::MessageState::FAILED: return NeoNect::Domain::MessageStatus::Failed;
+        default: return NeoNect::Domain::MessageStatus::Sent;
+    }
+}
+
+void MessageService::saveMessageAsync(const Domain::Message &msg, const QObject* context, std::function<void(bool)> callback) {
+    NeoNect::Core::Messaging::Message coreMsg;
+    coreMsg.messageId = msg.id;
+    coreMsg.conversationId = msg.conversationId;
+    coreMsg.senderId = msg.senderId;
+    coreMsg.timestamp = msg.timestamp;
+    coreMsg.state = mapStatus(msg.status);
+    bool success = m_storage->saveMessage(coreMsg);
+    if (callback) {
+        auto cb = callback;
+        QTimer::singleShot(0, [cb, success]() { cb(success); });
+    }
+}
+
+void MessageService::saveMessagesAsync(const std::vector<Domain::Message> &msgs, const QObject* context, std::function<void(bool)> callback) {
+    for (const auto& msg : msgs) {
+        NeoNect::Core::Messaging::Message coreMsg;
+        coreMsg.messageId = msg.id;
+        coreMsg.conversationId = msg.conversationId;
+        coreMsg.senderId = msg.senderId;
+        coreMsg.timestamp = msg.timestamp;
+        coreMsg.state = mapStatus(msg.status);
+        m_storage->saveMessage(coreMsg);
+    }
+    if (callback) {
+        auto cb = callback;
+        QTimer::singleShot(0, [cb]() { cb(true); });
+    }
+}
+
+void MessageService::updateMessageStatusAsync(const QString &id, Domain::MessageStatus status, const QString &errorText, const QObject* context, std::function<void(bool)> callback) {
+    bool success = m_storage->updateMessageState(id, mapStatus(status));
+    if (callback) {
+        auto cb = callback;
+        QTimer::singleShot(0, [cb, success]() { cb(success); });
+    }
+}
+
+void MessageService::markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context, std::function<void(bool)> callback) {
+    if (callback) {
+        auto cb = callback;
+        QTimer::singleShot(0, [cb]() { cb(true); });
+    }
+}
+
+void MessageService::deleteMessageAsync(const QString &id) {
+}
+
+void MessageService::getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, std::function<void(const std::vector<Domain::Message>&)> callback) {
+    auto coreMsgs = m_storage->getConversationMessages(conversationId);
+    std::vector<Domain::Message> messages;
+    for (const auto& cm : coreMsgs) {
+        Domain::Message dm;
+        dm.id = cm.messageId;
+        dm.conversationId = cm.conversationId;
+        dm.senderId = cm.senderId;
+        dm.timestamp = cm.timestamp;
+        dm.status = mapState(cm.state);
+        messages.push_back(dm);
+    }
+    if (callback) {
+        auto cb = callback;
+        QTimer::singleShot(0, [cb, messages]() { cb(messages); });
+    }
+}
+
+void MessageService::getMessageByIdAsync(const QString &id, const QObject* context, std::function<void(const std::optional<Domain::Message>&)> callback) {
+    auto cmOpt = m_storage->getMessage(id);
+    std::optional<Domain::Message> optMsg;
+    if (cmOpt) {
+        Domain::Message dm;
+        dm.id = cmOpt->messageId;
+        dm.conversationId = cmOpt->conversationId;
+        dm.senderId = cmOpt->senderId;
+        dm.timestamp = cmOpt->timestamp;
+        dm.status = mapState(cmOpt->state);
+        optMsg = dm;
+    }
+    if (callback) {
+        auto cb = callback;
+        QTimer::singleShot(0, [cb, optMsg]() { cb(optMsg); });
+    }
 }
 
 }

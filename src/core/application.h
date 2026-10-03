@@ -137,7 +137,7 @@ private:
     /** @brief Persistent client settings repository. */
     std::shared_ptr<Storage::SettingsRepository> m_storage;
     /** @brief Asynchronous SQLite message history repository. */
-    std::shared_ptr<Storage::IMessageRepository> m_messageRepo;
+    std::shared_ptr<Core::Messaging::IMessageStorage> m_messageStorage;
     /** @brief Concrete OpenSSL cryptographic service. */
     std::shared_ptr<Crypto::ICryptoService> m_cryptoService;
     /** @brief Production HTTP network transport. */

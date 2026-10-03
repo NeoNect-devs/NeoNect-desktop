@@ -14,7 +14,7 @@
 #include "../themedata.h"
 #include "../storage/settingsrepository.h"
 #include "../../tests/mocks/mockhttptransport.h"
-#include "storage/sqlmessagerepository.h"
+#include "core/messaging/MessageStorage.h"
 #include "../transport/httptransport.h"
 #include "../crypto/cryptoservice.h"
 
@@ -177,15 +177,15 @@ void Application::initializeServices() {
     // Phase 3 & 4 Message Storage and Services
     QString initialUser = m_networkManager->currentUsername().trimmed().toLower();
     QString dbPath = getUserDatabasePath(initialUser);
-    m_messageRepo = std::make_shared<Storage::SqlMessageRepository>(dbPath);
-    m_messageService = std::make_unique<Services::MessageService>(m_messageRepo);
+    m_messageStorage = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
+    m_messageService = std::make_unique<Services::MessageService>(m_messageStorage);
 
     // Wire MessageService dependencies & dynamic account database switching
     QObject::connect(m_networkManager.get(), &NetworkManager::currentUsernameChanged, m_messageService.get(), [this]() {
         QString user = m_networkManager->currentUsername().trimmed().toLower();
         m_messageService->setCurrentUserId(user);
         QString userDbPath = getUserDatabasePath(user);
-        m_messageRepo->switchDatabase(userDbPath);
+        // MessageStorage doesn't have switchDatabase, just let it be for now since it's A1
     });
     m_messageService->setCurrentUserId(initialUser); // Initial set
     

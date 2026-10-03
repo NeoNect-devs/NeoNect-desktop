@@ -21,7 +21,9 @@
 #include <QObject>
 #include <QHash>
 #include <memory>
-#include "storage/imessagerepository.h"
+#include "../core/messaging/MessageStorage.h"
+#include <functional>
+#include <optional>
 #include "domain/message.h"
 
 class QTimer;
@@ -48,7 +50,7 @@ public:
      * @param repository Shared pointer to the asynchronous message repository.
      * @param parent Optional parent QObject for Qt tree ownership.
      */
-    explicit MessageService(std::shared_ptr<Storage::IMessageRepository> repository, QObject* parent = nullptr);
+    explicit MessageService(std::shared_ptr<NeoNect::Core::Messaging::IMessageStorage> storage, QObject* parent = nullptr);
 
     /**
      * @brief Destructor. Cleans up active file transfer timers.
@@ -208,7 +210,15 @@ private:
     QVariantMap domainToVariantMap(const Domain::Message &msg) const;
 
     /** @brief Local SQLite message repository. */
-    std::shared_ptr<Storage::IMessageRepository> m_repository;
+    std::shared_ptr<NeoNect::Core::Messaging::IMessageStorage> m_storage;
+
+    void saveMessageAsync(const Domain::Message &msg, const QObject* context, std::function<void(bool)> callback);
+    void saveMessagesAsync(const std::vector<Domain::Message> &msgs, const QObject* context, std::function<void(bool)> callback);
+    void updateMessageStatusAsync(const QString &id, Domain::MessageStatus status, const QString &errorText, const QObject* context, std::function<void(bool)> callback);
+    void markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context, std::function<void(bool)> callback);
+    void deleteMessageAsync(const QString &id);
+    void getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, std::function<void(const std::vector<Domain::Message>&)> callback);
+    void getMessageByIdAsync(const QString &id, const QObject* context, std::function<void(const std::optional<Domain::Message>&)> callback);
     /** @brief Active authenticated username. */
     QString m_currentUserId;
     /** @brief In-flight outgoing messages pending ACK. */

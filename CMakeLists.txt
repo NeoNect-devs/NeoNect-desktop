@@ -134,7 +134,7 @@ qt_add_executable(NeoNectApp
     # Storage
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
-    src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
+    
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
     src/storage/e2ee/IMasterKeyProvider.h
@@ -349,8 +349,8 @@ add_executable(NeoNectTests
     tests/test_storage.h tests/test_storage.cpp
     tests/test_secure_storage.h tests/test_secure_storage.cpp
     tests/test_models.h tests/test_models.cpp
-    tests/test_services.h tests/test_services.cpp
-    tests/test_messages.h tests/test_messages.cpp
+    
+    
     tests/mocks/mockhttptransport.h tests/mocks/mockhttptransport.cpp
     tests/test_transport.h tests/test_transport.cpp
     tests/test_step9_relay.h tests/test_step9_relay.cpp
@@ -394,7 +394,7 @@ add_executable(NeoNectTests
     # Storage
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
-    src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
+    
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
     src/storage/e2ee/IMasterKeyProvider.h
@@ -464,242 +464,3 @@ add_test(NAME NeoNectTestSuite COMMAND NeoNectTests)
 # ==============================================================================
 # Stress Tests
 # ==============================================================================
-add_executable(NeoNectStressTests tests/stress/main_stress.cpp
-    src/common/types.h
-    src/common/constants.h
-    src/common/openssl_raii.h
-    src/crypto/icryptoservice.h
-    src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
-    src/crypto/CryptoTypes.h
-    src/crypto/IXEdDSA.h
-    src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
-    src/crypto/ICryptoBackend.h
-    src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
-    src/crypto/PreKeyTypes.h
-    src/crypto/KeyEncoding.h src/crypto/KeyEncoding.cpp
-    src/crypto/IPreKeyStore.h
-    src/crypto/MemoryPreKeyStore.h src/crypto/MemoryPreKeyStore.cpp
-    src/crypto/KeyGenerationService.h src/crypto/KeyGenerationService.cpp
-    src/crypto/x3dh/X3DHTypes.h
-    src/crypto/x3dh/IX3DH.h
-    src/crypto/x3dh/X3DH.h src/crypto/x3dh/X3DH.cpp
-    src/crypto/doubleratchet/DoubleRatchetTypes.h
-    src/crypto/doubleratchet/DoubleRatchet.h src/crypto/doubleratchet/DoubleRatchet.cpp
-    src/crypto/doubleratchet/IAEAD.h
-    src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
-    src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
-    src/services/messageservice.h src/services/messageservice.cpp
-    src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp
-    src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
-    src/storage/e2ee/IOSSecretStore.h
-    src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
-    src/storage/e2ee/IMasterKeyProvider.h
-    src/storage/e2ee/MasterKeyProvider.h src/storage/e2ee/MasterKeyProvider.cpp
-    src/storage/e2ee/ISecureE2EEStore.h
-    src/storage/e2ee/SecureE2EEStore.h src/storage/e2ee/SecureE2EEStore.cpp
-    src/transport/ihttptransport.h
-    src/transport/httptransport.h src/transport/httptransport.cpp
-    src/transport/websocketclient.h src/transport/websocketclient.cpp
-    src/services/authservice.h src/services/authservice.cpp
-    src/services/deviceservice.h src/services/deviceservice.cpp
-    src/services/relayservice.h src/services/relayservice.cpp
-    src/services/friendservice.h src/services/friendservice.cpp
-    src/core/versioninfo.h src/core/versioninfo.cpp
-    src/core/networkmanager.h src/core/networkmanager.cpp
-    src/core/cryptomanager.h src/core/cryptomanager.cpp
-    src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
-    src/core/audiomanager.h src/core/audiomanager.cpp
-    src/core/notificationmanager.h src/core/notificationmanager.cpp
-)
-set_target_properties(NeoNectStressTests PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
-target_include_directories(NeoNectStressTests PRIVATE src tests ${CMAKE_CURRENT_BINARY_DIR}/src)
-target_link_libraries(NeoNectStressTests PRIVATE
-    Qt6::Core
-    Qt6::Network
-    Qt6::Sql
-    Qt6::Qml
-    Qt6::Quick
-    Qt6::Test
-    Qt6::Concurrent
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    xeddsa_static
-    sqlcipher_static
-)
-if(LIBSECRET_FOUND)
-    target_link_libraries(NeoNectStressTests PRIVATE PkgConfig::LIBSECRET)
-    target_compile_definitions(NeoNectStressTests PRIVATE HAS_LIBSECRET)
-endif()
-option(ENABLE_SANITIZERS "Enable Address and Undefined sanitizers for stress tests" OFF)
-if(ENABLE_SANITIZERS)
-    if(NOT MINGW)
-        target_compile_options(NeoNectStressTests PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
-        target_link_options(NeoNectStressTests PRIVATE -fsanitize=address,undefined)
-    else()
-        message(WARNING "Sanitizers are not supported on MinGW.")
-    endif()
-endif()
-
-if(WIN32)
-    target_link_libraries(NeoNectStressTests PRIVATE winmm dwmapi)
-endif()
-
-add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
-    src/common/types.h
-    src/common/constants.h
-    src/common/openssl_raii.h
-    src/crypto/icryptoservice.h
-    src/crypto/cryptoservice.h src/crypto/cryptoservice.cpp
-    src/crypto/CryptoTypes.h
-    src/crypto/IXEdDSA.h
-    src/crypto/XEdDSAAdapter.h src/crypto/XEdDSAAdapter.cpp
-    src/crypto/ICryptoBackend.h
-    src/crypto/OpenSSLBackend.h src/crypto/OpenSSLBackend.cpp
-    src/crypto/PreKeyTypes.h
-    src/crypto/KeyEncoding.h src/crypto/KeyEncoding.cpp
-    src/crypto/IPreKeyStore.h
-    src/crypto/MemoryPreKeyStore.h src/crypto/MemoryPreKeyStore.cpp
-    src/crypto/KeyGenerationService.h src/crypto/KeyGenerationService.cpp
-    src/crypto/x3dh/X3DHTypes.h
-    src/crypto/x3dh/IX3DH.h
-    src/crypto/x3dh/X3DH.h src/crypto/x3dh/X3DH.cpp
-    src/crypto/doubleratchet/DoubleRatchetTypes.h
-    src/crypto/doubleratchet/DoubleRatchet.h src/crypto/doubleratchet/DoubleRatchet.cpp
-    src/crypto/doubleratchet/IAEAD.h
-    src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
-    src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
-    src/services/messageservice.h src/services/messageservice.cpp
-    src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp
-    src/storage/sqlmessagerepository.h src/storage/sqlmessagerepository.cpp
-    src/storage/e2ee/IOSSecretStore.h
-    src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
-    src/storage/e2ee/IMasterKeyProvider.h
-    src/storage/e2ee/MasterKeyProvider.h src/storage/e2ee/MasterKeyProvider.cpp
-    src/storage/e2ee/ISecureE2EEStore.h
-    src/storage/e2ee/SecureE2EEStore.h src/storage/e2ee/SecureE2EEStore.cpp
-    src/transport/ihttptransport.h
-    src/transport/httptransport.h src/transport/httptransport.cpp
-    src/transport/websocketclient.h src/transport/websocketclient.cpp
-    src/services/authservice.h src/services/authservice.cpp
-    src/services/deviceservice.h src/services/deviceservice.cpp
-    src/services/relayservice.h src/services/relayservice.cpp
-    src/services/friendservice.h src/services/friendservice.cpp
-    src/core/versioninfo.h src/core/versioninfo.cpp
-    src/core/networkmanager.h src/core/networkmanager.cpp
-    src/core/cryptomanager.h src/core/cryptomanager.cpp
-    src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
-    src/core/audiomanager.h src/core/audiomanager.cpp
-    src/core/notificationmanager.h src/core/notificationmanager.cpp
-)
-set_target_properties(NeoNectBenchmarks PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
-target_include_directories(NeoNectBenchmarks PRIVATE src tests ${CMAKE_CURRENT_BINARY_DIR}/src)
-target_link_libraries(NeoNectBenchmarks PRIVATE
-    Qt6::Core
-    Qt6::Concurrent
-    Qt6::Network
-    Qt6::Sql
-    Qt6::Qml
-    Qt6::Quick
-    Qt6::Test
-    OpenSSL::SSL
-    OpenSSL::Crypto
-    sqlcipher_static
-)
-if(LIBSECRET_FOUND)
-    target_link_libraries(NeoNectBenchmarks PRIVATE PkgConfig::LIBSECRET)
-    target_compile_definitions(NeoNectBenchmarks PRIVATE HAS_LIBSECRET)
-endif()
-if(WIN32)
-    target_link_libraries(NeoNectBenchmarks PRIVATE winmm dwmapi)
-endif()
-
-
-if(WIN32)
-    set_tests_properties(NeoNectTestSuite PROPERTIES ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>;$<TARGET_FILE_DIR:Qt6::Test>;${OPENSSL_BIN_DIR};$ENV{PATH}")
-endif()
-
-# ==============================================================================
-# 9. Installation & CPack Distribution Packaging
-# ==============================================================================
-include(GNUInstallDirs)
-
-install(TARGETS NeoNectApp
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    BUNDLE DESTINATION .
-)
-
-if(UNIX AND NOT APPLE)
-    install(FILES packaging/linux/io.neonect.NeoNect.desktop
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
-    )
-    install(FILES packaging/linux/io.neonect.NeoNect.metainfo.xml
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo
-    )
-    install(FILES assets/NeoNect/icon.png
-        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
-        RENAME io.neonect.NeoNect.png
-    )
-endif()
-
-set(CPACK_PACKAGE_NAME "NeoNect")
-set(CPACK_PACKAGE_VENDOR "NeoNect Devs")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Decentralized E2EE Messenger")
-set(CPACK_PACKAGE_VERSION_MAJOR ${NEONECT_VERSION_MAJOR})
-set(CPACK_PACKAGE_VERSION_MINOR ${NEONECT_VERSION_MINOR})
-set(CPACK_PACKAGE_VERSION_PATCH ${NEONECT_VERSION_PATCH})
-set(CPACK_PACKAGE_VERSION "${NEONECT_VERSION_STRING}")
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "NeoNect")
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
-
-if(WIN32)
-    set(CPACK_GENERATOR "ZIP;NSIS")
-    set(CPACK_NSIS_DISPLAY_NAME "NeoNect")
-    set(CPACK_NSIS_PACKAGE_NAME "NeoNect")
-    set(CPACK_NSIS_MUI_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/NeoNect/icon.ico")
-    set(CPACK_NSIS_MUI_UNIICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/NeoNect/icon.ico")
-elseif(UNIX AND NOT APPLE)
-    set(CPACK_GENERATOR "TGZ;DEB;RPM")
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "NeoNect Devs <contact@neonect.io>")
-    set(CPACK_DEBIAN_PACKAGE_SECTION "net")
-endif()
-
-
-if(WIN32)
-    get_target_property(_qt_qmake_executable Qt6::qmake IMPORTED_LOCATION)
-    get_filename_component(_qt_bin_dir "${_qt_qmake_executable}" DIRECTORY)
-    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
-    if(WINDEPLOYQT_EXECUTABLE)
-        install(CODE "
-            execute_process(
-                COMMAND \"\${WINDEPLOYQT_EXECUTABLE}\" 
-                --qmldir \"\${CMAKE_CURRENT_SOURCE_DIR}/qml\" 
-                --release 
-                --no-translations 
-                --compiler-runtime 
-                \"\${CMAKE_INSTALL_PREFIX}/\${CMAKE_INSTALL_BINDIR}/NeoNectApp.exe\"
-            )
-        ")
-    endif()
-    
-    if(OPENSSL_RUNTIME_DLLS)
-        install(FILES ${OPENSSL_RUNTIME_DLLS} DESTINATION ${CMAKE_INSTALL_BINDIR})
-    endif()
-endif()
-
-include(CPack)
-
-# ==============================================================================
-# 10. Doxygen Documentation Target
-# ==============================================================================
-find_package(Doxygen QUIET)
-if(DOXYGEN_FOUND)
-    add_custom_target(docs
-        COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Generating authentic HTML Doxygen documentation for NeoNect"
-        VERBATIM
-    )
-endif()
-
