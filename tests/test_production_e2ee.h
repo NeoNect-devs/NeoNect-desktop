@@ -11,4 +11,5 @@ private slots:
     void testOutgoingProductionPath();
     void testFirstMessageProductionPath();
     void testFirstMessageFailures();
+    void testApplicationIntegrationFirstMessage();
 };

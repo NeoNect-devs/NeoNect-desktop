@@ -156,6 +156,7 @@ qt_add_executable(NeoNectApp
 
     # Core & Facade
     src/core/application.h src/core/application.cpp
+    src/themedata.h
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
@@ -339,6 +340,8 @@ enable_testing()
 
 add_executable(NeoNectTests
     tests/main_test.cpp
+    src/core/application.cpp
+    src/themedata.h
     tests/test_crypto.h tests/test_crypto.cpp
     tests/test_xeddsa.cpp
     tests/test_x3dh.h tests/test_x3dh.cpp

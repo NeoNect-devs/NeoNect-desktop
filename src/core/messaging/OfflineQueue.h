@@ -38,7 +38,7 @@ public:
     OfflineQueueService(std::shared_ptr<IMessageQueue> queue, RelaySendCallback relaySendCb);
     
     // Simulates what SessionManager used to call directly
-    void onEnvelopeReady(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes);
+    bool onEnvelopeReady(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes);
 
     // Processes ACK from network
     void handleAck(const QString& messageId);

@@ -79,6 +79,17 @@ static void setupWindows11Window(QQuickWindow *window) {
 }
 #endif
 
+
+namespace NeoNect {
+namespace Storage {
+class MockSecretStore : public IOSSecretStore {
+public:
+    ServiceResult<std::monostate> writeSecret(const QString&, const QByteArray&) override { return ServiceResult<std::monostate>::ok(std::monostate{}); }
+    ServiceResult<QByteArray> readSecret(const QString&) override { return ServiceResult<QByteArray>::ok(QByteArray(32, 'M')); }
+    ServiceResult<std::monostate> deleteSecret(const QString&) override { return ServiceResult<std::monostate>::ok(std::monostate{}); }
+};
+}
+}
 namespace NeoNect {
 
 static void customLogHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
@@ -96,13 +107,17 @@ Application::Application(int &argc, char **argv) {
 
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
 
-    m_app = std::make_unique<QGuiApplication>(argc, argv);
-    m_app->setWindowIcon(QIcon(":/qt/qml/NeoNect/assets/NeoNect/icon.png"));
-    QGuiApplication::setApplicationName(QStringLiteral(NEONECT_APP_NAME));
-    QGuiApplication::setOrganizationName(QStringLiteral(NEONECT_ORGANIZATION_NAME));
-    QGuiApplication::setOrganizationDomain(QStringLiteral(NEONECT_ORGANIZATION_DOMAIN));
-    QGuiApplication::setApplicationVersion(QStringLiteral(NEONECT_VERSION_STRING));
-    QGuiApplication::setQuitOnLastWindowClosed(true);
+    if (!QCoreApplication::instance()) {
+        m_app = std::make_unique<QGuiApplication>(argc, argv);
+        m_app->setWindowIcon(QIcon(":/qt/qml/NeoNect/assets/NeoNect/icon.png"));
+        QGuiApplication::setApplicationName(QStringLiteral(NEONECT_APP_NAME));
+        QGuiApplication::setOrganizationName(QStringLiteral(NEONECT_ORGANIZATION_NAME));
+        QGuiApplication::setOrganizationDomain(QStringLiteral(NEONECT_ORGANIZATION_DOMAIN));
+        QGuiApplication::setApplicationVersion(QStringLiteral(NEONECT_VERSION_STRING));
+        QGuiApplication::setQuitOnLastWindowClosed(true);
+    } else {
+        // App instance exists, do not recreate
+    }
 
     parseCommandLine();
     initializeServices();
@@ -128,7 +143,7 @@ void Application::parseCommandLine() {
     QCommandLineOption mockOption("mock", "Run in standalone mock server mode with interactive virtual echo bots.");
     parser.addOption(mockOption);
 
-    parser.process(*m_app);
+    if (m_app) parser.process(*m_app); else parser.process(*QCoreApplication::instance());
 
     m_profile = parser.value(profileOption);
     m_isMockMode = parser.isSet(mockOption);
@@ -206,14 +221,21 @@ void Application::initializeServices() {
     QString secureDbName = m_profile.isEmpty() ? QString("e2ee_%1.db").arg(initialUser.isEmpty() ? "guest" : initialUser) : QString("e2ee_%1_%2.db").arg(m_profile, initialUser.isEmpty() ? "guest" : initialUser);
     QString secureDbPath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(secureDbName);
     
-    auto secretStore = std::make_shared<Storage::PlatformSecretStore>();
+    std::shared_ptr<Storage::IOSSecretStore> secretStore;
+    if (m_isMockMode) {
+        secretStore = std::make_shared<Storage::MockSecretStore>();
+    } else {
+        secretStore = std::make_shared<Storage::PlatformSecretStore>();
+    }
     auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(secretStore);
     m_secureStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
     m_secureStore->initialize(secureDbPath);
+    auto initRes = m_secureStore->initialize(secureDbPath);
+    if(!initRes.success) qDebug() << "SECURE STORE INIT FAILED:" << initRes.message;
 
     auto backend = std::make_shared<Crypto::OpenSSLBackend>();
     auto xeddsa = std::make_shared<Crypto::XEdDSAAdapter>();
-    auto x3dh = std::make_shared<Crypto::X3DHImpl>();
+    auto x3dh = std::make_shared<Crypto::X3DH::X3DHImpl>();
     auto ratchet = std::make_shared<Crypto::DoubleRatchet::Engine>(backend);
     auto aead = std::make_shared<Crypto::DoubleRatchet::AEAD>(backend.get());
     
@@ -236,8 +258,7 @@ void Application::initializeServices() {
         m_secureStore, x3dh, ratchet, aead, backend, preKeyAdapter, xeddsa,
         [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) -> bool {
             if (m_offlineQueueService) {
-                m_offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
-                return true;
+                return m_offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
             }
             return false;
         },

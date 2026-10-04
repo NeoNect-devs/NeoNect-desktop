@@ -1,3 +1,4 @@
+#include "../src/core/application.h"
 #include "../src/crypto/session/SecurePreKeyStoreAdapter.h"
 #include "../src/crypto/KeyEncoding.h"
 #include "../src/services/prekeyservice.h"
@@ -46,6 +47,32 @@ public:
         Q_UNUSED(name);
         m_key.clear();
         return NeoNect::ServiceResult<std::monostate>::ok({});
+    }
+};
+
+
+class ProxyMessageQueue : public Core::Messaging::IMessageQueue {
+public:
+    std::shared_ptr<Core::Messaging::IMessageQueue> realQueue;
+    bool failEnqueue = false;
+
+    ProxyMessageQueue(std::shared_ptr<Core::Messaging::IMessageQueue> q) : realQueue(std::move(q)) {}
+
+    bool enqueue(const QString& messageId, const QByteArray& envelopeBytes, const QString& recipientUsername, const QString& recipientDeviceId) override {
+        if (failEnqueue) return false;
+        return realQueue->enqueue(messageId, envelopeBytes, recipientUsername, recipientDeviceId);
+    }
+    bool updateState(const QString& messageId, Core::Messaging::QueueState newState) override {
+        return realQueue->updateState(messageId, newState);
+    }
+    bool incrementRetry(const QString& messageId) override {
+        return realQueue->incrementRetry(messageId);
+    }
+    std::optional<Core::Messaging::QueueEntry> getEntry(const QString& messageId) override {
+        return realQueue->getEntry(messageId);
+    }
+    std::vector<Core::Messaging::QueueEntry> getPendingEntries(int limit, qint64 afterCreatedAt, const QString& afterMessageId) override {
+        return realQueue->getPendingEntries(limit, afterCreatedAt, afterMessageId);
     }
 };
 
@@ -407,12 +434,13 @@ void TestProductionE2EE::testFirstMessageFailures() {
     // 4. Initialize Core Messaging with a fake queue that can fail
     auto messageStorage = std::make_shared<SqliteMessageStorage>("test_prod_alice_e2ee_fail.db");
     auto messageQueue = std::make_shared<MessageQueue>("test_prod_alice_e2ee_fail.db");
+    auto proxyMessageQueue = std::make_shared<ProxyMessageQueue>(messageQueue);
     
     auto settingsStore = std::make_shared<Storage::SettingsRepository>("test");
     auto relayService = std::make_shared<Services::RelayService>(mockTransport, settingsStore, nullptr, nullptr);
-    bool shouldQueueFail = false;
     
-    auto offlineQueueService = std::make_shared<OfflineQueueService>(messageQueue,
+    
+    auto offlineQueueService = std::make_shared<OfflineQueueService>(proxyMessageQueue,
         [&](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) -> bool {
             relayService->sendEncryptedEnvelope(rUser, rDev, msgId, env); return true;
         });
@@ -420,10 +448,8 @@ void TestProductionE2EE::testFirstMessageFailures() {
     auto sessionManager = std::make_shared<SessionManager>(
         secureStore, x3dh, ratchet, aead, backend, nullptr, xeddsa,
         [&](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) -> bool {
-            if (shouldQueueFail) return false;
             if (offlineQueueService) {
-                offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
-                return true;
+                return offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
             }
             return false;
         }, nullptr);
@@ -509,7 +535,7 @@ void TestProductionE2EE::testFirstMessageFailures() {
     
     mockTransport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(validBundle).toJson(), 200);
 
-    shouldQueueFail = true; // Inject failure in the send lambda!
+    proxyMessageQueue->failEnqueue = true; // Inject failure in the send lambda!
     msg1.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     msg1.state = Core::Messaging::MessageState::CREATED;
     QVERIFY(coreMessageService->sendMessage(msg1));
@@ -518,4 +544,85 @@ void TestProductionE2EE::testFirstMessageFailures() {
     QCOMPARE(msg1State.value().state, Core::Messaging::MessageState::FAILED);
     // Because queue failed, SessionManager returned false, session creation reverted!
     QVERIFY(!sessionManager->hasSession("sess_bob_fail_default_device"));
+}
+
+void TestProductionE2EE::testApplicationIntegrationFirstMessage() {
+    QStandardPaths::setTestModeEnabled(true);
+    QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QFile::remove(QDir(baseDir).filePath("messages_apptest.db"));
+    QFile::remove(QDir(baseDir).filePath("e2ee_apptest.db"));
+    QFile::remove(QDir(baseDir).filePath("messages_apptest_guest.db"));
+    QFile::remove(QDir(baseDir).filePath("e2ee_apptest_guest.db"));
+
+    int argc = 3;
+    const char* argv[] = {"NeoNectTests", "--mock", "--profile=apptest"};
+    NeoNect::Application app(argc, const_cast<char**>(argv));
+    
+    auto mockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(app.m_transport);
+    QVERIFY(mockTransport);
+    
+    // Create Bob's Identity
+    auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
+    auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
+    
+    auto bobKp = backend->GenerateX25519KeyPair();
+    NeoNect::Crypto::IdentityKeyPair bobIk;
+    bobIk.publicKey.data.resize(32);
+    bobIk.privateKey.data.resize(32);
+    std::copy(bobKp.second.data.data(), bobKp.second.data.data() + 32, bobIk.publicKey.data.data());
+    std::copy(bobKp.first.data.data(), bobKp.first.data.data() + 32, bobIk.privateKey.data.data());
+
+    auto bobSpkKp = backend->GenerateX25519KeyPair();
+    auto opkKp = backend->GenerateX25519KeyPair();
+
+    QByteArray spkBytes;
+    spkBytes.append(0x05);
+    spkBytes.append(reinterpret_cast<const char*>(bobSpkKp.second.data.data()), bobSpkKp.second.data.size());
+    
+    auto spkSig = xeddsa->sign(bobIk.privateKey, NeoNect::Crypto::ByteView{reinterpret_cast<const uint8_t*>(spkBytes.data()), (size_t)spkBytes.size()});
+
+    QJsonObject spkJson;
+    spkJson["key_id"] = 1;
+    spkJson["public_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobSpkKp.second.data.data()), 32).toBase64());
+    spkJson["signature"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(spkSig.data.data()), 64).toBase64());
+
+    QJsonObject opkJson;
+    opkJson["key_id"] = 1;
+    opkJson["public_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(opkKp.second.data.data()), 32).toBase64());
+
+    QJsonObject bundleJson;
+    bundleJson["identity_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobIk.publicKey.data.data()), 32).toBase64());
+    bundleJson["signed_curve_prekey"] = spkJson;
+    bundleJson["one_time_curve_prekey"] = opkJson;
+
+    mockTransport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(bundleJson).toJson(), 200);
+    mockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
+
+        // We MUST initialize Alice's identity key in the app's secure store!
+    NeoNect::Storage::E2EEIdentity aliceId;
+    aliceId.identity_id = 1;
+    auto aliceKp = backend->GenerateX25519KeyPair();
+    aliceId.public_key = QByteArray(reinterpret_cast<const char*>(aliceKp.second.data.data()), 32);
+    aliceId.private_key = QByteArray(reinterpret_cast<const char*>(aliceKp.first.data.data()), 32);
+    auto saveIdRes = app.m_secureStore->saveIdentity(aliceId);
+    if(!saveIdRes.success) qDebug() << "saveIdentity FAILED:" << saveIdRes.message;
+    QVERIFY(saveIdRes.success);
+
+    // Alice sends first message
+    NeoNect::Core::Messaging::Message msg;
+    msg.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    msg.receiverId = "bob_app";
+    msg.senderId = "guest";
+    msg.conversationId = "dms:bob_app";
+    msg.plaintext = "Integration Test Message";
+    
+    QSignalSpy spyRelayStatus(app.m_relayService.get(), &NeoNect::Services::RelayService::messageTransmissionStatus);
+    
+    qDebug() << "About to send message! bobId=" << msg.receiverId;
+    QVERIFY(app.m_coreMessageService->sendMessage(msg));
+    
+    QVERIFY(spyRelayStatus.count() >= 1 || spyRelayStatus.wait(2000));
+    QVERIFY(spyRelayStatus.count() >= 1);
+    
+    QVERIFY(app.m_sessionManager->hasSession("bob_app:default_device"));
 }

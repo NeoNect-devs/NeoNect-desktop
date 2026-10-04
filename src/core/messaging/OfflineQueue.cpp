@@ -204,14 +204,15 @@ OfflineQueueService::OfflineQueueService(std::shared_ptr<IMessageQueue> queue, R
     : m_queue(std::move(queue)), m_relaySendCb(std::move(relaySendCb)) {
 }
 
-void OfflineQueueService::onEnvelopeReady(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes) {
+bool OfflineQueueService::onEnvelopeReady(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes) {
     if (!m_queue->enqueue(messageId, envelopeBytes, recipientUsername, recipientDeviceId)) {
-        return; // failed to queue or duplicate
+        return false; // failed to queue or duplicate
     }
     
     auto optEntry = m_queue->getEntry(messageId);
     if (optEntry) {
         processEntry(*optEntry);
+    return true;
     }
 }
 
