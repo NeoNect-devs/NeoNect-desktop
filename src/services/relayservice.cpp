@@ -328,5 +328,9 @@ void RelayService::acknowledgeMessage(qint64 messageId) {
     m_transport->post(Constants::EP_RELAY_ACK, postData, this, [](int, const QByteArray&, QNetworkReply::NetworkError, const QString&) {});
 }
 
+void RelayService::setEnvelopeHandler(std::shared_ptr<Transport::IIncomingEnvelopeHandler> handler) {
+    m_envelopeHandler = std::move(handler);
+}
+
 } // namespace Services
 } // namespace NeoNect

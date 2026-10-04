@@ -39,6 +39,7 @@ namespace Services {
 class RelayService : public QObject {
     Q_OBJECT
 public:
+    void setEnvelopeHandler(std::shared_ptr<Transport::IIncomingEnvelopeHandler> handler);
     /**
      * @brief Constructs the relay gateway service.
      * @param transport Shared pointer to HTTP transport.

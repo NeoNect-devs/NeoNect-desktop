@@ -119,6 +119,14 @@ Application::Application(int &argc, char **argv) {
         // App instance exists, do not recreate
     }
 
+
+    // Manual fallback for secondary test instances
+    for (int i = 0; i < argc; ++i) {
+        QString arg = QString::fromUtf8(argv[i]);
+        if (arg == "--mock") m_isMockMode = true;
+        if (arg.startsWith("--profile=")) m_profile = arg.mid(10);
+    }
+
     parseCommandLine();
     initializeServices();
 }
@@ -145,8 +153,10 @@ void Application::parseCommandLine() {
 
     if (m_app) parser.process(*m_app); else parser.process(*QCoreApplication::instance());
 
-    m_profile = parser.value(profileOption);
-    m_isMockMode = parser.isSet(mockOption);
+    if (m_app) {
+        m_profile = parser.value(profileOption);
+        m_isMockMode = parser.isSet(mockOption);
+    }
 
     if (m_profile.isEmpty() && !m_isMockMode) {
         static std::vector<std::unique_ptr<QLockFile>> s_instanceLocks;
@@ -216,11 +226,11 @@ void Application::initializeServices() {
         // MessageStorage doesn't have switchDatabase, just let it be for now since it's A1
     });
     m_messageService->setCurrentUserId(initialUser); // Initial set
-    
+
     // E2EE Production Object Graph
     QString secureDbName = m_profile.isEmpty() ? QString("e2ee_%1.db").arg(initialUser.isEmpty() ? "guest" : initialUser) : QString("e2ee_%1_%2.db").arg(m_profile, initialUser.isEmpty() ? "guest" : initialUser);
     QString secureDbPath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(secureDbName);
-    
+
     std::shared_ptr<Storage::IOSSecretStore> secretStore;
     if (m_isMockMode) {
         secretStore = std::make_shared<Storage::MockSecretStore>();
@@ -236,7 +246,7 @@ void Application::initializeServices() {
     auto x3dh = std::make_shared<Crypto::X3DH::X3DHImpl>();
     auto ratchet = std::make_shared<Crypto::DoubleRatchet::Engine>(backend);
     auto aead = std::make_shared<Crypto::DoubleRatchet::AEAD>(backend.get());
-    
+
     auto preKeyAdapter = std::make_shared<Crypto::Session::SecurePreKeyStoreAdapter>(m_secureStore);
     auto preKeyService = std::make_shared<Services::PreKeyService>(m_transport, preKeyAdapter);
 
@@ -260,11 +270,34 @@ void Application::initializeServices() {
             }
             return false;
         },
-        nullptr // Incoming E2EE deferred to A8.2
+        [this](const QString& sid, const QByteArray& pt) {
+            if (m_coreMessageService) {
+                m_coreMessageService->receiveMessage(sid, pt);
+            }
+        }
     );
 
+    if (m_relayService) {
+        m_relayService->setEnvelopeHandler(m_sessionManager);
+    }
+
     m_coreMessageService = std::make_shared<Core::Messaging::MessageService>(m_messageStorage, m_sessionManager, m_messageQueue);
-    
+
+    m_coreMessageService->setOnMessageReceived([this](const Core::Messaging::Message& coreMsg) {
+        if (m_messageService) {
+            NeoNect::Domain::Message domainMsg;
+            domainMsg.id = coreMsg.messageId;
+            domainMsg.serverId = coreMsg.serverId;
+            domainMsg.conversationId = coreMsg.conversationId;
+            domainMsg.senderId = coreMsg.senderId;
+            domainMsg.timestamp = coreMsg.timestamp;
+            domainMsg.text = coreMsg.plaintext;
+            domainMsg.type = "text";
+            domainMsg.status = NeoNect::Domain::MessageStatus::Sent;
+            m_messageService->handleIncomingMessage(domainMsg);
+        }
+    });
+
     m_coreMessageService->setPreKeyClaimRequestCallback([preKeyService](const QString& targetUser, const QString& targetDevice, auto resultCb) {
         auto connection = std::make_shared<QMetaObject::Connection>();
         *connection = QObject::connect(preKeyService.get(), &Services::PreKeyService::preKeyBundleClaimed,
@@ -274,12 +307,12 @@ void Application::initializeServices() {
                     resultCb(bundle);
                 }
             });
-        
+
         preKeyService->claimPreKeys(targetUser, targetDevice);
     });
 
     // RelayService -> MessageService (Incoming)
-    QObject::connect(m_relayService.get(), &Services::RelayService::incomingDomainMessagesReceived, m_messageService.get(), &Services::MessageService::handleIncomingMessages);
+    // Legacy plaintext path disabled in A8.3
     QObject::connect(m_relayService.get(), &Services::RelayService::messageTransmissionStatus, m_messageService.get(), [this](const QString &, const QString &messageId, bool success, const QString &errorMessage) {
         m_messageService->handleMessageDeliveryStatus(messageId, success, errorMessage);
         if (m_offlineQueueService) {
@@ -290,25 +323,25 @@ void Application::initializeServices() {
             }
         }
     });
-    
+
     // MessageService -> RelayService (Outgoing E2EE Adapter)
     QObject::connect(m_messageService.get(), &Services::MessageService::transmitMessage, m_relayService.get(), [this](const NeoNect::Domain::Message& msg) {
         Core::Messaging::Message coreMsg;
         coreMsg.messageId = msg.id;
         coreMsg.conversationId = msg.conversationId;
         coreMsg.senderId = msg.senderId;
-        
+
         // Extract plain username if it's a DM prefix
         if (msg.conversationId.startsWith("dms:")) {
             coreMsg.receiverId = msg.conversationId.mid(4);
         } else {
             coreMsg.receiverId = msg.conversationId; // fallback
         }
-        
+
         coreMsg.timestamp = msg.timestamp;
         coreMsg.plaintext = msg.text;
         coreMsg.state = Core::Messaging::MessageState::CREATED;
-        
+
         m_coreMessageService->sendMessage(coreMsg);
     });
 
