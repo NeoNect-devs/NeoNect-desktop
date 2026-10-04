@@ -71,6 +71,8 @@ namespace Constants {
 
     /** @brief Full-duplex WebSocket real-time relay stream (`GET / WebSocket Upgrade`). */
     inline constexpr const char* EP_RELAY_WS = "/api/v1/relay/ws";
+    inline constexpr const char* EP_PREKEY_UPLOAD = "/api/v1/keys/upload";
+    inline constexpr const char* EP_PREKEY_CLAIM = "/api/v1/keys/claim";
 
     /** @brief Authoritative mutual friendship management (`GET`, `POST`, `DELETE`). */
     inline constexpr const char* EP_FRIENDS = "/api/v1/friends";

@@ -29,6 +29,8 @@
 #include "messaging/OfflineQueue.h"
 #include "messaging/MessageService.h"
 #include "../crypto/session/SessionManager.h"
+#include "../crypto/session/SecurePreKeyStoreAdapter.h"
+#include "../services/prekeyservice.h"
 
 #include <QQmlContext>
 #include <QQuickWindow>
@@ -214,6 +216,9 @@ void Application::initializeServices() {
     auto x3dh = std::make_shared<Crypto::X3DHImpl>();
     auto ratchet = std::make_shared<Crypto::DoubleRatchet::Engine>(backend);
     auto aead = std::make_shared<Crypto::DoubleRatchet::AEAD>(backend.get());
+    
+    auto preKeyAdapter = std::make_shared<Crypto::Session::SecurePreKeyStoreAdapter>(m_secureStore);
+    auto preKeyService = std::make_shared<Services::PreKeyService>(m_transport, preKeyAdapter);
 
     m_messageQueue = std::make_shared<Core::Messaging::MessageQueue>(dbPath);
     m_offlineQueueService = std::make_shared<Core::Messaging::OfflineQueueService>(
@@ -228,7 +233,7 @@ void Application::initializeServices() {
     );
 
     m_sessionManager = std::make_shared<Crypto::Session::SessionManager>(
-        m_secureStore, x3dh, ratchet, aead, backend, nullptr, xeddsa,
+        m_secureStore, x3dh, ratchet, aead, backend, preKeyAdapter, xeddsa,
         [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) {
             if (m_offlineQueueService) m_offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
         },

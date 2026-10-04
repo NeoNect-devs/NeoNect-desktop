@@ -112,6 +112,9 @@ int main(int argc, char *argv[]) {
 
         std::cout << "--> Testing testRelayServiceFlowAndDeduplication..." << std::endl;
         int r3 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRelayServiceFlowAndDeduplication");
+        int r_adapter = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testPreKeyStoreAdapter");
+        int r_decoding = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testPreKeyServiceDecoding");
+        int r_upload = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testPreKeyServiceUploadPayload");
         std::cout << "    Result: " << (r3 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testAllFriendsUsesBackendAuthority..." << std::endl;

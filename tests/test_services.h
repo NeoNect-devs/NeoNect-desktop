@@ -41,4 +41,7 @@ private slots:
     void testDisplayNameResolutionAndSync();
     void testAvatarProcessingAndPeerSync();
     void testPhase3AuthSessionDeviceHarden();
+    void testPreKeyStoreAdapter();
+    void testPreKeyServiceDecoding();
+    void testPreKeyServiceUploadPayload();
 };

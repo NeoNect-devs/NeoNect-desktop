@@ -2155,3 +2155,182 @@ void TestServices::testPhase3AuthSessionDeviceHarden() {
     QCOMPARE(spyRev.count(), 1);
     QVERIFY(spyRev.takeFirst().at(0).toBool());
 }
+
+#include <QtTest>
+#include <optional>
+#include "../src/crypto/x3dh/X3DHTypes.h"
+Q_DECLARE_METATYPE(std::optional<NeoNect::Crypto::X3DH::BobPreKeyBundle>)
+#include "test_services.h"
+#include "../src/services/prekeyservice.h"
+#include "../src/crypto/session/SecurePreKeyStoreAdapter.h"
+#include "mocks/mockhttptransport.h"
+#include "../src/storage/e2ee/SecureE2EEStore.h"
+#include "../src/storage/e2ee/PlatformSecretStore.h"
+#include "../src/storage/e2ee/MasterKeyProvider.h"
+#include "../src/storage/e2ee/IOSSecretStore.h"
+
+class ServicesMockSecretStore : public NeoNect::Storage::IOSSecretStore {
+public:
+    NeoNect::ServiceResult<QByteArray> readSecret(const QString& name) override {
+        if (store.contains(name)) return NeoNect::ServiceResult<QByteArray>::ok(store[name]);
+        return NeoNect::ServiceResult<QByteArray>::fail("Not found");
+    }
+    NeoNect::ServiceResult<std::monostate> writeSecret(const QString& name, const QByteArray& secret) override {
+        store[name] = secret;
+        return NeoNect::ServiceResult<std::monostate>::ok({});
+    }
+    NeoNect::ServiceResult<std::monostate> deleteSecret(const QString& name) override {
+        store.remove(name);
+        return NeoNect::ServiceResult<std::monostate>::ok({});
+    }
+private:
+    QMap<QString, QByteArray> store;
+};
+
+
+void TestServices::testPreKeyStoreAdapter() {
+    auto secretStore = std::make_shared<ServicesMockSecretStore>();
+    auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
+    auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
+    store->initialize("test_prekey_adapter.db");
+    
+    NeoNect::Crypto::Session::SecurePreKeyStoreAdapter adapter(store);
+    
+    // Identity Key
+    NeoNect::Crypto::IdentityKeyPair ik;
+    ik.privateKey.data.resize(32);
+    ik.publicKey.data.resize(32);
+    ik.privateKey.data.data()[0] = 1;
+    ik.publicKey.data.data()[0] = 2;
+    adapter.storeIdentityKey(std::move(ik));
+    
+    auto retrievedIk = adapter.identityKey();
+    QVERIFY(retrievedIk.has_value());
+    QCOMPARE(retrievedIk->privateKey.data.data()[0], (uint8_t)1);
+    QCOMPARE(retrievedIk->publicKey.data.data()[0], (uint8_t)2);
+    
+    // Signed PreKey
+    NeoNect::Crypto::SignedPreKey spk;
+    spk.id = 42;
+    spk.privateKey.data.resize(32);
+    spk.publicKey.data.resize(32);
+    spk.signature.data.resize(64);
+    spk.privateKey.data.data()[0] = 3;
+    spk.publicKey.data.data()[0] = 4;
+    spk.signature.data.data()[0] = 5;
+    adapter.storeSignedPreKey(std::move(spk));
+    
+    auto retrievedSpk = adapter.signedPreKey();
+    QVERIFY(retrievedSpk.has_value());
+    QCOMPARE(retrievedSpk->id, (NeoNect::Crypto::KeyId)42);
+    QCOMPARE(retrievedSpk->privateKey.data.data()[0], (uint8_t)3);
+    QCOMPARE(retrievedSpk->publicKey.data.data()[0], (uint8_t)4);
+    QCOMPARE(retrievedSpk->signature.data.data()[0], (uint8_t)5);
+    
+    // OPK
+    NeoNect::Crypto::OneTimePreKey opk;
+    opk.id = 100;
+    opk.privateKey.data.resize(32);
+    opk.publicKey.data.resize(32);
+    opk.privateKey.data.data()[0] = 6;
+    opk.publicKey.data.data()[0] = 7;
+    std::vector<NeoNect::Crypto::OneTimePreKey> opks;
+opks.push_back(std::move(opk));
+    adapter.storeOneTimePreKeys(std::move(opks));
+    
+    QCOMPARE(adapter.availableOneTimePreKeyCount(), (size_t)1);
+    auto available = adapter.availableOneTimePreKeys();
+    QCOMPARE(available.size(), (size_t)1);
+    QCOMPARE(available[0].publicKey.data.data()[0], (uint8_t)7);
+    
+    auto consumed = adapter.consumeOneTimePreKey(100);
+    QVERIFY(consumed.has_value());
+    QCOMPARE(consumed->privateKey.data.data()[0], (uint8_t)6);
+    QCOMPARE(consumed->publicKey.data.data()[0], (uint8_t)7);
+    
+    // Consume again should fail
+    auto consumedAgain = adapter.consumeOneTimePreKey(100);
+    QVERIFY(!consumedAgain.has_value());
+    QCOMPARE(adapter.availableOneTimePreKeyCount(), (size_t)0);
+}
+
+void TestServices::testPreKeyServiceDecoding() {
+    auto transport = std::make_shared<NeoNect::Testing::MockHttpTransport>();
+    auto secretStore = std::make_shared<ServicesMockSecretStore>();
+    auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
+    auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
+    store->initialize("test_prekey_decoding.db");
+    auto adapter = std::make_shared<NeoNect::Crypto::Session::SecurePreKeyStoreAdapter>(store);
+    NeoNect::Services::PreKeyService service(transport, adapter);
+    
+    QSignalSpy spy(&service, &NeoNect::Services::PreKeyService::preKeyBundleClaimed);
+    
+    // Empty OPK missing OPK fields -> should still be valid if identity and spk are correct
+    QJsonObject obj;
+    QByteArray ikBytes(32, 'a');
+    QByteArray spkPubBytes(32, 'b');
+    QByteArray spkSigBytes(64, 'c');
+    obj["identity_key"] = QString::fromLatin1(ikBytes.toBase64());
+    QJsonObject spkObj;
+    spkObj["key_id"] = 1;
+    spkObj["public_key"] = QString::fromLatin1(spkPubBytes.toBase64());
+    spkObj["signature"] = QString::fromLatin1(spkSigBytes.toBase64());
+    obj["signed_curve_prekey"] = spkObj;
+    
+    transport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(obj).toJson(), 200);
+    service.claimPreKeys("bob", "dev1");
+    
+    QCOMPARE(spy.count(), 1);
+    auto args = spy.takeFirst();
+    QCOMPARE(args[0].toString(), QString("bob"));
+    QCOMPARE(args[1].toString(), QString("dev1"));
+    auto bundleOpt = args[2].value<std::optional<NeoNect::Crypto::X3DH::BobPreKeyBundle>>();
+    QVERIFY(bundleOpt.has_value());
+    QVERIFY(!bundleOpt->oneTimePreKey.has_value()); // Missing OPK
+    
+    // Malformed lengths
+    QByteArray badIkBytes(31, 'a');
+    obj["identity_key"] = QString::fromLatin1(badIkBytes.toBase64());
+    transport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(obj).toJson(), 200);
+    service.claimPreKeys("bob", "dev1");
+    QCOMPARE(spy.count(), 1);
+    QVERIFY(!spy.takeFirst()[2].value<std::optional<NeoNect::Crypto::X3DH::BobPreKeyBundle>>().has_value());
+}
+
+void TestServices::testPreKeyServiceUploadPayload() {
+    auto transport = std::make_shared<NeoNect::Testing::MockHttpTransport>();
+    auto secretStore = std::make_shared<ServicesMockSecretStore>();
+    auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
+    auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
+    store->initialize("test_prekey_upload.db");
+    auto adapter = std::make_shared<NeoNect::Crypto::Session::SecurePreKeyStoreAdapter>(store);
+    NeoNect::Services::PreKeyService service(transport, adapter);
+    
+    NeoNect::Crypto::SignedPreKey spk;
+    spk.id = 1;
+    spk.privateKey.data.resize(32);
+    spk.publicKey.data.resize(32);
+    spk.signature.data.resize(64);
+    std::fill(spk.privateKey.data.data(), spk.privateKey.data.data() + 32, 'x'); // Should NOT be in payload
+    std::fill(spk.publicKey.data.data(), spk.publicKey.data.data() + 32, 'y');
+    std::fill(spk.signature.data.data(), spk.signature.data.data() + 64, 'z');
+    adapter->storeSignedPreKey(std::move(spk));
+    
+    transport->setSimulatedResponse("/api/v1/keys/upload", "{}", 200);
+    
+    QSignalSpy spyReq(transport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
+    service.uploadPreKeys("dev1");
+    auto lastReq = spyReq.takeFirst()[0].toByteArray();
+
+    auto doc = QJsonDocument::fromJson(lastReq);
+    QVERIFY(doc.isObject());
+    auto obj = doc.object();
+    QCOMPARE(obj["device_id"].toString(), QString("dev1"));
+    
+    auto spkReq = obj["signed_curve_prekey"].toObject();
+    QCOMPARE(spkReq["key_id"].toInt(), 1);
+    QVERIFY(!lastReq.contains("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")); // Private key must not be present!
+    QCOMPARE(spkReq["public_key"].toString(), QString::fromLatin1(QByteArray(32, 'y').toBase64()));
+    QCOMPARE(spkReq["signature"].toString(), QString::fromLatin1(QByteArray(64, 'z').toBase64()));
+}
+

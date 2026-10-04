@@ -128,7 +128,7 @@ qt_add_executable(NeoNectApp
     src/crypto/doubleratchet/IAEAD.h
     src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
-    src/crypto/session/SessionManager.h src/crypto/session/SessionManager.cpp
+    src/crypto/session/SessionManager.h src/crypto/session/SessionManager.cpp src/crypto/session/SecurePreKeyStoreAdapter.cpp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
@@ -150,7 +150,7 @@ qt_add_executable(NeoNectApp
 
     # Services
     src/services/authservice.h src/services/authservice.cpp
-    src/services/deviceservice.h src/services/deviceservice.cpp
+    src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/friendservice.h src/services/friendservice.cpp
 
@@ -386,7 +386,7 @@ add_executable(NeoNectTests
     src/crypto/doubleratchet/IAEAD.h
     src/crypto/doubleratchet/AEAD.h src/crypto/doubleratchet/AEAD.cpp
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
-    src/crypto/session/SessionManager.h src/crypto/session/SessionManager.cpp
+    src/crypto/session/SessionManager.h src/crypto/session/SessionManager.cpp src/crypto/session/SecurePreKeyStoreAdapter.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/core/messaging/Message.h
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
@@ -411,7 +411,7 @@ add_executable(NeoNectTests
 
     # Services
     src/services/authservice.h src/services/authservice.cpp
-    src/services/deviceservice.h src/services/deviceservice.cpp
+    src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/friendservice.h src/services/friendservice.cpp
 
@@ -505,7 +505,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/transport/httptransport.h src/transport/httptransport.cpp
     src/transport/websocketclient.h src/transport/websocketclient.cpp
     src/services/authservice.h src/services/authservice.cpp
-    src/services/deviceservice.h src/services/deviceservice.cpp
+    src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/friendservice.h src/services/friendservice.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
@@ -587,7 +587,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/transport/httptransport.h src/transport/httptransport.cpp
     src/transport/websocketclient.h src/transport/websocketclient.cpp
     src/services/authservice.h src/services/authservice.cpp
-    src/services/deviceservice.h src/services/deviceservice.cpp
+    src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/friendservice.h src/services/friendservice.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
