@@ -63,6 +63,7 @@ namespace Services { class RelayService; }
  * - No service layer component may depend directly on QML or UI types.
  */
 class Application {
+    friend class ::TestProductionE2EE;
     
 public:
     /**
@@ -149,26 +150,16 @@ private:
     std::shared_ptr<Core::Messaging::IMessageStorage> m_messageStorage;
     
     // E2EE Production Graph Objects
-        public:
-        std::shared_ptr<Storage::SecureE2EEStore> m_secureStore;
-    public:
-    public:
+    std::shared_ptr<Storage::SecureE2EEStore> m_secureStore;
     std::shared_ptr<Crypto::Session::SessionManager> m_sessionManager;
-private:
     std::shared_ptr<Core::Messaging::MessageQueue> m_messageQueue;
     std::shared_ptr<Core::Messaging::OfflineQueueService> m_offlineQueueService;
-    public:
-    public:
     std::shared_ptr<Core::Messaging::MessageService> m_coreMessageService;
-private:
 
     /** @brief Concrete OpenSSL cryptographic service. */
     std::shared_ptr<Crypto::ICryptoService> m_cryptoService;
     /** @brief Production HTTP network transport. */
-    public:
-    public:
     std::shared_ptr<Transport::IHttpTransport> m_transport;
-private:
 
     // Facades & Managers
     /** @brief Cryptographic facade exposed to QML. */
@@ -183,10 +174,7 @@ private:
     /** @brief Messaging business service coordinator. */
     std::unique_ptr<Services::MessageService> m_messageService;
     /** @brief Encrypted packet relay and WebSocket gateway. */
-    public:
-    public:
     std::shared_ptr<Services::RelayService> m_relayService;
-private:
     /** @brief Global event filter monitoring user activity for AFK/idle detection. */
     std::unique_ptr<QObject> m_activityFilter;
     

@@ -212,8 +212,8 @@ bool OfflineQueueService::onEnvelopeReady(const QString& recipientUsername, cons
     auto optEntry = m_queue->getEntry(messageId);
     if (optEntry) {
         processEntry(*optEntry);
-    return true;
     }
+    return true;
 }
 
 void OfflineQueueService::processEntry(QueueEntry& entry) {

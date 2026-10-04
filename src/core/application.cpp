@@ -230,8 +230,6 @@ void Application::initializeServices() {
     auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(secretStore);
     m_secureStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
     m_secureStore->initialize(secureDbPath);
-    auto initRes = m_secureStore->initialize(secureDbPath);
-    if(!initRes.success) qDebug() << "SECURE STORE INIT FAILED:" << initRes.message;
 
     auto backend = std::make_shared<Crypto::OpenSSLBackend>();
     auto xeddsa = std::make_shared<Crypto::XEdDSAAdapter>();
