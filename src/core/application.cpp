@@ -234,13 +234,30 @@ void Application::initializeServices() {
 
     m_sessionManager = std::make_shared<Crypto::Session::SessionManager>(
         m_secureStore, x3dh, ratchet, aead, backend, preKeyAdapter, xeddsa,
-        [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) {
-            if (m_offlineQueueService) m_offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
+        [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) -> bool {
+            if (m_offlineQueueService) {
+                m_offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
+                return true;
+            }
+            return false;
         },
         nullptr // Incoming E2EE deferred to A8.2
     );
 
     m_coreMessageService = std::make_shared<Core::Messaging::MessageService>(m_messageStorage, m_sessionManager, m_messageQueue);
+    
+    m_coreMessageService->setPreKeyClaimRequestCallback([preKeyService](const QString& targetUser, const QString& targetDevice, auto resultCb) {
+        auto connection = std::make_shared<QMetaObject::Connection>();
+        *connection = QObject::connect(preKeyService.get(), &Services::PreKeyService::preKeyBundleClaimed,
+            [resultCb, targetUser, targetDevice, connection](const QString& retUser, const QString& retDev, std::optional<Crypto::X3DH::BobPreKeyBundle> bundle) {
+                if (retUser == targetUser && retDev == targetDevice) {
+                    QObject::disconnect(*connection);
+                    resultCb(bundle);
+                }
+            });
+        
+        preKeyService->claimPreKeys(targetUser, targetDevice);
+    });
 
     // RelayService -> MessageService (Incoming)
     QObject::connect(m_relayService.get(), &Services::RelayService::incomingDomainMessagesReceived, m_messageService.get(), &Services::MessageService::handleIncomingMessages);

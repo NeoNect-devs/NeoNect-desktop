@@ -105,6 +105,10 @@ DoubleRatchet::State SessionManager::sessionRecordToState(const Storage::E2EESes
     return state;
 }
 
+bool SessionManager::hasSession(const QString& sessionId) {
+    return m_store->getSession(sessionId).success;
+}
+
 ServiceResult<std::monostate> SessionManager::createSession(
     const QString& recipientUsername,
     const QString& recipientDeviceId,
@@ -175,14 +179,16 @@ ServiceResult<std::monostate> SessionManager::createSession(
     QByteArray remoteIdentity = QByteArray(reinterpret_cast<const char*>(bobBundle.identityKey.data.data()), bobBundle.identityKey.data.size());
     Storage::E2EESession sessionRecord = stateToSessionRecord(state, sessionId, remoteIdentity, identityRes.data.value().identity_id);
 
+    if (m_sendCb) {
+        if (!m_sendCb(recipientUsername, recipientDeviceId, messageId, envBytes)) {
+            return ServiceResult<std::monostate>::fail("Failed to enqueue initial envelope");
+        }
+    }
+
     Storage::SessionUpdateTx tx;
     tx.session = sessionRecord;
     auto saveRes = m_store->updateSessionState(tx);
     if (!saveRes.success) return saveRes;
-
-    if (m_sendCb) {
-        m_sendCb(recipientUsername, recipientDeviceId, messageId, envBytes);
-    }
 
     return ServiceResult<std::monostate>::ok(std::monostate{});
 }
@@ -226,14 +232,16 @@ ServiceResult<std::monostate> SessionManager::sendMessage(
 
     Storage::E2EESession updatedSession = stateToSessionRecord(state, sessionId, sessionRes.data.value().remote_identity_key, sessionRes.data.value().local_identity_id);
     
+    if (m_sendCb) {
+        if (!m_sendCb(recipientUsername, recipientDeviceId, messageId, envBytes)) {
+            return ServiceResult<std::monostate>::fail("Failed to enqueue ratchet envelope");
+        }
+    }
+
     Storage::SessionUpdateTx tx;
     tx.session = updatedSession;
     auto saveRes = m_store->updateSessionState(tx);
     if (!saveRes.success) return saveRes;
-
-    if (m_sendCb) {
-        m_sendCb(recipientUsername, recipientDeviceId, messageId, envBytes);
-    }
 
     return ServiceResult<std::monostate>::ok(std::monostate{});
 }

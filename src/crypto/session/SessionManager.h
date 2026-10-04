@@ -20,7 +20,7 @@ namespace Session {
 class SessionManager : public Transport::IIncomingEnvelopeHandler {
 public:
     using MessageReceivedCallback = std::function<void(const QString& sessionId, const QByteArray& plaintext)>;
-    using EnvelopeSendCallback = std::function<void(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes)>;
+    using EnvelopeSendCallback = std::function<bool(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes)>;
 
     SessionManager(
         std::shared_ptr<Storage::ISecureE2EEStore> store,
@@ -35,6 +35,7 @@ public:
     );
 
     // Initial session creation (Alice side)
+    bool hasSession(const QString& sessionId);
     ServiceResult<std::monostate> createSession(
         const QString& recipientUsername,
         const QString& recipientDeviceId,

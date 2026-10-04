@@ -2189,6 +2189,7 @@ private:
 
 
 void TestServices::testPreKeyStoreAdapter() {
+    QFile::remove("test_prekey_adapter.db");
     auto secretStore = std::make_shared<ServicesMockSecretStore>();
     auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
     auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
@@ -2256,6 +2257,7 @@ opks.push_back(std::move(opk));
 
 void TestServices::testPreKeyServiceDecoding() {
     auto transport = std::make_shared<NeoNect::Testing::MockHttpTransport>();
+    QFile::remove("test_prekey_decoding.db");
     auto secretStore = std::make_shared<ServicesMockSecretStore>();
     auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
     auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
@@ -2299,6 +2301,7 @@ void TestServices::testPreKeyServiceDecoding() {
 
 void TestServices::testPreKeyServiceUploadPayload() {
     auto transport = std::make_shared<NeoNect::Testing::MockHttpTransport>();
+    QFile::remove("test_prekey_upload.db");
     auto secretStore = std::make_shared<ServicesMockSecretStore>();
     auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
     auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);

@@ -86,8 +86,9 @@ struct TestContext {
 
         manager = std::make_shared<SessionManager>(
             store, x3dh, ratchet, aead, backend, preKeyStore, xeddsa,
-            [this](const QString&, const QString&, const QString&, const QByteArray& env) {
+            [this](const QString&, const QString&, const QString&, const QByteArray& env) -> bool {
                 sentEnvelopes.push_back(env);
+                return true;
             },
             [this](const QString&, const QByteArray& pt) {
                 receivedPlaintexts.push_back(pt);
@@ -235,8 +236,9 @@ void TestSessionManager::testRestartSimulation() {
     // Create new manager sharing the same store
     auto newManager = std::make_shared<SessionManager>(
         alice.store, alice.x3dh, alice.ratchet, alice.aead, alice.backend, alice.preKeyStore, alice.xeddsa,
-        [&](const QString&, const QString&, const QString&, const QByteArray& env) {
+        [&](const QString&, const QString&, const QString&, const QByteArray& env) -> bool {
             alice.sentEnvelopes.push_back(env);
+            return true;
         },
         [&](const QString&, const QByteArray& pt) {
             alice.receivedPlaintexts.push_back(pt);

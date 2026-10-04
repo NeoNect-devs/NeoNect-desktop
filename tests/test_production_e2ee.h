@@ -9,4 +9,6 @@ private slots:
     void initTestCase();
     void cleanupTestCase();
     void testOutgoingProductionPath();
+    void testFirstMessageProductionPath();
+    void testFirstMessageFailures();
 };

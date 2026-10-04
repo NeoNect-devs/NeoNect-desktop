@@ -12,9 +12,13 @@ namespace NeoNect {
 namespace Core {
 namespace Messaging {
 
-class MessageService {
+class MessageService : public std::enable_shared_from_this<MessageService> {
 public:
     using MessageReceivedCallback = std::function<void(const Message&)>;
+    using PreKeyClaimCallback = std::function<void(std::optional<Crypto::X3DH::BobPreKeyBundle>)>;
+    using PreKeyClaimRequestCallback = std::function<void(const QString& targetUser, const QString& targetDevice, PreKeyClaimCallback resultCb)>;
+
+    void setPreKeyClaimRequestCallback(PreKeyClaimRequestCallback cb) { m_preKeyClaimCb = cb; }
 
     MessageService(std::shared_ptr<IMessageStorage> storage, 
                    std::shared_ptr<Crypto::Session::SessionManager> sessionManager,
@@ -36,6 +40,7 @@ private:
     std::shared_ptr<Crypto::Session::SessionManager> m_sessionManager;
     std::shared_ptr<IMessageQueue> m_offlineQueue;
     MessageReceivedCallback m_onMessageReceived;
+    PreKeyClaimRequestCallback m_preKeyClaimCb;
 };
 
 } // namespace Messaging

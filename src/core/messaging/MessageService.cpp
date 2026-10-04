@@ -52,40 +52,83 @@ bool MessageService::sendMessage(Message& msg) {
     obj["plaintext"] = msg.plaintext;
     QByteArray rawPlaintext = QJsonDocument(obj).toJson(QJsonDocument::Compact);
 
-    // We assume SessionManager internally handles the RelayService call via its m_sendCb.
     QString sessionId = "sess_" + msg.receiverId; 
     
-    // If transport fails during SessionManager's m_sendCb, how do we know?
-    // SessionManager::sendMessage returns ServiceResult.
-    auto result = m_sessionManager->sendMessage(
-        sessionId,
-        rawPlaintext,
-        msg.messageId,
-        msg.receiverId,
-        "default_device" // Do NOT implement multi-device, mock device id
-    );
+    if (m_sessionManager->hasSession(sessionId)) {
+        auto result = m_sessionManager->sendMessage(
+            sessionId,
+            rawPlaintext,
+            msg.messageId,
+            msg.receiverId,
+            "default_device"
+        );
 
-    bool queued = false;
-    if (m_offlineQueue) {
-        queued = m_offlineQueue->getEntry(msg.messageId).has_value();
-    } else {
-        queued = result.success;
-    }
+        bool queued = false;
+        if (m_offlineQueue) {
+            queued = m_offlineQueue->getEntry(msg.messageId).has_value();
+        } else {
+            queued = result.success;
+        }
 
-    if (!result.success || !queued) {
-        // Encryption or transport failed.
-        // Task: "If encryption fails: message is not marked SENT"
-        // Task: "If transport fails: message becomes FAILED"
-        // Both can be handled by moving to FAILED.
-        msg.state = MessageState::FAILED;
+        if (!result.success || !queued) {
+            msg.state = MessageState::FAILED;
+            m_storage->updateMessageState(msg.messageId, msg.state);
+            return false;
+        }
+
+        msg.state = MessageState::SENT;
         m_storage->updateMessageState(msg.messageId, msg.state);
-        return false;
-    }
+        return true;
+    } else {
+        if (!m_preKeyClaimCb) {
+            qDebug() << "[CoreMessageService] No session and no prekey claim callback available!";
+            msg.state = MessageState::FAILED;
+            m_storage->updateMessageState(msg.messageId, msg.state);
+            return false;
+        }
 
-    // Success
-    msg.state = MessageState::SENT;
-    m_storage->updateMessageState(msg.messageId, msg.state);
-    return true;
+        QString msgId = msg.messageId;
+        QString receiver = msg.receiverId;
+
+        // Async path
+        std::weak_ptr<MessageService> weakSelf = weak_from_this();
+        
+        m_preKeyClaimCb(receiver, "default_device", [weakSelf, msgId, receiver, rawPlaintext, sessionId](std::optional<Crypto::X3DH::BobPreKeyBundle> bundle) {
+            auto self = weakSelf.lock();
+            if (!self) return;
+
+            if (!bundle.has_value()) {
+                qDebug() << "[CoreMessageService] Failed to claim prekey bundle for" << receiver;
+                self->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                return;
+            }
+
+            auto result = self->m_sessionManager->createSession(
+                receiver,
+                "default_device",
+                bundle.value(),
+                msgId,
+                rawPlaintext
+            );
+
+            bool queued = false;
+            if (self->m_offlineQueue) {
+                queued = self->m_offlineQueue->getEntry(msgId).has_value();
+            } else {
+                queued = result.success;
+            }
+
+            if (!result.success || !queued) {
+                self->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                return;
+            }
+
+            self->m_storage->updateMessageState(msgId, MessageState::SENT);
+        });
+
+        // We return true immediately, message stays in ENCRYPTING state
+        return true;
+    }
 }
 
 void MessageService::receiveMessage(const QString& sessionId, const QByteArray& plaintext) {
