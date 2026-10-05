@@ -14,4 +14,9 @@ private slots:
     void testApplicationIntegrationFirstMessage();
     void testApplicationIntegrationIncomingPath();
     void testBidirectionalEstablishedSession();
+    void testIdentityRestart();
+    void testSessionRestart();
+    void testPreKeyRestart();
+    void testSkippedKeyRestart();
+    void testLogoutReloginIntegration();
 };
