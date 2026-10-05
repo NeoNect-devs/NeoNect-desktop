@@ -99,7 +99,7 @@ void TestProductionE2EE::testOutgoingProductionPath() {
     auto platformSecretStore = std::make_shared<DummySecretStore>();
     auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(platformSecretStore);
     auto secureStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
-    auto initRes = secureStore->initialize("test_prod_secure.db");
+    auto initRes = secureStore->initialize("test_prod_secure.db", "testProfile");
     QVERIFY(initRes.success);
 
     auto backend = std::make_shared<OpenSSLBackend>();
@@ -269,7 +269,7 @@ void TestProductionE2EE::testFirstMessageProductionPath() {
     auto platformSecretStore = std::make_shared<DummySecretStore>();
     auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(platformSecretStore);
     auto secureStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
-    QVERIFY(secureStore->initialize("test_prod_alice_secure.db").success);
+    QVERIFY(secureStore->initialize("test_prod_alice_secure.db", "testProfile").success);
 
     Storage::E2EEIdentity aliceId;
     aliceId.identity_id = 1;
@@ -359,7 +359,7 @@ void TestProductionE2EE::testFirstMessageProductionPath() {
 
     // 7. Bob processes envelope
     auto bobStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
-    QVERIFY(bobStore->initialize("test_prod_bob_secure.db").success);
+    QVERIFY(bobStore->initialize("test_prod_bob_secure.db", "testProfile").success);
     Storage::E2EEIdentity bId;
     bId.identity_id = 1;
     bId.version = 1;
@@ -415,7 +415,7 @@ void TestProductionE2EE::testFirstMessageFailures() {
     auto platformSecretStore = std::make_shared<DummySecretStore>();
     auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(platformSecretStore);
     auto secureStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
-    QVERIFY(secureStore->initialize("test_prod_alice_secure_fail.db").success);
+    QVERIFY(secureStore->initialize("test_prod_alice_secure_fail.db", "testProfile").success);
 
     Storage::E2EEIdentity aliceId;
     aliceId.identity_id = 1;
@@ -682,7 +682,7 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     auto alicePlatformSecretStore = std::make_shared<DummySecretStore>();
     auto aliceKeyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(alicePlatformSecretStore);
     auto aliceSecureStore = std::make_shared<NeoNect::Storage::SecureE2EEStore>(aliceKeyProvider);
-    QVERIFY(aliceSecureStore->initialize("test_prod_alice_secure_standalone.db").success);
+    QVERIFY(aliceSecureStore->initialize("test_prod_alice_secure_standalone.db", "testProfile").success);
 
     NeoNect::Storage::E2EEIdentity aliceId;
     aliceId.identity_id = 1;

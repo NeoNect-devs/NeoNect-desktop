@@ -12,14 +12,16 @@ MasterKeyProvider::MasterKeyProvider(std::shared_ptr<IOSSecretStore> secretStore
 
 MasterKeyProvider::~MasterKeyProvider() = default;
 
-ServiceResult<QByteArray> MasterKeyProvider::loadOrCreate() {
-    auto readResult = m_secretStore->readSecret(kMasterKeyName);
+ServiceResult<QByteArray> MasterKeyProvider::loadOrCreate(const QString& profileId) {
+    const QString scopedKeyName = kMasterKeyName + "_" + profileId;
+
+    auto readResult = m_secretStore->readSecret(scopedKeyName);
     if (readResult.success) {
         if (readResult.data->size() == 32) {
             return ServiceResult<QByteArray>::ok(*readResult.data);
         } else {
             // Invalid size, ignore and replace
-            m_secretStore->deleteSecret(kMasterKeyName);
+            m_secretStore->deleteSecret(scopedKeyName);
         }
     }
 
@@ -29,7 +31,7 @@ ServiceResult<QByteArray> MasterKeyProvider::loadOrCreate() {
         return ServiceResult<QByteArray>::fail("Failed to generate secure random master key");
     }
 
-    auto writeResult = m_secretStore->writeSecret(kMasterKeyName, newKey);
+    auto writeResult = m_secretStore->writeSecret(scopedKeyName, newKey);
     if (!writeResult.success) {
         // Zeroize memory
         newKey.fill(0);
@@ -37,6 +39,15 @@ ServiceResult<QByteArray> MasterKeyProvider::loadOrCreate() {
     }
 
     return ServiceResult<QByteArray>::ok(newKey);
+}
+
+ServiceResult<std::monostate> MasterKeyProvider::remove(const QString& profileId) {
+    const QString scopedKeyName = kMasterKeyName + "_" + profileId;
+    auto deleteResult = m_secretStore->deleteSecret(scopedKeyName);
+    if (!deleteResult.success) {
+        return ServiceResult<std::monostate>::fail("Failed to delete master key: " + deleteResult.message);
+    }
+    return ServiceResult<std::monostate>::ok(std::monostate{});
 }
 
 } // namespace Storage

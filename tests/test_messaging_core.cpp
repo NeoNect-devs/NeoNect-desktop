@@ -9,8 +9,9 @@
 
 class MockSecureE2EEStore : public NeoNect::Storage::ISecureE2EEStore {
 public:
-    NeoNect::ServiceResult<std::monostate> initialize(const QString&) override { return NeoNect::ServiceResult<std::monostate>::fail(""); }
+    NeoNect::ServiceResult<std::monostate> initialize(const QString&, const QString&) override { return NeoNect::ServiceResult<std::monostate>::fail(""); }
     void close() override {}
+    NeoNect::ServiceResult<std::monostate> closeAndWipeDatabase() override { return NeoNect::ServiceResult<std::monostate>::ok({}); }
     NeoNect::ServiceResult<std::monostate> saveIdentity(const NeoNect::Storage::E2EEIdentity&) override { return NeoNect::ServiceResult<std::monostate>::fail(""); }
     NeoNect::ServiceResult<NeoNect::Storage::E2EEIdentity> getIdentity() override { return NeoNect::ServiceResult<NeoNect::Storage::E2EEIdentity>::fail(""); }
     NeoNect::ServiceResult<std::monostate> saveSignedPreKey(const NeoNect::Storage::E2EESignedPreKey&) override { return NeoNect::ServiceResult<std::monostate>::fail(""); }

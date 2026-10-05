@@ -75,8 +75,9 @@ class ISecureE2EEStore {
 public:
     virtual ~ISecureE2EEStore() = default;
 
-    virtual ServiceResult<std::monostate> initialize(const QString& dbPath) = 0;
+    virtual ServiceResult<std::monostate> initialize(const QString& dbPath, const QString& profileId) = 0;
     virtual void close() = 0;
+    virtual ServiceResult<std::monostate> closeAndWipeDatabase() = 0;
 
     virtual ServiceResult<std::monostate> saveIdentity(const E2EEIdentity& id) = 0;
     virtual ServiceResult<E2EEIdentity> getIdentity() = 0;

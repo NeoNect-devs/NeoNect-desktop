@@ -12,7 +12,8 @@ public:
     explicit MasterKeyProvider(std::shared_ptr<IOSSecretStore> secretStore);
     ~MasterKeyProvider() override;
 
-    ServiceResult<QByteArray> loadOrCreate() override;
+    ServiceResult<QByteArray> loadOrCreate(const QString& profileId) override;
+    ServiceResult<std::monostate> remove(const QString& profileId) override;
 
 private:
     std::shared_ptr<IOSSecretStore> m_secretStore;

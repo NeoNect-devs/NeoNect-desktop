@@ -61,7 +61,7 @@ struct TestContext {
         auto iosStore = std::make_shared<MockSecretStore>();
         auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(iosStore);
         store = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
-        auto initRes = store->initialize(dbPath);
+        auto initRes = store->initialize(dbPath, "testProfile");
         if (!initRes.success) {
             qDebug() << "DB Init failed:" << initRes.message;
         }

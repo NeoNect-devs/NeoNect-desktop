@@ -9,7 +9,8 @@ class IMasterKeyProvider {
 public:
     virtual ~IMasterKeyProvider() = default;
 
-    virtual ServiceResult<QByteArray> loadOrCreate() = 0;
+    virtual ServiceResult<QByteArray> loadOrCreate(const QString& profileId) = 0;
+    virtual ServiceResult<std::monostate> remove(const QString& profileId) = 0;
 };
 
 } // namespace Storage

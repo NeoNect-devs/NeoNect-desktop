@@ -18,6 +18,7 @@
 #pragma once
 #include <QObject>
 #include <memory>
+#include <functional>
 #include "../transport/ihttptransport.h"
 #include "../storage/isettingsrepository.h"
 
@@ -82,6 +83,8 @@ public:
      */
     void fetchUserProfile();
 
+    void setBeforeTeardownCallback(std::function<void(const QString&)> cb) { m_onBeforeTeardown = std::move(cb); }
+
 signals:
     /**
      * @brief Emitted when a server verification ping completes.
@@ -132,6 +135,7 @@ private:
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     /** @brief Injected persistent settings repository. */
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
+    std::function<void(const QString&)> m_onBeforeTeardown;
 };
 
 } // namespace Services

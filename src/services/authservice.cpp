@@ -170,6 +170,9 @@ void AuthService::loginUser(const QString &username, const QString &password) {
 }
 
 void AuthService::teardownLocalSession() {
+    if (m_onBeforeTeardown) {
+        m_onBeforeTeardown(m_storage->username());
+    }
     m_storage->clearSession();
     m_transport->setAuthToken(QString());
 }

@@ -14,8 +14,9 @@ public:
     explicit SecureE2EEStore(std::shared_ptr<IMasterKeyProvider> keyProvider);
     ~SecureE2EEStore() override;
 
-    ServiceResult<std::monostate> initialize(const QString& dbPath) override;
+    ServiceResult<std::monostate> initialize(const QString& dbPath, const QString& profileId) override;
     void close() override;
+    ServiceResult<std::monostate> closeAndWipeDatabase() override;
 
     ServiceResult<std::monostate> saveIdentity(const E2EEIdentity& id) override;
     ServiceResult<E2EEIdentity> getIdentity() override;
@@ -40,6 +41,7 @@ private:
     std::shared_ptr<IMasterKeyProvider> m_keyProvider;
     sqlite3* m_db{nullptr};
     std::mutex m_mutex;
+    QString m_dbPath;
 
     ServiceResult<std::monostate> executeSql(const char* sql);
     ServiceResult<std::monostate> initializeSchema();

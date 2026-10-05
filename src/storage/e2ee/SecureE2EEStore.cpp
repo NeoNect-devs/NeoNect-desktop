@@ -24,10 +24,12 @@ ServiceResult<std::monostate> SecureE2EEStore::executeSql(const char* sql) {
     return ServiceResult<std::monostate>::ok({});
 }
 
-ServiceResult<std::monostate> SecureE2EEStore::initialize(const QString& dbPath) {
+ServiceResult<std::monostate> SecureE2EEStore::initialize(const QString& dbPath, const QString& profileId) {
     std::lock_guard<std::mutex> lock(m_mutex);
     
-    auto keyResult = m_keyProvider->loadOrCreate();
+    m_dbPath = dbPath;
+
+    auto keyResult = m_keyProvider->loadOrCreate(profileId);
     if (!keyResult.success) {
         return ServiceResult<std::monostate>::fail("Failed to obtain master key: " + keyResult.message);
     }
@@ -78,6 +80,28 @@ void SecureE2EEStore::close() {
         sqlite3_close_v2(m_db);
         m_db = nullptr;
     }
+}
+
+ServiceResult<std::monostate> SecureE2EEStore::closeAndWipeDatabase() {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    close();
+    
+    if (!m_dbPath.isEmpty() && QFile::exists(m_dbPath)) {
+        if (!QFile::remove(m_dbPath)) {
+            return ServiceResult<std::monostate>::fail("Failed to remove database file: " + m_dbPath);
+        }
+    }
+    
+    // Also remove WAL and SHM files if they exist
+    if (!m_dbPath.isEmpty()) {
+        QString walPath = m_dbPath + "-wal";
+        QString shmPath = m_dbPath + "-shm";
+        QFile::remove(walPath);
+        QFile::remove(shmPath);
+    }
+    
+    m_dbPath.clear();
+    return ServiceResult<std::monostate>::ok({});
 }
 
 bool SecureE2EEStore::checkSchemaVersion() {

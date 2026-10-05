@@ -2193,7 +2193,7 @@ void TestServices::testPreKeyStoreAdapter() {
     auto secretStore = std::make_shared<ServicesMockSecretStore>();
     auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
     auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
-    store->initialize("test_prekey_adapter.db");
+    store->initialize("test_prekey_adapter.db", "testProfile");
     
     NeoNect::Crypto::Session::SecurePreKeyStoreAdapter adapter(store);
     
@@ -2261,7 +2261,7 @@ void TestServices::testPreKeyServiceDecoding() {
     auto secretStore = std::make_shared<ServicesMockSecretStore>();
     auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
     auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
-    store->initialize("test_prekey_decoding.db");
+    store->initialize("test_prekey_decoding.db", "testProfile");
     auto adapter = std::make_shared<NeoNect::Crypto::Session::SecurePreKeyStoreAdapter>(store);
     NeoNect::Services::PreKeyService service(transport, adapter);
     
@@ -2305,7 +2305,7 @@ void TestServices::testPreKeyServiceUploadPayload() {
     auto secretStore = std::make_shared<ServicesMockSecretStore>();
     auto keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
     auto store = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
-    store->initialize("test_prekey_upload.db");
+    store->initialize("test_prekey_upload.db", "testProfile");
     auto adapter = std::make_shared<NeoNect::Crypto::Session::SecurePreKeyStoreAdapter>(store);
     NeoNect::Services::PreKeyService service(transport, adapter);
     

@@ -239,7 +239,14 @@ void Application::initializeServices() {
     }
     auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(secretStore);
     m_secureStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
-    m_secureStore->initialize(secureDbPath);
+    QString keyProfileId = m_profile.isEmpty() ? (initialUser.isEmpty() ? "guest" : initialUser) : QString("%1_%2").arg(m_profile, initialUser.isEmpty() ? "guest" : initialUser);
+    m_secureStore->initialize(secureDbPath, keyProfileId);
+
+    authService->setBeforeTeardownCallback([secureStorePtr = m_secureStore, keyProviderPtr = keyProvider, appProfile = m_profile](const QString& username) {
+        QString profileId = appProfile.isEmpty() ? (username.isEmpty() ? "guest" : username) : QString("%1_%2").arg(appProfile, username.isEmpty() ? "guest" : username);
+        if (secureStorePtr) secureStorePtr->closeAndWipeDatabase();
+        if (keyProviderPtr) keyProviderPtr->remove(profileId);
+    });
 
     auto backend = std::make_shared<Crypto::OpenSSLBackend>();
     auto xeddsa = std::make_shared<Crypto::XEdDSAAdapter>();
