@@ -53,7 +53,6 @@ private slots:
     void testTransactions_RollbackSkippedKey();
 
     void testCrashRecovery_WriteCloseReopenVerify();
-
     void testIsolation_DifferentProfilesDifferentKeys();
     void testIsolation_ProfileCannotOpenOtherProfileDb();
     void testLifecycle_CloseAndWipeDatabase();

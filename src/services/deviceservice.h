@@ -18,6 +18,7 @@
 #pragma once
 #include <QObject>
 #include <memory>
+#include <functional>
 #include "../transport/ihttptransport.h"
 #include "../storage/isettingsrepository.h"
 
@@ -40,6 +41,9 @@ public:
     explicit DeviceService(std::shared_ptr<Transport::IHttpTransport> transport,
                            std::shared_ptr<Storage::ISettingsRepository> storage,
                            QObject *parent = nullptr);
+
+    void setIdentityKeyProvider(std::function<QString()> provider);
+
 
     /**
      * @brief Destructor.
@@ -113,6 +117,8 @@ private:
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     /** @brief Settings repository. */
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
+    
+    std::function<QString()> m_identityKeyProvider;
 };
 
 } // namespace Services

@@ -26,6 +26,7 @@
 #include "../crypto/doubleratchet/AEAD.h"
 #include "../crypto/OpenSSLBackend.h"
 #include "../crypto/XEdDSAAdapter.h"
+#include "../crypto/KeyGenerationService.h"
 #include "messaging/OfflineQueue.h"
 #include "messaging/MessageService.h"
 #include "../crypto/session/SessionManager.h"
@@ -242,8 +243,10 @@ void Application::initializeServices() {
     QString keyProfileId = m_profile.isEmpty() ? (initialUser.isEmpty() ? "guest" : initialUser) : QString("%1_%2").arg(m_profile, initialUser.isEmpty() ? "guest" : initialUser);
     m_secureStore->initialize(secureDbPath, keyProfileId);
 
-    authService->setBeforeTeardownCallback([secureStorePtr = m_secureStore](const QString& /*username*/) {
-        if (secureStorePtr) secureStorePtr->close();
+    authService->setBeforeTeardownCallback([secureStorePtr = m_secureStore, keyProviderPtr = keyProvider, appProfile = m_profile](const QString& username) {
+        QString profileId = appProfile.isEmpty() ? (username.isEmpty() ? "guest" : username) : QString("%1_%2").arg(appProfile, username.isEmpty() ? "guest" : username);
+        if (secureStorePtr) secureStorePtr->closeAndWipeDatabase();
+        if (keyProviderPtr) keyProviderPtr->remove(profileId);
     });
 
     auto backend = std::make_shared<Crypto::OpenSSLBackend>();
@@ -254,6 +257,32 @@ void Application::initializeServices() {
 
     auto preKeyAdapter = std::make_shared<Crypto::Session::SecurePreKeyStoreAdapter>(m_secureStore);
     auto preKeyService = std::make_shared<Services::PreKeyService>(m_transport, preKeyAdapter);
+
+    auto idRes = m_secureStore->getIdentity();
+    if (!idRes.success) {
+        Crypto::KeyGenerationService keyGen(backend, xeddsa);
+        auto identityKeyPair = keyGen.generateIdentityKeyPair();
+        Storage::E2EEIdentity newId;
+        newId.identity_id = 1;
+        newId.public_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.publicKey.data.data()), 32);
+        newId.private_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.privateKey.data.data()), 32);
+        m_secureStore->saveIdentity(newId);
+        
+        auto spk = keyGen.generateSignedPreKey(identityKeyPair, 1);
+        preKeyAdapter->storeSignedPreKey(std::move(spk));
+        
+        auto opks = keyGen.generateOneTimePreKeys(100, 1);
+        preKeyAdapter->storeOneTimePreKeys(std::move(opks));
+    }
+    
+    // Provide the E2EE identity key to the device service for registration
+    m_networkManager->deviceService()->setIdentityKeyProvider([this]() {
+        auto res = m_secureStore->getIdentity();
+        if (res.success) {
+            return QString::fromLatin1(res.data.value().public_key.toBase64());
+        }
+        return QString();
+    });
 
     m_messageQueue = std::make_shared<Core::Messaging::MessageQueue>(dbPath);
     m_offlineQueueService = std::make_shared<Core::Messaging::OfflineQueueService>(
@@ -314,6 +343,29 @@ void Application::initializeServices() {
             });
 
         preKeyService->claimPreKeys(targetUser, targetDevice);
+    });
+
+    m_coreMessageService->setDeviceResolverCallback([this](const QString& targetUser, std::function<void(std::optional<QString>)> resultCb) {
+        if (!m_networkManager || !m_networkManager->deviceService()) {
+            resultCb(std::nullopt);
+            return;
+        }
+
+        auto connection = std::make_shared<QMetaObject::Connection>();
+        *connection = QObject::connect(m_networkManager->deviceService().get(), &Services::DeviceService::recipientKeysFetched,
+            [resultCb, targetUser, connection](const QString& retUser, const QVariantList& devices) {
+                if (retUser == targetUser) {
+                    QObject::disconnect(*connection);
+                    if (!devices.isEmpty()) {
+                        QVariantMap deviceMap = devices.first().toMap();
+                        resultCb(deviceMap.value("device_id").toString());
+                    } else {
+                        resultCb(std::nullopt);
+                    }
+                }
+            });
+
+        m_networkManager->deviceService()->fetchRecipientKeys(targetUser);
     });
 
     // RelayService -> MessageService (Incoming)

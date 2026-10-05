@@ -396,6 +396,7 @@ public:
      * @param username Peer username.
      */
     Q_INVOKABLE void incrementUnreadCount(const QString &username);
+    std::shared_ptr<NeoNect::Services::DeviceService> deviceService() const { return m_deviceService; }
 
 signals:
     /** @brief Emitted when server URL property changes. */

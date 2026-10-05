@@ -18,7 +18,10 @@ public:
     using PreKeyClaimCallback = std::function<void(std::optional<Crypto::X3DH::BobPreKeyBundle>)>;
     using PreKeyClaimRequestCallback = std::function<void(const QString& targetUser, const QString& targetDevice, PreKeyClaimCallback resultCb)>;
 
+    using DeviceResolverCallback = std::function<void(const QString& targetUser, std::function<void(std::optional<QString>)> resultCb)>;
+
     void setPreKeyClaimRequestCallback(PreKeyClaimRequestCallback cb) { m_preKeyClaimCb = cb; }
+    void setDeviceResolverCallback(DeviceResolverCallback cb) { m_deviceResolverCb = cb; }
 
     MessageService(std::shared_ptr<IMessageStorage> storage, 
                    std::shared_ptr<Crypto::Session::SessionManager> sessionManager,
@@ -41,6 +44,7 @@ private:
     std::shared_ptr<IMessageQueue> m_offlineQueue;
     MessageReceivedCallback m_onMessageReceived;
     PreKeyClaimRequestCallback m_preKeyClaimCb;
+    DeviceResolverCallback m_deviceResolverCb;
 };
 
 } // namespace Messaging

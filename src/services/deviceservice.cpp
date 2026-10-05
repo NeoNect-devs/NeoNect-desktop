@@ -16,6 +16,10 @@ DeviceService::DeviceService(std::shared_ptr<Transport::IHttpTransport> transpor
     : QObject(parent), m_transport(std::move(transport)), m_storage(std::move(storage)) {
 }
 
+void DeviceService::setIdentityKeyProvider(std::function<QString()> provider) {
+    m_identityKeyProvider = std::move(provider);
+}
+
 void DeviceService::registerDevice(const QString &deviceId, const QString &publicKey) {
     registerDeviceInternal(deviceId, publicKey, 0);
 }
@@ -46,15 +50,12 @@ void DeviceService::registerDeviceInternal(const QString &deviceId, const QStrin
     }
 
     QString effectivePubKey = publicKey.trimmed();
+    if (effectivePubKey.isEmpty() && m_identityKeyProvider) {
+        effectivePubKey = m_identityKeyProvider();
+    }
     if (effectivePubKey.isEmpty()) {
-        effectivePubKey = m_storage->publicKey();
-        if (effectivePubKey.isEmpty()) {
-            QByteArray keyBytes(32, 0);
-            QRandomGenerator::system()->generate(reinterpret_cast<quint32*>(keyBytes.data()),
-                                                 reinterpret_cast<quint32*>(keyBytes.data() + keyBytes.size()));
-            effectivePubKey = QString::fromLatin1(keyBytes.toBase64());
-            m_storage->setPublicKey(effectivePubKey);
-        }
+        emit deviceRegistrationResult(false, "Device registration failed: No valid E2EE identity key available.");
+        return;
     }
 
     QJsonObject body;

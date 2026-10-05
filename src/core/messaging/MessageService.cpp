@@ -52,63 +52,37 @@ bool MessageService::sendMessage(Message& msg) {
     obj["plaintext"] = msg.plaintext;
     QByteArray rawPlaintext = QJsonDocument(obj).toJson(QJsonDocument::Compact);
 
-    QString sessionId = msg.receiverId + ":default_device";
-    
-    if (m_sessionManager->hasSession(sessionId)) {
-        auto result = m_sessionManager->sendMessage(
-            sessionId,
-            rawPlaintext,
-            msg.messageId,
-            msg.receiverId,
-            "default_device"
-        );
+    QString msgId = msg.messageId;
+    QString receiver = msg.receiverId;
+    std::weak_ptr<MessageService> weakSelf = weak_from_this();
 
-        bool queued = false;
-        if (m_offlineQueue) {
-            queued = m_offlineQueue->getEntry(msg.messageId).has_value();
-        } else {
-            queued = result.success;
-        }
-
-        if (!result.success || !queued) {
-            msg.state = MessageState::FAILED;
-            m_storage->updateMessageState(msg.messageId, msg.state);
-            return false;
-        }
-
-        msg.state = MessageState::SENT;
+    if (!m_deviceResolverCb) {
+        qDebug() << "[CoreMessageService] No device resolver callback available!";
+        msg.state = MessageState::FAILED;
         m_storage->updateMessageState(msg.messageId, msg.state);
-        return true;
-    } else {
-        if (!m_preKeyClaimCb) {
-            qDebug() << "[CoreMessageService] No session and no prekey claim callback available!";
-            msg.state = MessageState::FAILED;
-            m_storage->updateMessageState(msg.messageId, msg.state);
-            return false;
-        }
+        return false;
+    }
 
-        QString msgId = msg.messageId;
-        QString receiver = msg.receiverId;
-
-        // Async path
-        std::weak_ptr<MessageService> weakSelf = weak_from_this();
+    m_deviceResolverCb(receiver, [weakSelf, msgId, receiver, rawPlaintext](std::optional<QString> targetDeviceOpt) {
+        auto self = weakSelf.lock();
+        if (!self) return;
         
-        m_preKeyClaimCb(receiver, "default_device", [weakSelf, msgId, receiver, rawPlaintext, sessionId](std::optional<Crypto::X3DH::BobPreKeyBundle> bundle) {
-            auto self = weakSelf.lock();
-            if (!self) return;
-
-            if (!bundle.has_value()) {
-                qDebug() << "[CoreMessageService] Failed to claim prekey bundle for" << receiver;
-                self->m_storage->updateMessageState(msgId, MessageState::FAILED);
-                return;
-            }
-
-            auto result = self->m_sessionManager->createSession(
-                receiver,
-                "default_device",
-                bundle.value(),
+        if (!targetDeviceOpt) {
+            qDebug() << "[CoreMessageService] Failed to resolve target device for" << receiver;
+            self->m_storage->updateMessageState(msgId, MessageState::FAILED);
+            return;
+        }
+        
+        QString targetDevice = *targetDeviceOpt;
+        QString sessionId = receiver + ":" + targetDevice;
+        
+        if (self->m_sessionManager->hasSession(sessionId)) {
+            auto result = self->m_sessionManager->sendMessage(
+                sessionId,
+                rawPlaintext,
                 msgId,
-                rawPlaintext
+                receiver,
+                targetDevice
             );
 
             bool queued = false;
@@ -119,17 +93,55 @@ bool MessageService::sendMessage(Message& msg) {
             }
 
             if (!result.success || !queued) {
-                qDebug() << "[MessageService] createSession failed! success:" << result.success << "msg:" << result.message << "queued:" << queued;
                 self->m_storage->updateMessageState(msgId, MessageState::FAILED);
                 return;
             }
 
             self->m_storage->updateMessageState(msgId, MessageState::SENT);
-        });
+        } else {
+            if (!self->m_preKeyClaimCb) {
+                qDebug() << "[CoreMessageService] No session and no prekey claim callback available!";
+                self->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                return;
+            }
 
-        // We return true immediately, message stays in ENCRYPTING state
-        return true;
-    }
+            self->m_preKeyClaimCb(receiver, targetDevice, [weakSelf, msgId, receiver, targetDevice, rawPlaintext, sessionId](std::optional<Crypto::X3DH::BobPreKeyBundle> bundle) {
+                auto selfInner = weakSelf.lock();
+                if (!selfInner) return;
+
+                if (!bundle.has_value()) {
+                    qDebug() << "[CoreMessageService] Failed to claim prekey bundle for" << receiver;
+                    selfInner->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                    return;
+                }
+
+                auto result = selfInner->m_sessionManager->createSession(
+                    receiver,
+                    targetDevice,
+                    bundle.value(),
+                    msgId,
+                    rawPlaintext
+                );
+
+                bool queued = false;
+                if (selfInner->m_offlineQueue) {
+                    queued = selfInner->m_offlineQueue->getEntry(msgId).has_value();
+                } else {
+                    queued = result.success;
+                }
+
+                if (!result.success || !queued) {
+                    qDebug() << "[MessageService] createSession failed! success:" << result.success << "msg:" << result.message << "queued:" << queued;
+                    selfInner->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                    return;
+                }
+
+                selfInner->m_storage->updateMessageState(msgId, MessageState::SENT);
+            });
+        }
+    });
+
+    return true;
 }
 
 void MessageService::receiveMessage(const QString& sessionId, const QByteArray& plaintext) {

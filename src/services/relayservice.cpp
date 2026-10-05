@@ -172,8 +172,7 @@ void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
 
     QJsonObject payload;
     payload["from_device_id"] = deviceId;
-    payload["to_username"] = recipientUsername;
-    payload["protocol_version"] = 1;
+    payload["protocol_version"] = 2;
     payload["ciphertext"] = QString::fromLatin1(envelopeBytes.toBase64());
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
     
@@ -181,7 +180,9 @@ void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
         payload["message_id"] = messageId;
     }
     if (!recipientDeviceId.isEmpty()) {
-        payload["to_device_id"] = recipientDeviceId;
+        payload["recipient_device_id"] = recipientDeviceId;
+    } else {
+        payload["recipient_device_id"] = "default_device"; // Fallback, though should not happen in correct flow
     }
 
     QByteArray postData = QJsonDocument(payload).toJson(QJsonDocument::Compact);

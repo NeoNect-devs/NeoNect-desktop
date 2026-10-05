@@ -164,6 +164,7 @@ void TestProductionE2EE::testOutgoingProductionPath() {
         }, nullptr);
 
     auto coreMessageService = std::make_shared<NeoNect::Core::Messaging::MessageService>(messageStorage, sessionManager, messageQueue);
+    coreMessageService->setDeviceResolverCallback([](const QString& targetUser, auto cb) { cb("default_device"); });
     auto legacyMessageService = std::make_unique<Services::MessageService>(messageStorage);
     legacyMessageService->setCurrentUserId("alice");
 
@@ -310,6 +311,7 @@ void TestProductionE2EE::testFirstMessageProductionPath() {
 
     auto coreMessageService = std::make_shared<Core::Messaging::MessageService>(messageStorage, sessionManager, messageQueue);
 
+    coreMessageService->setDeviceResolverCallback([](const QString& targetUser, auto cb) { cb("default_device"); });
     coreMessageService->setPreKeyClaimRequestCallback([preKeyService](const QString& targetUser, const QString& targetDevice, auto resultCb) {
         auto connection = std::make_shared<QMetaObject::Connection>();
         *connection = QObject::connect(preKeyService.get(), &Services::PreKeyService::preKeyBundleClaimed,
@@ -457,6 +459,7 @@ void TestProductionE2EE::testFirstMessageFailures() {
 
     auto coreMessageService = std::make_shared<Core::Messaging::MessageService>(messageStorage, sessionManager, messageQueue);
 
+    coreMessageService->setDeviceResolverCallback([](const QString& targetUser, auto cb) { cb("default_device"); });
     coreMessageService->setPreKeyClaimRequestCallback([preKeyService](const QString& targetUser, const QString& targetDevice, auto resultCb) {
         auto connection = std::make_shared<QMetaObject::Connection>();
         *connection = QObject::connect(preKeyService.get(), &Services::PreKeyService::preKeyBundleClaimed,
@@ -599,15 +602,14 @@ void TestProductionE2EE::testApplicationIntegrationFirstMessage() {
     mockTransport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(bundleJson).toJson(), 200);
     mockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
 
-        // We MUST initialize Alice's identity key in the app's secure store!
-    NeoNect::Storage::E2EEIdentity aliceId;
-    aliceId.identity_id = 1;
-    auto aliceKp = backend->GenerateX25519KeyPair();
-    aliceId.public_key = QByteArray(reinterpret_cast<const char*>(aliceKp.second.data.data()), 32);
-    aliceId.private_key = QByteArray(reinterpret_cast<const char*>(aliceKp.first.data.data()), 32);
-    auto saveIdRes = app.m_secureStore->saveIdentity(aliceId);
-    if(!saveIdRes.success) qDebug() << "saveIdentity FAILED:" << saveIdRes.message;
-    QVERIFY(saveIdRes.success);
+    QJsonObject devicesJson;
+    QJsonArray devicesArr;
+    QJsonObject dev;
+    dev["device_id"] = "default_device";
+    dev["public_key"] = "mock_key";
+    devicesArr.append(dev);
+    devicesJson["devices"] = devicesArr;
+    mockTransport->setSimulatedResponse("/api/v1/relay/keys", QJsonDocument(devicesJson).toJson(), 200);
 
     // Alice sends first message
     NeoNect::Core::Messaging::Message msg;
@@ -645,39 +647,35 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     QVERIFY(bobMockTransport);
 
     auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
-    NeoNect::Storage::E2EEIdentity bobId;
-    bobId.identity_id = 1;
-    auto bobKp = backend->GenerateX25519KeyPair();
-    bobId.public_key = QByteArray(reinterpret_cast<const char*>(bobKp.second.data.data()), 32);
-    bobId.private_key = QByteArray(reinterpret_cast<const char*>(bobKp.first.data.data()), 32);
-    QVERIFY(bobApp.m_secureStore->saveIdentity(bobId).success);
-
     auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
+    
+    auto bobIdRes = bobApp.m_secureStore->getIdentity();
+    QVERIFY(bobIdRes.success);
     NeoNect::Crypto::IdentityKeyPair bobIk;
     bobIk.publicKey.data.resize(32);
     bobIk.privateKey.data.resize(32);
-    std::copy(bobKp.second.data.data(), bobKp.second.data.data() + 32, bobIk.publicKey.data.data());
-    std::copy(bobKp.first.data.data(), bobKp.first.data.data() + 32, bobIk.privateKey.data.data());
+    memcpy(bobIk.publicKey.data.data(), bobIdRes.data.value().public_key.constData(), 32);
+    memcpy(bobIk.privateKey.data.data(), bobIdRes.data.value().private_key.constData(), 32);
 
-    auto bobSpkKp = backend->GenerateX25519KeyPair();
-    auto bobOpkKp = backend->GenerateX25519KeyPair();
-
+    auto spkRes = bobApp.m_secureStore->getAllSignedPreKeys();
+    QVERIFY(spkRes.success && !spkRes.data.value().empty());
     NeoNect::Crypto::SignedPreKey bobSpk;
-    bobSpk.id = 1;
+    bobSpk.id = spkRes.data.value().front().key_id;
     bobSpk.publicKey.data.resize(32);
     bobSpk.privateKey.data.resize(32);
-    std::copy(bobSpkKp.second.data.data(), bobSpkKp.second.data.data() + 32, bobSpk.publicKey.data.data());
-    std::copy(bobSpkKp.first.data.data(), bobSpkKp.first.data.data() + 32, bobSpk.privateKey.data.data());
-    QByteArray spkBytes = NeoNect::Crypto::KeyEncoding::Encode(bobSpk.publicKey);
-    NeoNect::Crypto::ByteView spkView{reinterpret_cast<const uint8_t*>(spkBytes.constData()), static_cast<size_t>(spkBytes.size())};
-    bobSpk.signature = xeddsa->sign(bobIk.privateKey, spkView);
+    memcpy(bobSpk.publicKey.data.data(), spkRes.data.value().front().public_key.constData(), 32);
+    memcpy(bobSpk.privateKey.data.data(), spkRes.data.value().front().private_key.constData(), 32);
+    bobSpk.signature.data.resize(64);
+    memcpy(bobSpk.signature.data.data(), spkRes.data.value().front().signature.constData(), 64);
 
+    auto opkRes = bobApp.m_secureStore->getAvailableOneTimePreKeys();
+    QVERIFY(opkRes.success && !opkRes.data.value().empty());
     NeoNect::Crypto::OneTimePreKey bobOpk;
-    bobOpk.id = 1;
+    bobOpk.id = opkRes.data.value().front().key_id;
     bobOpk.publicKey.data.resize(32);
     bobOpk.privateKey.data.resize(32);
-    std::copy(bobOpkKp.second.data.data(), bobOpkKp.second.data.data() + 32, bobOpk.publicKey.data.data());
-    std::copy(bobOpkKp.first.data.data(), bobOpkKp.first.data.data() + 32, bobOpk.privateKey.data.data());
+    memcpy(bobOpk.publicKey.data.data(), opkRes.data.value().front().public_key.constData(), 32);
+    memcpy(bobOpk.privateKey.data.data(), opkRes.data.value().front().private_key.constData(), 32);
 
     // 2. Generate a valid InitialEnvelope using standalone Alice E2EE components (just like in testFirstMessageProductionPath)
     auto alicePlatformSecretStore = std::make_shared<DummySecretStore>();
@@ -788,71 +786,63 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
     auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
 
-    // 4. Generate & Save Identities
-    NeoNect::Storage::E2EEIdentity aliceId;
-    aliceId.identity_id = 1;
-    auto aliceKp = backend->GenerateX25519KeyPair();
-    aliceId.public_key = QByteArray(reinterpret_cast<const char*>(aliceKp.second.data.data()), 32);
-    aliceId.private_key = QByteArray(reinterpret_cast<const char*>(aliceKp.first.data.data()), 32);
-    QVERIFY(aliceApp.m_secureStore->saveIdentity(aliceId).success);
-
-    NeoNect::Storage::E2EEIdentity bobId;
-    bobId.identity_id = 1;
-    auto bobKp = backend->GenerateX25519KeyPair();
-    bobId.public_key = QByteArray(reinterpret_cast<const char*>(bobKp.second.data.data()), 32);
-    bobId.private_key = QByteArray(reinterpret_cast<const char*>(bobKp.first.data.data()), 32);
-    QVERIFY(bobApp.m_secureStore->saveIdentity(bobId).success);
-
+    // 4. Retrieve auto-generated Bob Keys
+    auto bobIdRes = bobApp.m_secureStore->getIdentity();
+    QVERIFY(bobIdRes.success);
     NeoNect::Crypto::IdentityKeyPair bobIk;
     bobIk.publicKey.data.resize(32);
     bobIk.privateKey.data.resize(32);
-    std::copy(bobKp.second.data.data(), bobKp.second.data.data() + 32, bobIk.publicKey.data.data());
-    std::copy(bobKp.first.data.data(), bobKp.first.data.data() + 32, bobIk.privateKey.data.data());
+    memcpy(bobIk.publicKey.data.data(), bobIdRes.data.value().public_key.constData(), 32);
+    memcpy(bobIk.privateKey.data.data(), bobIdRes.data.value().private_key.constData(), 32);
 
-    // 5. Generate Bob PreKeys
-    auto bobSpkKp = backend->GenerateX25519KeyPair();
-    auto bobOpkKp = backend->GenerateX25519KeyPair();
-
+    auto spkRes = bobApp.m_secureStore->getAllSignedPreKeys();
+    QVERIFY(spkRes.success && !spkRes.data.value().empty());
     NeoNect::Crypto::SignedPreKey bobSpk;
-    bobSpk.id = 1;
+    bobSpk.id = spkRes.data.value().front().key_id;
     bobSpk.publicKey.data.resize(32);
     bobSpk.privateKey.data.resize(32);
-    std::copy(bobSpkKp.second.data.data(), bobSpkKp.second.data.data() + 32, bobSpk.publicKey.data.data());
-    std::copy(bobSpkKp.first.data.data(), bobSpkKp.first.data.data() + 32, bobSpk.privateKey.data.data());
-    QByteArray spkBytes = NeoNect::Crypto::KeyEncoding::Encode(bobSpk.publicKey);
-    NeoNect::Crypto::ByteView spkView{reinterpret_cast<const uint8_t*>(spkBytes.constData()), static_cast<size_t>(spkBytes.size())};
-    bobSpk.signature = xeddsa->sign(bobIk.privateKey, spkView);
+    memcpy(bobSpk.publicKey.data.data(), spkRes.data.value().front().public_key.constData(), 32);
+    memcpy(bobSpk.privateKey.data.data(), spkRes.data.value().front().private_key.constData(), 32);
+    bobSpk.signature.data.resize(64);
+    memcpy(bobSpk.signature.data.data(), spkRes.data.value().front().signature.constData(), 64);
 
+    auto opkRes = bobApp.m_secureStore->getAvailableOneTimePreKeys();
+    QVERIFY(opkRes.success && !opkRes.data.value().empty());
     NeoNect::Crypto::OneTimePreKey bobOpk;
-    bobOpk.id = 1;
+    bobOpk.id = opkRes.data.value().front().key_id;
     bobOpk.publicKey.data.resize(32);
     bobOpk.privateKey.data.resize(32);
-    std::copy(bobOpkKp.second.data.data(), bobOpkKp.second.data.data() + 32, bobOpk.publicKey.data.data());
-    std::copy(bobOpkKp.first.data.data(), bobOpkKp.first.data.data() + 32, bobOpk.privateKey.data.data());
+    memcpy(bobOpk.publicKey.data.data(), opkRes.data.value().front().public_key.constData(), 32);
+    memcpy(bobOpk.privateKey.data.data(), opkRes.data.value().front().private_key.constData(), 32);
 
     // Configure Alice Mock Server to serve Bob's PreKeys
     QJsonObject spkJson;
-    spkJson["key_id"] = 1;
-    spkJson["public_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobSpkKp.second.data.data()), 32).toBase64());
+    spkJson["key_id"] = static_cast<int>(bobSpk.id);
+    spkJson["public_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobSpk.publicKey.data.data()), 32).toBase64());
     spkJson["signature"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobSpk.signature.data.data()), 64).toBase64());
 
     QJsonObject opkJson;
-    opkJson["key_id"] = 1;
-    opkJson["public_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobOpkKp.second.data.data()), 32).toBase64());
+    opkJson["key_id"] = static_cast<int>(bobOpk.id);
+    opkJson["public_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobOpk.publicKey.data.data()), 32).toBase64());
 
     QJsonObject bundleJson;
     bundleJson["identity_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobIk.publicKey.data.data()), 32).toBase64());
     bundleJson["signed_curve_prekey"] = spkJson;
     bundleJson["one_time_curve_prekey"] = opkJson;
 
-    NeoNect::Crypto::Session::SecurePreKeyStoreAdapter(bobApp.m_secureStore).storeSignedPreKey(std::move(bobSpk));
-    std::vector<NeoNect::Crypto::OneTimePreKey> opks;
-    opks.push_back(std::move(bobOpk));
-    NeoNect::Crypto::Session::SecurePreKeyStoreAdapter(bobApp.m_secureStore).storeOneTimePreKeys(std::move(opks));
-
     aliceMockTransport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(bundleJson).toJson(), 200);
     aliceMockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
     bobMockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
+    
+    QJsonObject devicesJson;
+    QJsonArray devicesArr;
+    QJsonObject dev;
+    dev["device_id"] = "default_device";
+    dev["public_key"] = "mock_key";
+    devicesArr.append(dev);
+    devicesJson["devices"] = devicesArr;
+    aliceMockTransport->setSimulatedResponse("/api/v1/relay/keys", QJsonDocument(devicesJson).toJson(), 200);
+    bobMockTransport->setSimulatedResponse("/api/v1/relay/keys", QJsonDocument(devicesJson).toJson(), 200);
 
     // Capture ciphertexts
     QSignalSpy spyAliceReq(aliceMockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
@@ -1031,14 +1021,6 @@ void TestProductionE2EE::testIdentityRestart() {
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=id_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
         
-        auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
-        NeoNect::Storage::E2EEIdentity aliceId;
-        aliceId.identity_id = 1;
-        auto aliceKp = backend->GenerateX25519KeyPair();
-        aliceId.public_key = QByteArray(reinterpret_cast<const char*>(aliceKp.second.data.data()), 32);
-        aliceId.private_key = QByteArray(reinterpret_cast<const char*>(aliceKp.first.data.data()), 32);
-        QVERIFY(app.m_secureStore->saveIdentity(aliceId).success);
-
         auto idRes = app.m_secureStore->getIdentity();
         QVERIFY(idRes.success);
         alicePub = idRes.data.value().public_key;
@@ -1064,11 +1046,9 @@ void TestProductionE2EE::testSessionRestart() {
     QFile::remove(QDir(baseDir).filePath("e2ee_sess_restart_alice_guest.db"));
     QFile::remove(QDir(baseDir).filePath("messages_sess_restart_bob_guest.db"));
     QFile::remove(QDir(baseDir).filePath("e2ee_sess_restart_bob_guest.db"));
-
-    QByteArray bobPub;
-    QByteArray bobPriv;
+    NeoNect::Crypto::X3DH::BobPreKeyBundle bobBundle;
     QString bobIdStr = "sess_restart_bob:default_device";
-    
+
     // Setup Bob
     {
         int argc = 3;
@@ -1077,15 +1057,25 @@ void TestProductionE2EE::testSessionRestart() {
         bobApp.m_storage->setAuthToken("fake_token");
         bobApp.m_storage->setDeviceId("default_device");
 
-        auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
-        NeoNect::Storage::E2EEIdentity bobId;
-        bobId.identity_id = 1;
-        auto bobKp = backend->GenerateX25519KeyPair();
-        bobId.public_key = QByteArray(reinterpret_cast<const char*>(bobKp.second.data.data()), 32);
-        bobId.private_key = QByteArray(reinterpret_cast<const char*>(bobKp.first.data.data()), 32);
-        bobApp.m_secureStore->saveIdentity(bobId);
-        bobPub = bobId.public_key;
-        bobPriv = bobId.private_key;
+        auto idRes = bobApp.m_secureStore->getIdentity();
+        QVERIFY(idRes.success);
+        bobBundle.identityKey.data.resize(32);
+        memcpy(bobBundle.identityKey.data.data(), idRes.data.value().public_key.constData(), 32);
+
+        auto spkRes = bobApp.m_secureStore->getAllSignedPreKeys();
+        QVERIFY(spkRes.success && !spkRes.data.value().empty());
+        bobBundle.signedPreKey.data.resize(32);
+        memcpy(bobBundle.signedPreKey.data.data(), spkRes.data.value().front().public_key.constData(), 32);
+        bobBundle.signedPreKeySignature.data.resize(64);
+        memcpy(bobBundle.signedPreKeySignature.data.data(), spkRes.data.value().front().signature.constData(), 64);
+        bobBundle.signedPreKeyId = spkRes.data.value().front().key_id;
+
+        auto opkRes = bobApp.m_secureStore->getAvailableOneTimePreKeys();
+        QVERIFY(opkRes.success && !opkRes.data.value().empty());
+        bobBundle.oneTimePreKey.emplace();
+        bobBundle.oneTimePreKey->data.resize(32);
+        memcpy(bobBundle.oneTimePreKey->data.data(), opkRes.data.value().front().public_key.constData(), 32);
+        bobBundle.oneTimePreKeyId = opkRes.data.value().front().key_id;
     }
 
     // Alice creates session, sends message
@@ -1096,36 +1086,6 @@ void TestProductionE2EE::testSessionRestart() {
         aliceApp.m_storage->setAuthToken("fake_token");
         aliceApp.m_storage->setDeviceId("default_device");
         
-        auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
-        NeoNect::Storage::E2EEIdentity aliceId;
-        aliceId.identity_id = 1;
-        auto aliceKp = backend->GenerateX25519KeyPair();
-        aliceId.public_key = QByteArray(reinterpret_cast<const char*>(aliceKp.second.data.data()), 32);
-        aliceId.private_key = QByteArray(reinterpret_cast<const char*>(aliceKp.first.data.data()), 32);
-        auto saveRes = aliceApp.m_secureStore->saveIdentity(aliceId);
-        QVERIFY2(saveRes.success, saveRes.message.toStdString().c_str());
-        NeoNect::Crypto::X3DH::BobPreKeyBundle bobBundle;
-        bobBundle.identityKey.data.resize(32);
-        std::copy(bobPub.begin(), bobPub.end(), bobBundle.identityKey.data.data());
-        
-        auto spkKp = backend->GenerateX25519KeyPair();
-        bobBundle.signedPreKey.data.resize(32);
-        std::copy(spkKp.second.data.begin(), spkKp.second.data.end(), bobBundle.signedPreKey.data.data());
-        bobBundle.signedPreKeyId = 1;
-        auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
-        NeoNect::Crypto::X25519PrivateKey bobPrivKey;
-        bobPrivKey.data.resize(32);
-        std::copy(bobPriv.begin(), bobPriv.end(), bobPrivKey.data.data());
-        auto encodedSpk = NeoNect::Crypto::KeyEncoding::Encode(spkKp.second);
-        auto sig = xeddsa->sign(bobPrivKey, NeoNect::Crypto::ByteView{reinterpret_cast<const uint8_t*>(encodedSpk.data()), encodedSpk.size()});
-        bobBundle.signedPreKeySignature.data.resize(64);
-        std::copy(sig.data.begin(), sig.data.end(), bobBundle.signedPreKeySignature.data.data());
-        auto opkKp = backend->GenerateX25519KeyPair();
-        bobBundle.oneTimePreKey.emplace();
-        bobBundle.oneTimePreKey->data.resize(32);
-        std::copy(opkKp.second.data.begin(), opkKp.second.data.end(), bobBundle.oneTimePreKey->data.data());
-        bobBundle.oneTimePreKeyId = 1;
-
         auto res = aliceApp.m_sessionManager->createSession("sess_restart_bob", "default_device", bobBundle, QUuid::createUuid().toString(QUuid::WithoutBraces), QByteArray("First Message"));
         QVERIFY2(res.success, res.message.toStdString().c_str());
         QVERIFY(aliceApp.m_sessionManager->hasSession(bobIdStr));
@@ -1144,6 +1104,16 @@ void TestProductionE2EE::testSessionRestart() {
         auto aliceMockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(aliceApp.m_transport);
         QSignalSpy spyReq(aliceMockTransport.get(), &NeoNect::Testing::MockHttpTransport::requestHandled);
         
+        QJsonObject devicesJson;
+        QJsonArray devicesArr;
+        QJsonObject dev;
+        dev["device_id"] = "default_device";
+        dev["public_key"] = "mock_key";
+        devicesArr.append(dev);
+        devicesJson["devices"] = devicesArr;
+        aliceMockTransport->setSimulatedResponse("/api/v1/relay/keys", QJsonDocument(devicesJson).toJson(), 200);
+        aliceMockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
+
         NeoNect::Core::Messaging::Message msg2;
         msg2.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
         msg2.conversationId = "sess_restart_bob";
@@ -1170,27 +1140,9 @@ void TestProductionE2EE::testPreKeyRestart() {
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=pk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
         
-        auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
-        NeoNect::Storage::E2EESignedPreKey spk;
-        spk.key_id = 1;
-        auto spkKp = backend->GenerateX25519KeyPair();
-        spk.public_key = QByteArray(reinterpret_cast<const char*>(spkKp.second.data.data()), 32);
-        spk.private_key = QByteArray(reinterpret_cast<const char*>(spkKp.first.data.data()), 32);
-        spk.signature = QByteArray(64, 's');
-        app.m_secureStore->saveSignedPreKey(spk);
-        spkPub = spk.public_key;
-
-        std::vector<NeoNect::Storage::E2EEOneTimePreKey> opks;
-        for (int i=1; i<=3; i++) {
-            NeoNect::Storage::E2EEOneTimePreKey opk;
-            opk.key_id = i;
-            auto opkKp = backend->GenerateX25519KeyPair();
-            opk.public_key = QByteArray(reinterpret_cast<const char*>(opkKp.second.data.data()), 32);
-            opk.private_key = QByteArray(reinterpret_cast<const char*>(opkKp.first.data.data()), 32);
-            opk.state = NeoNect::Storage::OPKState::AVAILABLE;
-            opks.push_back(opk);
-        }
-        app.m_secureStore->saveOneTimePreKeys(opks);
+        auto spkRes = app.m_secureStore->getAllSignedPreKeys();
+        QVERIFY(spkRes.success && !spkRes.data.value().empty());
+        spkPub = spkRes.data.value().front().public_key;
     }
 
     {
@@ -1205,7 +1157,7 @@ void TestProductionE2EE::testPreKeyRestart() {
 
         auto opkRes = app.m_secureStore->getAvailableOneTimePreKeys();
         QVERIFY(opkRes.success);
-        QCOMPARE(opkRes.data.value().size(), 3);
+        QCOMPARE(opkRes.data.value().size(), 100);
         
         QVERIFY(app.m_secureStore->consumeOneTimePreKeyAtomically(1).success);
     }
@@ -1217,7 +1169,7 @@ void TestProductionE2EE::testPreKeyRestart() {
         
         auto opkRes = app.m_secureStore->getAvailableOneTimePreKeys();
         QVERIFY(opkRes.success);
-        QCOMPARE(opkRes.data.value().size(), 2); 
+        QCOMPARE(opkRes.data.value().size(), 99); 
         
         bool found = false;
         for (const auto& k : opkRes.data.value()) {
