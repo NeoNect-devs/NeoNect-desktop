@@ -110,7 +110,7 @@ void TestProductionE2EE::testOutgoingProductionPath() {
 
     // 3. Prepare Dummy Session so encryption succeeds
     Storage::E2EESession s;
-    s.session_id = "sess_bob";
+    s.session_id = "bob:default_device";
     s.remote_identity_key = QByteArray(32, 'I');
 
     // Add local identity first to satisfy FK
@@ -489,7 +489,7 @@ void TestProductionE2EE::testFirstMessageFailures() {
     auto msg1State = messageStorage->getMessage(msg1.messageId);
     QVERIFY(msg1State.has_value());
     QCOMPARE(msg1State.value().state, Core::Messaging::MessageState::FAILED);
-    QVERIFY(!sessionManager->hasSession("sess_bob_fail_default_device"));
+    QVERIFY(!sessionManager->hasSession("bob_fail:default_device"));
 
     // Scenario 2: Invalid/malformed PreKey Bundle -> message fails -> no session persisted
     QJsonObject badBundle;
@@ -502,7 +502,7 @@ void TestProductionE2EE::testFirstMessageFailures() {
 
     msg1State = messageStorage->getMessage(msg1.messageId);
     QCOMPARE(msg1State.value().state, Core::Messaging::MessageState::FAILED);
-    QVERIFY(!sessionManager->hasSession("sess_bob_fail_default_device"));
+    QVERIFY(!sessionManager->hasSession("bob_fail:default_device"));
 
     // Scenario 4: Queue acceptance failure -> message fails -> no durable session persisted
     // First, let's create a valid Bob bundle
@@ -543,7 +543,7 @@ void TestProductionE2EE::testFirstMessageFailures() {
     msg1State = messageStorage->getMessage(msg1.messageId);
     QCOMPARE(msg1State.value().state, Core::Messaging::MessageState::FAILED);
     // Because queue failed, SessionManager returned false, session creation reverted!
-    QVERIFY(!sessionManager->hasSession("sess_bob_fail_default_device"));
+    QVERIFY(!sessionManager->hasSession("bob_fail:default_device"));
 }
 
 void TestProductionE2EE::testApplicationIntegrationFirstMessage() {
@@ -630,10 +630,11 @@ void TestProductionE2EE::testApplicationIntegrationFirstMessage() {
 void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile::remove(QDir(baseDir).filePath("messages_apptest_bob.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_apptest_bob.db"));
-    QFile::remove(QDir(baseDir).filePath("messages_apptest_alice.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_apptest_alice.db"));
+    QFile::remove(QDir(baseDir).filePath("messages_apptest_bob_guest.db"));
+    QFile::remove(QDir(baseDir).filePath("e2ee_apptest_bob_guest.db"));
+    QFile::remove(QDir(baseDir).filePath("messages_apptest_alice_guest.db"));
+    QFile::remove(QDir(baseDir).filePath("e2ee_apptest_alice_guest.db"));
+    QFile::remove("test_prod_alice_secure_standalone.db");
 
     // 1. Start Bob
     int argc = 3;
@@ -753,4 +754,246 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     auto bobMsg = bobApp.m_messageStorage->getMessage("msg-1234");
     QVERIFY(bobMsg.has_value());
     QCOMPARE(bobMsg.value().plaintext, QString("Hello Bob Incoming!"));
+}
+void TestProductionE2EE::testBidirectionalEstablishedSession() {
+    QStandardPaths::setTestModeEnabled(true);
+    QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+
+    // 1. Cleanup databases for both Alice and Bob
+    QFile::remove(QDir(baseDir).filePath("messages_bidi_alice_guest.db"));
+    QFile::remove(QDir(baseDir).filePath("e2ee_bidi_alice_guest.db"));
+    QFile::remove(QDir(baseDir).filePath("messages_bidi_bob_guest.db"));
+    QFile::remove(QDir(baseDir).filePath("e2ee_bidi_bob_guest.db"));
+
+    // 2. Start Alice Application
+    int argcAlice = 3;
+    const char* argvAlice[] = {"NeoNectTests", "--mock", "--profile=bidi_alice"};
+    NeoNect::Application aliceApp(argcAlice, const_cast<char**>(argvAlice));
+    auto aliceMockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(aliceApp.m_transport);
+    QVERIFY(aliceMockTransport);
+
+    // 3. Start Bob Application
+    int argcBob = 3;
+    const char* argvBob[] = {"NeoNectTests", "--mock", "--profile=bidi_bob"};
+    NeoNect::Application bobApp(argcBob, const_cast<char**>(argvBob));
+    auto bobMockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(bobApp.m_transport);
+    QVERIFY(bobMockTransport);
+
+    aliceApp.m_storage->setAuthToken("fake_token");
+    aliceApp.m_storage->setDeviceId("default_device");
+    bobApp.m_storage->setAuthToken("fake_token");
+    bobApp.m_storage->setDeviceId("default_device");
+
+    auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
+    auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
+
+    // 4. Generate & Save Identities
+    NeoNect::Storage::E2EEIdentity aliceId;
+    aliceId.identity_id = 1;
+    auto aliceKp = backend->GenerateX25519KeyPair();
+    aliceId.public_key = QByteArray(reinterpret_cast<const char*>(aliceKp.second.data.data()), 32);
+    aliceId.private_key = QByteArray(reinterpret_cast<const char*>(aliceKp.first.data.data()), 32);
+    QVERIFY(aliceApp.m_secureStore->saveIdentity(aliceId).success);
+
+    NeoNect::Storage::E2EEIdentity bobId;
+    bobId.identity_id = 1;
+    auto bobKp = backend->GenerateX25519KeyPair();
+    bobId.public_key = QByteArray(reinterpret_cast<const char*>(bobKp.second.data.data()), 32);
+    bobId.private_key = QByteArray(reinterpret_cast<const char*>(bobKp.first.data.data()), 32);
+    QVERIFY(bobApp.m_secureStore->saveIdentity(bobId).success);
+
+    NeoNect::Crypto::IdentityKeyPair bobIk;
+    bobIk.publicKey.data.resize(32);
+    bobIk.privateKey.data.resize(32);
+    std::copy(bobKp.second.data.data(), bobKp.second.data.data() + 32, bobIk.publicKey.data.data());
+    std::copy(bobKp.first.data.data(), bobKp.first.data.data() + 32, bobIk.privateKey.data.data());
+
+    // 5. Generate Bob PreKeys
+    auto bobSpkKp = backend->GenerateX25519KeyPair();
+    auto bobOpkKp = backend->GenerateX25519KeyPair();
+
+    NeoNect::Crypto::SignedPreKey bobSpk;
+    bobSpk.id = 1;
+    bobSpk.publicKey.data.resize(32);
+    bobSpk.privateKey.data.resize(32);
+    std::copy(bobSpkKp.second.data.data(), bobSpkKp.second.data.data() + 32, bobSpk.publicKey.data.data());
+    std::copy(bobSpkKp.first.data.data(), bobSpkKp.first.data.data() + 32, bobSpk.privateKey.data.data());
+    QByteArray spkBytes = NeoNect::Crypto::KeyEncoding::Encode(bobSpk.publicKey);
+    NeoNect::Crypto::ByteView spkView{reinterpret_cast<const uint8_t*>(spkBytes.constData()), static_cast<size_t>(spkBytes.size())};
+    bobSpk.signature = xeddsa->sign(bobIk.privateKey, spkView);
+
+    NeoNect::Crypto::OneTimePreKey bobOpk;
+    bobOpk.id = 1;
+    bobOpk.publicKey.data.resize(32);
+    bobOpk.privateKey.data.resize(32);
+    std::copy(bobOpkKp.second.data.data(), bobOpkKp.second.data.data() + 32, bobOpk.publicKey.data.data());
+    std::copy(bobOpkKp.first.data.data(), bobOpkKp.first.data.data() + 32, bobOpk.privateKey.data.data());
+
+    // Configure Alice Mock Server to serve Bob's PreKeys
+    QJsonObject spkJson;
+    spkJson["key_id"] = 1;
+    spkJson["public_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobSpkKp.second.data.data()), 32).toBase64());
+    spkJson["signature"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobSpk.signature.data.data()), 64).toBase64());
+
+    QJsonObject opkJson;
+    opkJson["key_id"] = 1;
+    opkJson["public_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobOpkKp.second.data.data()), 32).toBase64());
+
+    QJsonObject bundleJson;
+    bundleJson["identity_key"] = QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(bobIk.publicKey.data.data()), 32).toBase64());
+    bundleJson["signed_curve_prekey"] = spkJson;
+    bundleJson["one_time_curve_prekey"] = opkJson;
+
+    NeoNect::Crypto::Session::SecurePreKeyStoreAdapter(bobApp.m_secureStore).storeSignedPreKey(std::move(bobSpk));
+    std::vector<NeoNect::Crypto::OneTimePreKey> opks;
+    opks.push_back(std::move(bobOpk));
+    NeoNect::Crypto::Session::SecurePreKeyStoreAdapter(bobApp.m_secureStore).storeOneTimePreKeys(std::move(opks));
+
+    aliceMockTransport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(bundleJson).toJson(), 200);
+    aliceMockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
+    bobMockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
+
+    // Capture ciphertexts
+    QSignalSpy spyAliceReq(aliceMockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
+    QSignalSpy spyBobReq(bobMockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
+
+    // Helpers to extract ciphertext and deliver
+    auto extractCiphertext = [](QSignalSpy& spy) -> QString {
+        QString envelopeBase64;
+        for (const auto& reqList : spy) {
+            QByteArray req = reqList[0].toByteArray();
+            qDebug() << "[TEST] Extracted request:" << req;
+            if (req.contains("ciphertext")) {
+                QJsonDocument doc = QJsonDocument::fromJson(req);
+                envelopeBase64 = doc.object()["ciphertext"].toString();
+            }
+        }
+        return envelopeBase64;
+    };
+
+    auto deliverTo = [](NeoNect::Application& targetApp, const QString& cipher, const QString& senderStr) {
+        QJsonObject relayObj;
+        relayObj["id"] = static_cast<int>(QRandomGenerator::global()->generate());
+        relayObj["ciphertext"] = cipher;
+        relayObj["sender_device_id"] = senderStr + ":default_device";
+        QMetaObject::invokeMethod(targetApp.m_relayService.get(), "onWebSocketMessageReceived", Q_ARG(QString, QString::fromUtf8(QJsonDocument(relayObj).toJson())));
+    };
+
+    QSignalSpy spyAliceRecv(aliceApp.m_messageService.get(), &NeoNect::Services::MessageService::messageAdded);
+    QSignalSpy spyBobRecv(bobApp.m_messageService.get(), &NeoNect::Services::MessageService::messageAdded);
+
+    // 6. Alice sends M1 (Initial X3DH + Ratchet) to Bob
+    NeoNect::Core::Messaging::Message m1;
+    m1.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m1.receiverId = "bidi_bob";
+    m1.senderId = "bidi_alice";
+    m1.conversationId = "dms:bidi_bob";
+    m1.plaintext = "Alice to Bob 1";
+    
+    QVERIFY(aliceApp.m_coreMessageService->sendMessage(m1));
+    
+    QTRY_VERIFY([&]() {
+        auto msgState = aliceApp.m_messageStorage->getMessage(m1.messageId);
+        return msgState.has_value() && (msgState->state == NeoNect::Core::Messaging::MessageState::SENT || msgState->state == NeoNect::Core::Messaging::MessageState::FAILED);
+    }());
+    
+    auto msg1State = aliceApp.m_messageStorage->getMessage(m1.messageId);
+    QVERIFY(msg1State.has_value());
+    if (msg1State->state == NeoNect::Core::Messaging::MessageState::FAILED) {
+        qDebug() << "[TEST] M1 FAILED to create session or enqueue!";
+    }
+    QCOMPARE(msg1State->state, NeoNect::Core::Messaging::MessageState::SENT);
+
+    QTRY_VERIFY(!extractCiphertext(spyAliceReq).isEmpty());
+    QString cipherM1 = extractCiphertext(spyAliceReq);
+    spyAliceReq.clear();
+    QVERIFY(!cipherM1.isEmpty());
+
+    deliverTo(bobApp, cipherM1, "bidi_alice");
+    QVERIFY(spyBobRecv.wait(2000) || spyBobRecv.count() >= 1);
+    QVERIFY(spyBobRecv.count() >= 1);
+    QCOMPARE(spyBobRecv.takeFirst().at(1).toMap()["text"].toString(), QString("Alice to Bob 1"));
+
+    // 7. Bob sends M2 (Established Session Ratchet) back to Alice
+    NeoNect::Core::Messaging::Message m2;
+    m2.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m2.receiverId = "bidi_alice";
+    m2.senderId = "bidi_bob";
+    m2.conversationId = "dms:bidi_alice";
+    m2.plaintext = "Bob to Alice 1";
+    
+    QVERIFY(bobApp.m_coreMessageService->sendMessage(m2));
+    QTRY_VERIFY(!extractCiphertext(spyBobReq).isEmpty());
+    QString cipherM2 = extractCiphertext(spyBobReq);
+    spyBobReq.clear();
+    QVERIFY(!cipherM2.isEmpty());
+
+    deliverTo(aliceApp, cipherM2, "bidi_bob");
+    QVERIFY(spyAliceRecv.wait(2000) || spyAliceRecv.count() >= 1);
+    QVERIFY(spyAliceRecv.count() >= 1);
+    QCOMPARE(spyAliceRecv.takeFirst().at(1).toMap()["text"].toString(), QString("Bob to Alice 1"));
+
+    // 8. Alice sends M3 and M4 (Out of order delivery)
+    NeoNect::Core::Messaging::Message m3;
+    m3.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m3.receiverId = "bidi_bob";
+    m3.senderId = "bidi_alice";
+    m3.conversationId = "dms:bidi_bob";
+    m3.plaintext = "Alice to Bob 2 (Delayed)";
+    
+    QVERIFY(aliceApp.m_coreMessageService->sendMessage(m3));
+    QTRY_VERIFY(!extractCiphertext(spyAliceReq).isEmpty());
+    QString cipherM3 = extractCiphertext(spyAliceReq);
+    spyAliceReq.clear();
+
+    NeoNect::Core::Messaging::Message m4;
+    m4.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m4.receiverId = "bidi_bob";
+    m4.senderId = "bidi_alice";
+    m4.conversationId = "dms:bidi_bob";
+    m4.plaintext = "Alice to Bob 3 (Early)";
+    
+    QVERIFY(aliceApp.m_coreMessageService->sendMessage(m4));
+    QTRY_VERIFY(!extractCiphertext(spyAliceReq).isEmpty());
+    QString cipherM4 = extractCiphertext(spyAliceReq);
+    spyAliceReq.clear();
+
+    // Deliver M4 first
+    deliverTo(bobApp, cipherM4, "bidi_alice");
+    QVERIFY(spyBobRecv.wait(2000) || spyBobRecv.count() >= 1);
+    QVERIFY(spyBobRecv.count() >= 1);
+    QCOMPARE(spyBobRecv.takeFirst().at(1).toMap()["text"].toString(), QString("Alice to Bob 3 (Early)"));
+
+    // Deliver M3 later
+    deliverTo(bobApp, cipherM3, "bidi_alice");
+    QVERIFY(spyBobRecv.wait(2000) || spyBobRecv.count() >= 1);
+    QVERIFY(spyBobRecv.count() >= 1);
+    QCOMPARE(spyBobRecv.takeFirst().at(1).toMap()["text"].toString(), QString("Alice to Bob 2 (Delayed)"));
+
+    // 9. Replay Attack (Deliver M3 again)
+    deliverTo(bobApp, cipherM3, "bidi_alice");
+    QTest::qWait(100);
+    QVERIFY(spyBobRecv.count() == 0);
+
+    // 10. Tampering Attack
+    NeoNect::Core::Messaging::Message m5;
+    m5.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m5.receiverId = "bidi_alice";
+    m5.senderId = "bidi_bob";
+    m5.conversationId = "dms:bidi_alice";
+    m5.plaintext = "Bob to Alice 2 (Tampered)";
+    
+    QVERIFY(bobApp.m_coreMessageService->sendMessage(m5));
+    QTRY_VERIFY(!extractCiphertext(spyBobReq).isEmpty());
+    QString cipherM5 = extractCiphertext(spyBobReq);
+    spyBobReq.clear();
+    
+    QByteArray rawCipherM5 = QByteArray::fromBase64(cipherM5.toLatin1());
+    if (rawCipherM5.size() > 10) {
+        rawCipherM5[rawCipherM5.size() - 5] = rawCipherM5[rawCipherM5.size() - 5] ^ 0x01;
+    }
+    deliverTo(aliceApp, QString::fromLatin1(rawCipherM5.toBase64()), "bidi_bob");
+    
+    QTest::qWait(100);
+    QVERIFY(spyAliceRecv.count() == 0); // Should fail to decrypt
 }

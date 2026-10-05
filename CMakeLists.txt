@@ -160,6 +160,8 @@ qt_add_executable(NeoNectApp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
+    src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
     
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
@@ -395,6 +397,8 @@ add_executable(NeoNectTests
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
     src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
     src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
+    src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
+    src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
 
     # Storage
     src/storage/isettingsrepository.h
@@ -422,6 +426,8 @@ add_executable(NeoNectTests
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
+    src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
     
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
@@ -514,6 +520,8 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
+    src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
     
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
@@ -596,6 +604,8 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
+    src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
+    src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
     
     src/core/chatmessagemodel.h src/core/chatmessagemodel.cpp
     src/core/audiomanager.h src/core/audiomanager.cpp
