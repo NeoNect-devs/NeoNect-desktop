@@ -52,7 +52,7 @@ bool MessageService::sendMessage(Message& msg) {
     obj["plaintext"] = msg.plaintext;
     QByteArray rawPlaintext = QJsonDocument(obj).toJson(QJsonDocument::Compact);
 
-    QString sessionId = "sess_" + msg.receiverId; 
+    QString sessionId = msg.receiverId + ":default_device";
     
     if (m_sessionManager->hasSession(sessionId)) {
         auto result = m_sessionManager->sendMessage(
@@ -119,6 +119,7 @@ bool MessageService::sendMessage(Message& msg) {
             }
 
             if (!result.success || !queued) {
+                qDebug() << "[MessageService] createSession failed! success:" << result.success << "msg:" << result.message << "queued:" << queued;
                 self->m_storage->updateMessageState(msgId, MessageState::FAILED);
                 return;
             }

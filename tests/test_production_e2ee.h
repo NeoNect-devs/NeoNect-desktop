@@ -13,4 +13,5 @@ private slots:
     void testFirstMessageFailures();
     void testApplicationIntegrationFirstMessage();
     void testApplicationIntegrationIncomingPath();
+    void testBidirectionalEstablishedSession();
 };

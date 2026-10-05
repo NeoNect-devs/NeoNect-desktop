@@ -889,14 +889,14 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     m1.senderId = "bidi_alice";
     m1.conversationId = "dms:bidi_bob";
     m1.plaintext = "Alice to Bob 1";
-    
+
     QVERIFY(aliceApp.m_coreMessageService->sendMessage(m1));
-    
+
     QTRY_VERIFY([&]() {
         auto msgState = aliceApp.m_messageStorage->getMessage(m1.messageId);
         return msgState.has_value() && (msgState->state == NeoNect::Core::Messaging::MessageState::SENT || msgState->state == NeoNect::Core::Messaging::MessageState::FAILED);
     }());
-    
+
     auto msg1State = aliceApp.m_messageStorage->getMessage(m1.messageId);
     QVERIFY(msg1State.has_value());
     if (msg1State->state == NeoNect::Core::Messaging::MessageState::FAILED) {
@@ -921,7 +921,7 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     m2.senderId = "bidi_bob";
     m2.conversationId = "dms:bidi_alice";
     m2.plaintext = "Bob to Alice 1";
-    
+
     QVERIFY(bobApp.m_coreMessageService->sendMessage(m2));
     QTRY_VERIFY(!extractCiphertext(spyBobReq).isEmpty());
     QString cipherM2 = extractCiphertext(spyBobReq);
@@ -940,7 +940,7 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     m3.senderId = "bidi_alice";
     m3.conversationId = "dms:bidi_bob";
     m3.plaintext = "Alice to Bob 2 (Delayed)";
-    
+
     QVERIFY(aliceApp.m_coreMessageService->sendMessage(m3));
     QTRY_VERIFY(!extractCiphertext(spyAliceReq).isEmpty());
     QString cipherM3 = extractCiphertext(spyAliceReq);
@@ -952,7 +952,7 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     m4.senderId = "bidi_alice";
     m4.conversationId = "dms:bidi_bob";
     m4.plaintext = "Alice to Bob 3 (Early)";
-    
+
     QVERIFY(aliceApp.m_coreMessageService->sendMessage(m4));
     QTRY_VERIFY(!extractCiphertext(spyAliceReq).isEmpty());
     QString cipherM4 = extractCiphertext(spyAliceReq);
@@ -982,18 +982,37 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     m5.senderId = "bidi_bob";
     m5.conversationId = "dms:bidi_alice";
     m5.plaintext = "Bob to Alice 2 (Tampered)";
-    
+
     QVERIFY(bobApp.m_coreMessageService->sendMessage(m5));
     QTRY_VERIFY(!extractCiphertext(spyBobReq).isEmpty());
     QString cipherM5 = extractCiphertext(spyBobReq);
     spyBobReq.clear();
-    
+
     QByteArray rawCipherM5 = QByteArray::fromBase64(cipherM5.toLatin1());
     if (rawCipherM5.size() > 10) {
         rawCipherM5[rawCipherM5.size() - 5] = rawCipherM5[rawCipherM5.size() - 5] ^ 0x01;
     }
     deliverTo(aliceApp, QString::fromLatin1(rawCipherM5.toBase64()), "bidi_bob");
-    
+
     QTest::qWait(100);
     QVERIFY(spyAliceRecv.count() == 0); // Should fail to decrypt
+
+    // 11. Explicit Tamper Rollback Proof (Valid message succeeds using the same session state)
+    NeoNect::Core::Messaging::Message m6;
+    m6.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m6.receiverId = "bidi_alice";
+    m6.senderId = "bidi_bob";
+    m6.conversationId = "dms:bidi_alice";
+    m6.plaintext = "Bob to Alice 3 (Valid after tamper)";
+
+    QVERIFY(bobApp.m_coreMessageService->sendMessage(m6));
+    QTRY_VERIFY(!extractCiphertext(spyBobReq).isEmpty());
+    QString cipherM6 = extractCiphertext(spyBobReq);
+    spyBobReq.clear();
+    QVERIFY(!cipherM6.isEmpty());
+
+    deliverTo(aliceApp, cipherM6, "bidi_bob");
+    QVERIFY(spyAliceRecv.wait(2000) || spyAliceRecv.count() >= 1);
+    QVERIFY(spyAliceRecv.count() >= 1);
+    QCOMPARE(spyAliceRecv.takeFirst().at(1).toMap()["text"].toString(), QString("Bob to Alice 3 (Valid after tamper)"));
 }
