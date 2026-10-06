@@ -135,7 +135,7 @@ qt_add_executable(NeoNectApp
     src/storage/StoragePathResolver.h src/storage/StoragePathResolver.cpp
     src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
 
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
@@ -364,7 +364,7 @@ add_executable(NeoNectTests
     tests/test_step9_relay.h tests/test_step9_relay.cpp
     tests/test_session_manager.h tests/test_session_manager.cpp
     tests/test_messaging_core.h tests/test_messaging_core.cpp
-    tests/test_offline_queue.h tests/test_offline_queue.cpp
+    tests/test_offline_queue.h tests/test_offline_queue.cpp tests/test_settings_migration.h tests/test_settings_migration.cpp
     tests/test_production_e2ee.h tests/test_production_e2ee.cpp
 
     # Common
@@ -406,7 +406,7 @@ add_executable(NeoNectTests
     src/storage/StoragePathResolver.h src/storage/StoragePathResolver.cpp
     src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
 
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
@@ -505,7 +505,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
 
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
@@ -589,7 +589,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
 
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp

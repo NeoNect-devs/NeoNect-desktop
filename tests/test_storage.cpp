@@ -1,4 +1,9 @@
 // tests/test_storage.cpp
+#include <QSettings>
+#include "../src/storage/StoragePathResolver.h"
+
+#include "../src/common/constants.h"
+
 #include "test_storage.h"
 #include <QtTest>
 #include "../src/storage/settingsrepository.h"
@@ -27,6 +32,7 @@ void TestStorage::testGettersAndSetters() {
     NeoNect::Storage::SettingsRepository repo("unit_test_main");
 
     repo.setServerUrl("http://custom.node:9000");
+    repo.setUsername("testuser");
     QCOMPARE(repo.serverUrl(), "http://custom.node:9000");
 
     repo.setDeviceId("dev-id-unit-1");
@@ -53,11 +59,13 @@ void TestStorage::testClearSession() {
 
     QVERIFY(repo.authToken().isEmpty());
     QVERIFY(repo.username().isEmpty());
-    QCOMPARE(repo.deviceId(), "dev-persistent");
+    QVERIFY(repo.deviceId().isEmpty());
 }
 
 void TestStorage::testBookmarks() {
     NeoNect::Storage::SettingsRepository repo("unit_test_bm");
+    repo.setServerUrl("http://test");
+    repo.setUsername("testuser");
     repo.setBookmarks({}); // clear
 
     QCOMPARE(repo.bookmarks().size(), 0);
@@ -94,6 +102,8 @@ void TestStorage::testBookmarks() {
 
 void TestStorage::testOpenConversationsPersistence() {
     NeoNect::Storage::SettingsRepository repo("unit_test_open_convs");
+    repo.setServerUrl("http://test");
+    repo.setUsername("testuser");
     repo.setOpenConversations({});
 
     QCOMPARE(repo.openConversations().size(), 0);
@@ -112,6 +122,8 @@ void TestStorage::testOpenConversationsPersistence() {
 
     // Verify persistence across repository instantiation with same profile
     NeoNect::Storage::SettingsRepository repoReopened("unit_test_open_convs");
+    repoReopened.setServerUrl("http://test");
+    repoReopened.setUsername("testuser");
     QVariantList fetched = repoReopened.openConversations();
     QCOMPARE(fetched.size(), 2);
     QCOMPARE(fetched.at(0).toMap().value("name").toString(), "alice");
@@ -207,6 +219,11 @@ void TestStorage::testAccountScopedFriends() {
 }
 
 void TestStorage::testDisplayNamePersistence() {
+    QSettings legacy(NeoNect::Constants::SETTINGS_ROOT_GROUP, "DesktopClient_test_display_names");
+    legacy.clear();
+    legacy.sync();
+    QDir(NeoNect::Storage::StoragePathResolver::accountRoot(NeoNect::Constants::DEFAULT_SERVER_URL, "alice")).removeRecursively();
+    QDir(NeoNect::Storage::StoragePathResolver::accountRoot(NeoNect::Constants::DEFAULT_SERVER_URL, "bob")).removeRecursively();
     NeoNect::Storage::SettingsRepository repo("test_display_names");
     repo.clearSession();
 

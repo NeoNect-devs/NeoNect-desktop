@@ -1,6 +1,8 @@
 #include <QRandomGenerator>
 // src/storage/settingsrepository.cpp
 #include "settingsrepository.h"
+#include "StoragePathResolver.h"
+#include "SettingsMigrationOrchestrator.h"
 #include "../common/constants.h"
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -71,6 +73,30 @@ SettingsRepository::SettingsRepository(const QString &profileName)
     : m_profile(profileName.trimmed()) {
 }
 
+
+std::unique_ptr<QSettings> SettingsRepository::getIsolatedSettings() const {
+    QString user = m_cachedUsername.trimmed().toLower();
+    QString server = m_cachedServerUrl.trimmed();
+
+    if (user.isEmpty() || server.isEmpty()) {
+        QSettings global(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+        if (user.isEmpty()) user = global.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
+        if (server.isEmpty()) server = global.value(Constants::KEY_SERVER_URL, Constants::DEFAULT_SERVER_URL).toString().trimmed();
+    }
+
+    if (user.isEmpty() || server.isEmpty()) {
+        return nullptr;
+    }
+
+    QString dir = StoragePathResolver::settingsDirectory(server, user);
+    QDir().mkpath(dir);
+    QString path = QDir(dir).filePath("settings.ini");
+
+    auto isolated = std::make_unique<QSettings>(path, QSettings::IniFormat);
+    SettingsMigrationOrchestrator::migrateSettingsIfNecessary(m_profile, server, user, *isolated);
+    return isolated;
+}
+
 QString SettingsRepository::getGroupName() const {
     if (m_profile.isEmpty()) {
         return Constants::DEFAULT_PROFILE_GROUP;
@@ -83,6 +109,8 @@ void SettingsRepository::setProfile(const QString &profileName) {
     m_profile = profileName.trimmed();
     m_cachedAuthToken.clear();
     m_cachedUsername.clear();
+    m_cachedServerUrl.clear();
+    m_cachedServerUrl.clear();
     m_cachedDeviceId.clear();
     m_cachedPublicKey.clear();
 }
@@ -94,12 +122,17 @@ QString SettingsRepository::profile() const {
 
 QString SettingsRepository::serverUrl() const {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_cachedServerUrl.isEmpty()) {
+        return m_cachedServerUrl;
+    }
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    return settings.value(Constants::KEY_SERVER_URL, Constants::DEFAULT_SERVER_URL).toString();
+    m_cachedServerUrl = settings.value(Constants::KEY_SERVER_URL, Constants::DEFAULT_SERVER_URL).toString();
+    return m_cachedServerUrl;
 }
 
 void SettingsRepository::setServerUrl(const QString &url) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    m_cachedServerUrl = url;
     QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
     settings.setValue(Constants::KEY_SERVER_URL, url);
 }
@@ -144,93 +177,23 @@ void SettingsRepository::setUsername(const QString &username) {
     settings.setValue(Constants::KEY_USERNAME, username);
 }
 
-QString SettingsRepository::getDisplayNameKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_DISPLAY_NAME;
-    }
-    return QString("%1_%2").arg(Constants::KEY_DISPLAY_NAME, user);
-}
-
-QString SettingsRepository::getPeerDisplayNamesKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_PEER_DISPLAY_NAMES;
-    }
-    return QString("%1_%2").arg(Constants::KEY_PEER_DISPLAY_NAMES, user);
-}
-
-QString SettingsRepository::getAvatarUrlKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_AVATAR_URL;
-    }
-    return QString("%1_%2").arg(Constants::KEY_AVATAR_URL, user);
-}
-
-QString SettingsRepository::getPeerAvatarsKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_PEER_AVATARS;
-    }
-    return QString("%1_%2").arg(Constants::KEY_PEER_AVATARS, user);
-}
-
-QString SettingsRepository::getDeviceIdKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_DEVICE_ID;
-    }
-    return QString("%1_%2").arg(Constants::KEY_DEVICE_ID, user);
-}
-
-QString SettingsRepository::getPublicKeyKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_PUBLIC_KEY;
-    }
-    return QString("%1_%2").arg(Constants::KEY_PUBLIC_KEY, user);
-}
-
 QString SettingsRepository::deviceId() const {
     std::lock_guard<std::mutex> lock(m_mutex);
     if (!m_cachedDeviceId.isEmpty()) {
         return m_cachedDeviceId;
     }
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    m_cachedDeviceId = settings.value(getDeviceIdKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QString();
+    m_cachedDeviceId = settings->value(Constants::KEY_DEVICE_ID).toString();
     return m_cachedDeviceId;
 }
 
 void SettingsRepository::setDeviceId(const QString &id) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_cachedDeviceId = id;
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    settings.setValue(getDeviceIdKey(), id);
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
+    settings->setValue(Constants::KEY_DEVICE_ID, id);
 }
 
 QString SettingsRepository::publicKey() const {
@@ -238,82 +201,54 @@ QString SettingsRepository::publicKey() const {
     if (!m_cachedPublicKey.isEmpty()) {
         return m_cachedPublicKey;
     }
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    m_cachedPublicKey = settings.value(getPublicKeyKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QString();
+    m_cachedPublicKey = settings->value(Constants::KEY_PUBLIC_KEY).toString();
     return m_cachedPublicKey;
 }
 
 void SettingsRepository::setPublicKey(const QString &key) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_cachedPublicKey = key;
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    settings.setValue(getPublicKeyKey(), key);
-}
-
-QString SettingsRepository::getConversationsKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_OPEN_CONVERSATIONS;
-    }
-    return QString("%1_%2").arg(Constants::KEY_OPEN_CONVERSATIONS, user);
-}
-
-QString SettingsRepository::getFriendsKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_FRIENDS;
-    }
-    return QString("%1_%2").arg(Constants::KEY_FRIENDS, user);
-}
-
-QString SettingsRepository::getPendingRequestsKey() const {
-    QString user = m_cachedUsername.trimmed().toLower();
-    if (user.isEmpty()) {
-        QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-        user = settings.value(Constants::KEY_USERNAME).toString().trimmed().toLower();
-    }
-    if (user.isEmpty()) {
-        return Constants::KEY_PENDING_REQUESTS;
-    }
-    return QString("%1_%2").arg(Constants::KEY_PENDING_REQUESTS, user);
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
+    settings->setValue(Constants::KEY_PUBLIC_KEY, key);
 }
 
 QStringList SettingsRepository::friends() const {
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    return settings.value(getFriendsKey()).toStringList();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QStringList();
+    return settings->value(Constants::KEY_FRIENDS).toStringList();
 }
 
 void SettingsRepository::setFriends(const QStringList &friends) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    settings.setValue(getFriendsKey(), friends);
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
+    settings->setValue(Constants::KEY_FRIENDS, friends);
 }
 
 QStringList SettingsRepository::pendingRequests() const {
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    return settings.value(getPendingRequestsKey()).toStringList();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QStringList();
+    return settings->value(Constants::KEY_PENDING_REQUESTS).toStringList();
 }
 
 void SettingsRepository::setPendingRequests(const QStringList &requests) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    settings.setValue(getPendingRequestsKey(), requests);
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
+    settings->setValue(Constants::KEY_PENDING_REQUESTS, requests);
 }
 
 void SettingsRepository::clearSession() {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_cachedAuthToken.clear();
     m_cachedUsername.clear();
+    m_cachedServerUrl.clear();
+    m_cachedServerUrl.clear();
     m_cachedDeviceId.clear();
     m_cachedPublicKey.clear();
     m_cachedDisplayName.clear();
@@ -328,24 +263,27 @@ QString SettingsRepository::displayName() const {
     if (!m_cachedDisplayName.isEmpty()) {
         return m_cachedDisplayName;
     }
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    m_cachedDisplayName = settings.value(getDisplayNameKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QString();
+    m_cachedDisplayName = settings->value(Constants::KEY_DISPLAY_NAME).toString();
     return m_cachedDisplayName;
 }
 
 void SettingsRepository::setDisplayName(const QString &displayName) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_cachedDisplayName = displayName;
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    settings.setValue(getDisplayNameKey(), displayName);
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
+    settings->setValue(Constants::KEY_DISPLAY_NAME, displayName);
 }
 
 QString SettingsRepository::peerDisplayName(const QString &username) const {
     QString cleanUser = username.trimmed().toLower();
     if (cleanUser.isEmpty()) return QString();
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    QString jsonStr = settings.value(getPeerDisplayNamesKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QString();
+    QString jsonStr = settings->value(Constants::KEY_PEER_DISPLAY_NAMES).toString();
     if (jsonStr.trimmed().isEmpty()) return QString();
     QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
     if (!doc.isObject()) return QString();
@@ -356,8 +294,9 @@ void SettingsRepository::setPeerDisplayName(const QString &username, const QStri
     QString cleanUser = username.trimmed().toLower();
     if (cleanUser.isEmpty()) return;
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    QString jsonStr = settings.value(getPeerDisplayNamesKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
+    QString jsonStr = settings->value(Constants::KEY_PEER_DISPLAY_NAMES).toString();
     QJsonObject mapObj;
     if (!jsonStr.trimmed().isEmpty()) {
         QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
@@ -368,7 +307,7 @@ void SettingsRepository::setPeerDisplayName(const QString &username, const QStri
     } else {
         mapObj[cleanUser] = displayName.trimmed();
     }
-    settings.setValue(getPeerDisplayNamesKey(), QString::fromUtf8(QJsonDocument(mapObj).toJson(QJsonDocument::Compact)));
+    settings->setValue(Constants::KEY_PEER_DISPLAY_NAMES, QString::fromUtf8(QJsonDocument(mapObj).toJson(QJsonDocument::Compact)));
 }
 
 QString SettingsRepository::avatarUrl() const {
@@ -376,19 +315,21 @@ QString SettingsRepository::avatarUrl() const {
     if (!m_cachedAvatarUrl.isEmpty()) {
         return m_cachedAvatarUrl;
     }
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    m_cachedAvatarUrl = settings.value(getAvatarUrlKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QString();
+    m_cachedAvatarUrl = settings->value(Constants::KEY_AVATAR_URL).toString();
     return m_cachedAvatarUrl;
 }
 
 void SettingsRepository::setAvatarUrl(const QString &url) {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_cachedAvatarUrl = url;
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
     if (url.trimmed().isEmpty()) {
-        settings.remove(getAvatarUrlKey());
+        settings->remove(Constants::KEY_AVATAR_URL);
     } else {
-        settings.setValue(getAvatarUrlKey(), url);
+        settings->setValue(Constants::KEY_AVATAR_URL, url);
     }
 }
 
@@ -396,8 +337,9 @@ QString SettingsRepository::peerAvatarUrl(const QString &username) const {
     QString cleanUser = username.trimmed().toLower();
     if (cleanUser.isEmpty()) return QString();
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    QString jsonStr = settings.value(getPeerAvatarsKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QString();
+    QString jsonStr = settings->value(Constants::KEY_PEER_AVATARS).toString();
     if (jsonStr.trimmed().isEmpty()) return QString();
     QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
     if (!doc.isObject()) return QString();
@@ -408,8 +350,9 @@ void SettingsRepository::setPeerAvatarUrl(const QString &username, const QString
     QString cleanUser = username.trimmed().toLower();
     if (cleanUser.isEmpty()) return;
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    QString jsonStr = settings.value(getPeerAvatarsKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
+    QString jsonStr = settings->value(Constants::KEY_PEER_AVATARS).toString();
     QJsonObject mapObj;
     if (!jsonStr.trimmed().isEmpty()) {
         QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
@@ -420,13 +363,14 @@ void SettingsRepository::setPeerAvatarUrl(const QString &username, const QString
     } else {
         mapObj[cleanUser] = url.trimmed();
     }
-    settings.setValue(getPeerAvatarsKey(), QString::fromUtf8(QJsonDocument(mapObj).toJson(QJsonDocument::Compact)));
+    settings->setValue(Constants::KEY_PEER_AVATARS, QString::fromUtf8(QJsonDocument(mapObj).toJson(QJsonDocument::Compact)));
 }
 
 QVariantList SettingsRepository::bookmarks() const {
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    QString jsonStr = settings.value(Constants::KEY_BOOKMARKS).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QVariantList();
+    QString jsonStr = settings->value(Constants::KEY_BOOKMARKS).toString();
     if (jsonStr.trimmed().isEmpty()) {
         return QVariantList();
     }
@@ -439,10 +383,11 @@ QVariantList SettingsRepository::bookmarks() const {
 
 void SettingsRepository::setBookmarks(const QVariantList &bookmarks) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
     QJsonArray arr = QJsonArray::fromVariantList(bookmarks);
     QJsonDocument doc(arr);
-    settings.setValue(Constants::KEY_BOOKMARKS, QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+    settings->setValue(Constants::KEY_BOOKMARKS, QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
 }
 
 void SettingsRepository::addBookmark(const QVariantMap &bookmark) {
@@ -494,8 +439,9 @@ void SettingsRepository::removeBookmark(const QString &id) {
 
 QVariantList SettingsRepository::openConversations() const {
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
-    QString jsonStr = settings.value(getConversationsKey()).toString();
+    auto settings = getIsolatedSettings();
+    if (!settings) return QVariantList();
+    QString jsonStr = settings->value(Constants::KEY_OPEN_CONVERSATIONS).toString();
     if (jsonStr.trimmed().isEmpty()) {
         return QVariantList();
     }
@@ -508,10 +454,11 @@ QVariantList SettingsRepository::openConversations() const {
 
 void SettingsRepository::setOpenConversations(const QVariantList &conversations) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    QSettings settings(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
     QJsonArray arr = QJsonArray::fromVariantList(conversations);
     QJsonDocument doc(arr);
-    settings.setValue(getConversationsKey(), QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+    settings->setValue(Constants::KEY_OPEN_CONVERSATIONS, QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
 }
 
 } // namespace Storage

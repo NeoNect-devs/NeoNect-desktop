@@ -289,24 +289,9 @@ public:
 private:
     /** @brief Computes the QSettings group key based on the active profile. */
     QString getGroupName() const;
-    /** @brief Returns the settings key for open conversations. */
-    QString getConversationsKey() const;
-    /** @brief Returns the settings key for friends list. */
-    QString getFriendsKey() const;
-    /** @brief Returns the settings key for pending friend requests. */
-    QString getPendingRequestsKey() const;
-    /** @brief Returns the settings key for device ID. */
-    QString getDeviceIdKey() const;
-    /** @brief Returns the settings key for public key. */
-    QString getPublicKeyKey() const;
-    /** @brief Returns the settings key for user display name. */
-    QString getDisplayNameKey() const;
-    /** @brief Returns the settings key for peer display names map. */
-    QString getPeerDisplayNamesKey() const;
-    /** @brief Returns the settings key for user avatar URL. */
-    QString getAvatarUrlKey() const;
-    /** @brief Returns the settings key for peer avatar URLs map. */
-    QString getPeerAvatarsKey() const;
+
+    /** @brief Returns a dynamically allocated QSettings targeting the isolated user/server path, performing migration if necessary. */
+    std::unique_ptr<QSettings> getIsolatedSettings() const;
 
     /** @brief Mutex protecting concurrent access and cache updates across threads. */
     mutable std::mutex m_mutex;
@@ -316,6 +301,8 @@ private:
     mutable QString m_cachedAuthToken;
     /** @brief Read-through cached username. */
     mutable QString m_cachedUsername;
+    /** @brief Read-through cached server URL. */
+    mutable QString m_cachedServerUrl;
     /** @brief Read-through cached device ID. */
     mutable QString m_cachedDeviceId;
     /** @brief Read-through cached public key. */

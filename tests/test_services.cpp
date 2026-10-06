@@ -914,6 +914,8 @@ void TestServices::testPhase10ABackendProtocolCompliance() {
 
 void TestServices::testAllFriendsUsesBackendAuthority() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_auth");
+    storage->setServerUrl("https://neonect.example");
+    storage->setUsername("alice");
     storage->setFriends({"bob"});
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
@@ -942,6 +944,8 @@ void TestServices::testEmptyBackendFriendsProducesEmptyModel() {
 
 void TestServices::testStaleLocalFriendsDoNotOverrideBackend() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_stale");
+    storage->setServerUrl("https://neonect.example");
+    storage->setUsername("alice");
     storage->setFriends({"alex", "beatrice"});
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
@@ -1206,6 +1210,8 @@ void TestServices::testConnectivityAndOnlinePresence() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_presence_svc");
     storage->clearSession();
+    storage->setServerUrl("https://neonect.example");
+    storage->setUsername("alice");
     storage->setFriends({"bob", "alice"});
 
     NeoNect::Services::FriendService friendService(mockTransport, storage);
@@ -1245,6 +1251,8 @@ void TestServices::testConnectivityAndOnlinePresence() {
 
 void TestServices::testOpenConversationsActivityOrdering() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("unit_test_conv_ordering");
+    storage->setServerUrl("https://neonect.example");
+    storage->setUsername("charlie");
     storage->setOpenConversations({});
 
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
@@ -1299,6 +1307,8 @@ void TestServices::testOpenConversationsActivityOrdering() {
 
 void TestServices::testOpenConversationsUnreadCountBadge() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("unit_test_unread_count");
+    storage->setServerUrl("https://neonect.example");
+    storage->setUsername("charlie");
     storage->setOpenConversations({});
 
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);

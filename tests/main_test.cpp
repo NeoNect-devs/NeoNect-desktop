@@ -21,6 +21,7 @@
 #include "test_session_manager.h"
 #include "test_messaging_core.h"
 #include "test_offline_queue.h"
+#include "test_settings_migration.h"
 #include "test_production_e2ee.h"
 
 int main(int argc, char *argv[]) {
@@ -59,6 +60,7 @@ int main(int argc, char *argv[]) {
     app.setOrganizationName("NeoNect");
     app.setApplicationName("NeoNect");
     int status = 0;
+
 
     std::cout << "\n==========================================" << std::endl;
     std::cout << "  RUNNING NEONECT DESKTOP TEST SUITES" << std::endl;
@@ -327,6 +329,12 @@ int main(int argc, char *argv[]) {
         TestOfflineQueue toq;
         int res = QTest::qExec(&toq);
         std::cout << "[TestOfflineQueue Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestSettingsMigration tsm;
+        int res = QTest::qExec(&tsm);
+        std::cout << "[TestSettingsMigration Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     std::cout << "\n==========================================" << std::endl;
