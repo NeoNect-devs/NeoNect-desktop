@@ -6,7 +6,7 @@ namespace Crypto {
 namespace Session {
 
 SessionManager::SessionManager(
-    std::shared_ptr<Storage::ISecureE2EEStore> store,
+    std::weak_ptr<Storage::ISecureE2EEStore> store,
     std::shared_ptr<X3DH::IX3DH> x3dh,
     std::shared_ptr<DoubleRatchet::Engine> ratchet,
     std::shared_ptr<DoubleRatchet::IAEAD> aead,
@@ -106,7 +106,9 @@ DoubleRatchet::State SessionManager::sessionRecordToState(const Storage::E2EESes
 }
 
 bool SessionManager::hasSession(const QString& sessionId) {
-    return m_store->getSession(sessionId).success;
+    auto store = m_store.lock();
+    if (!store) return false;
+    return store->getSession(sessionId).success;
 }
 
 ServiceResult<std::monostate> SessionManager::createSession(
@@ -116,7 +118,9 @@ ServiceResult<std::monostate> SessionManager::createSession(
     const QString& messageId,
     const QByteArray& initialPlaintext)
 {
-    auto identityRes = m_store->getIdentity();
+    auto store = m_store.lock();
+    if (!store) return ServiceResult<std::monostate>::fail("Storage context unavailable");
+    auto identityRes = store->getIdentity();
     if (!identityRes.success) return ServiceResult<std::monostate>::fail(identityRes.message);
     
     IdentityKeyPair aliceIdentity;
@@ -187,7 +191,7 @@ ServiceResult<std::monostate> SessionManager::createSession(
 
     Storage::SessionUpdateTx tx;
     tx.session = sessionRecord;
-    auto saveRes = m_store->updateSessionState(tx);
+    auto saveRes = store->updateSessionState(tx);
     if (!saveRes.success) return saveRes;
 
     return ServiceResult<std::monostate>::ok(std::monostate{});
@@ -200,7 +204,9 @@ ServiceResult<std::monostate> SessionManager::sendMessage(
     const QString& recipientUsername,
     const QString& recipientDeviceId)
 {
-    auto sessionRes = m_store->getSession(sessionId);
+    auto store = m_store.lock();
+    if (!store) return ServiceResult<std::monostate>::fail("Storage context unavailable");
+    auto sessionRes = store->getSession(sessionId);
     if (!sessionRes.success) return ServiceResult<std::monostate>::fail(sessionRes.message);
 
     DoubleRatchet::State state = sessionRecordToState(sessionRes.data.value());
@@ -240,7 +246,7 @@ ServiceResult<std::monostate> SessionManager::sendMessage(
 
     Storage::SessionUpdateTx tx;
     tx.session = updatedSession;
-    auto saveRes = m_store->updateSessionState(tx);
+    auto saveRes = store->updateSessionState(tx);
     if (!saveRes.success) return saveRes;
 
     return ServiceResult<std::monostate>::ok(std::monostate{});
@@ -250,13 +256,15 @@ VoidResult SessionManager::handleEnvelope(
     const QByteArray &envelopeBytes,
     const Transport::TransportMetadata &metadata)
 {
+    auto store = m_store.lock();
+    if (!store) return VoidResult::fail("Storage context unavailable");
     QString sessionId = metadata.senderDeviceId;
     
     auto initialEnvOpt = Wire::WireCodec::decodeInitialEnvelope(envelopeBytes);
     if (initialEnvOpt) {
         auto& env = initialEnvOpt.value();
         
-        auto identityRes = m_store->getIdentity();
+        auto identityRes = store->getIdentity();
         if (!identityRes.success) return VoidResult::fail("No local identity");
         
         IdentityKeyPair bobIdentity;
@@ -285,7 +293,7 @@ VoidResult SessionManager::handleEnvelope(
         auto ratchetEnvOpt = Wire::WireCodec::decodeRatchetEnvelope(decRatchetEnvBytesOpt.value());
         if (!ratchetEnvOpt) return VoidResult::fail("Decrypted InitialEnvelope payload is not a valid RatchetEnvelope");
         
-        auto sessionRes = m_store->getSession(sessionId);
+        auto sessionRes = store->getSession(sessionId);
         DoubleRatchet::State state;
         if (sessionRes.success) {
             state = sessionRecordToState(sessionRes.data.value());
@@ -298,7 +306,7 @@ VoidResult SessionManager::handleEnvelope(
         drHeader.pn = ratchetEnvOpt->header.pn;
         drHeader.n = ratchetEnvOpt->header.n;
         
-        auto skippedRes = m_store->getSkippedKey(sessionId, QByteArray(reinterpret_cast<const char*>(drHeader.dh.data.data()), drHeader.dh.data.size()), drHeader.n);
+        auto skippedRes = store->getSkippedKey(sessionId, QByteArray(reinterpret_cast<const char*>(drHeader.dh.data.data()), drHeader.dh.data.size()), drHeader.n);
         if (skippedRes.success) {
             DoubleRatchet::SkippedKeyId id{drHeader.dh.data, drHeader.n};
             DoubleRatchet::MessageKey mk;
@@ -320,7 +328,7 @@ VoidResult SessionManager::handleEnvelope(
         if (!decPtOpt) return VoidResult::fail("Ratchet payload decryption failed");
 
         if (!sessionRes.success && env.oneTimePreKeyId.has_value()) {
-            m_store->consumeOneTimePreKeyAtomically(env.oneTimePreKeyId.value());
+            store->consumeOneTimePreKeyAtomically(env.oneTimePreKeyId.value());
         }
 
         Storage::SessionUpdateTx tx;
@@ -347,7 +355,7 @@ VoidResult SessionManager::handleEnvelope(
             }
         }
 
-        auto saveRes = m_store->updateSessionState(tx);
+        auto saveRes = store->updateSessionState(tx);
         if (!saveRes.success) return VoidResult::fail(saveRes.message);
 
         if (m_receiveCb) {
@@ -359,7 +367,7 @@ VoidResult SessionManager::handleEnvelope(
 
     auto ratchetEnvOpt = Wire::WireCodec::decodeRatchetEnvelope(envelopeBytes);
     if (ratchetEnvOpt) {
-        auto sessionRes = m_store->getSession(sessionId);
+        auto sessionRes = store->getSession(sessionId);
         if (!sessionRes.success) return VoidResult::fail("Session not found");
         
         DoubleRatchet::State state = sessionRecordToState(sessionRes.data.value());
@@ -369,7 +377,7 @@ VoidResult SessionManager::handleEnvelope(
         drHeader.pn = ratchetEnvOpt->header.pn;
         drHeader.n = ratchetEnvOpt->header.n;
         
-        auto skippedRes = m_store->getSkippedKey(sessionId, QByteArray(reinterpret_cast<const char*>(drHeader.dh.data.data()), drHeader.dh.data.size()), drHeader.n);
+        auto skippedRes = store->getSkippedKey(sessionId, QByteArray(reinterpret_cast<const char*>(drHeader.dh.data.data()), drHeader.dh.data.size()), drHeader.n);
         if (skippedRes.success) {
             DoubleRatchet::SkippedKeyId id{drHeader.dh.data, drHeader.n};
             DoubleRatchet::MessageKey mk;
@@ -415,7 +423,7 @@ VoidResult SessionManager::handleEnvelope(
             }
         }
 
-        auto saveRes = m_store->updateSessionState(tx);
+        auto saveRes = store->updateSessionState(tx);
         if (!saveRes.success) return VoidResult::fail(saveRes.message);
 
         if (m_receiveCb) {

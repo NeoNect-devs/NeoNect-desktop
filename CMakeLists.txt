@@ -132,6 +132,8 @@ qt_add_executable(NeoNectApp
     src/services/messageservice.h src/services/messageservice.cpp
 
     # Storage
+    src/storage/StoragePathResolver.h src/storage/StoragePathResolver.cpp
+    src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
 
@@ -401,6 +403,8 @@ add_executable(NeoNectTests
     src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
 
     # Storage
+    src/storage/StoragePathResolver.h src/storage/StoragePathResolver.cpp
+    src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp
 
@@ -451,8 +455,7 @@ target_link_libraries(NeoNectTests PRIVATE
     sqlcipher_static
 )
 if(LIBSECRET_FOUND)
-    target_link_libraries(NeoNectTests PRIVATE PkgConfig::LIBSECRET)
-    target_compile_definitions(NeoNectTests PRIVATE HAS_LIBSECRET)
+    # libsecret removed from tests to avoid 'signals' macro conflict
 endif()
 if(WIN32)
     target_link_libraries(NeoNectTests PRIVATE winmm dwmapi)
@@ -721,3 +724,16 @@ if(DOXYGEN_FOUND)
     )
 endif()
 
+
+add_executable(TestStoragePathResolver tests/test_storagepathresolver.cpp src/storage/StoragePathResolver.cpp)
+target_include_directories(TestStoragePathResolver PRIVATE src tests)
+target_link_libraries(TestStoragePathResolver PRIVATE Qt6::Core Qt6::Test)
+set_target_properties(TestStoragePathResolver PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
+
+
+# Phase 2 StorageContext Test Target
+add_executable(TestStorageContext tests/test_storagecontext.cpp src/storage/StorageContext.cpp src/storage/StoragePathResolver.cpp)
+target_include_directories(TestStorageContext PRIVATE src tests)
+target_link_libraries(TestStorageContext PRIVATE Qt6::Core Qt6::Test NeoNectCore)
+target_compile_definitions(TestStorageContext PRIVATE HAS_LIBSECRET=0)
+add_test(NAME TestStorageContext COMMAND TestStorageContext)

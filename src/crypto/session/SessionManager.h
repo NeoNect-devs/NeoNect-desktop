@@ -23,7 +23,7 @@ public:
     using EnvelopeSendCallback = std::function<bool(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes)>;
 
     SessionManager(
-        std::shared_ptr<Storage::ISecureE2EEStore> store,
+        std::weak_ptr<Storage::ISecureE2EEStore> store,
         std::shared_ptr<X3DH::IX3DH> x3dh,
         std::shared_ptr<DoubleRatchet::Engine> ratchet,
         std::shared_ptr<DoubleRatchet::IAEAD> aead,
@@ -36,6 +36,10 @@ public:
 
     // Initial session creation (Alice side)
     bool hasSession(const QString& sessionId);
+
+    // Temporary compatibility bridge for Phase 2 StorageContext
+    void setStore(std::weak_ptr<Storage::ISecureE2EEStore> store) { m_store = store; }
+
     ServiceResult<std::monostate> createSession(
         const QString& recipientUsername,
         const QString& recipientDeviceId,
@@ -59,7 +63,7 @@ public:
         const Transport::TransportMetadata &metadata) override;
 
 private:
-    std::shared_ptr<Storage::ISecureE2EEStore> m_store;
+    std::weak_ptr<Storage::ISecureE2EEStore> m_store;
     std::shared_ptr<X3DH::IX3DH> m_x3dh;
     std::shared_ptr<DoubleRatchet::Engine> m_ratchet;
     std::shared_ptr<DoubleRatchet::IAEAD> m_aead;

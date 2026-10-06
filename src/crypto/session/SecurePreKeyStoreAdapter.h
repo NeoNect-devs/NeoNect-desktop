@@ -9,7 +9,10 @@ namespace Session {
 
 class SecurePreKeyStoreAdapter : public IPreKeyStore {
 public:
-    explicit SecurePreKeyStoreAdapter(std::shared_ptr<Storage::ISecureE2EEStore> store) : m_store(store) {}
+    explicit SecurePreKeyStoreAdapter(std::weak_ptr<Storage::ISecureE2EEStore> store) : m_store(store) {}
+
+    // Temporary compatibility bridge for Phase 2
+    void setStore(std::weak_ptr<Storage::ISecureE2EEStore> store) { m_store = store; }
 
     std::optional<IdentityKeyPair> identityKey() override;
     void storeIdentityKey(IdentityKeyPair key) override;
@@ -25,7 +28,7 @@ public:
     size_t availableOneTimePreKeyCount() override;
 
 private:
-    std::shared_ptr<Storage::ISecureE2EEStore> m_store;
+    std::weak_ptr<Storage::ISecureE2EEStore> m_store;
 };
 
 } // namespace Session

@@ -11,6 +11,7 @@
 #include "versioninfo.h"
 #include "version.h"
 #include "../themedata.h"
+#include "../storage/StorageContext.h"
 #include "../storage/settingsrepository.h"
 #include "../../tests/mocks/mockhttptransport.h"
 #include "core/messaging/MessageStorage.h"
@@ -213,41 +214,8 @@ void Application::initializeServices() {
 
     m_networkManager = std::make_unique<NetworkManager>(m_transport, m_storage, authService, deviceService, m_relayService, friendService);
 
-    // Phase 3 & 4 Message Storage and Services
-    QString initialUser = m_networkManager->currentUsername().trimmed().toLower();
-    QString dbPath = getUserDatabasePath(initialUser);
-    m_messageStorage = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
-    m_messageService = std::make_unique<Services::MessageService>(m_messageStorage);
-
-    // Wire MessageService dependencies & dynamic account database switching
-    QObject::connect(m_networkManager.get(), &NetworkManager::currentUsernameChanged, m_messageService.get(), [this]() {
-        QString user = m_networkManager->currentUsername().trimmed().toLower();
-        m_messageService->setCurrentUserId(user);
-        QString userDbPath = getUserDatabasePath(user);
-        // MessageStorage doesn't have switchDatabase, just let it be for now since it's A1
-    });
-    m_messageService->setCurrentUserId(initialUser); // Initial set
-
-    // E2EE Production Object Graph
-    QString secureDbName = m_profile.isEmpty() ? QString("e2ee_%1.db").arg(initialUser.isEmpty() ? "guest" : initialUser) : QString("e2ee_%1_%2.db").arg(m_profile, initialUser.isEmpty() ? "guest" : initialUser);
-    QString secureDbPath = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(secureDbName);
-
-    std::shared_ptr<Storage::IOSSecretStore> secretStore;
-    if (m_isMockMode) {
-        secretStore = std::make_shared<Storage::MockSecretStore>();
-    } else {
-        secretStore = std::make_shared<Storage::PlatformSecretStore>();
-    }
-    auto keyProvider = std::make_shared<Storage::MasterKeyProvider>(secretStore);
-    m_secureStore = std::make_shared<Storage::SecureE2EEStore>(keyProvider);
-    QString keyProfileId = m_profile.isEmpty() ? (initialUser.isEmpty() ? "guest" : initialUser) : QString("%1_%2").arg(m_profile, initialUser.isEmpty() ? "guest" : initialUser);
-    m_secureStore->initialize(secureDbPath, keyProfileId);
-
-    authService->setBeforeTeardownCallback([secureStorePtr = m_secureStore, keyProviderPtr = keyProvider, appProfile = m_profile](const QString& username) {
-        QString profileId = appProfile.isEmpty() ? (username.isEmpty() ? "guest" : username) : QString("%1_%2").arg(appProfile, username.isEmpty() ? "guest" : username);
-        if (secureStorePtr) secureStorePtr->closeAndWipeDatabase();
-        if (keyProviderPtr) keyProviderPtr->remove(profileId);
-    });
+    // Phase 2: StorageContext and E2EE Services Integration
+    m_messageService = std::make_unique<Services::MessageService>(std::weak_ptr<Core::Messaging::IMessageStorage>());
 
     auto backend = std::make_shared<Crypto::OpenSSLBackend>();
     auto xeddsa = std::make_shared<Crypto::XEdDSAAdapter>();
@@ -255,38 +223,11 @@ void Application::initializeServices() {
     auto ratchet = std::make_shared<Crypto::DoubleRatchet::Engine>(backend);
     auto aead = std::make_shared<Crypto::DoubleRatchet::AEAD>(backend.get());
 
-    auto preKeyAdapter = std::make_shared<Crypto::Session::SecurePreKeyStoreAdapter>(m_secureStore);
+    auto preKeyAdapter = std::make_shared<Crypto::Session::SecurePreKeyStoreAdapter>(std::weak_ptr<Storage::ISecureE2EEStore>());
     auto preKeyService = std::make_shared<Services::PreKeyService>(m_transport, preKeyAdapter);
 
-    auto idRes = m_secureStore->getIdentity();
-    if (!idRes.success) {
-        Crypto::KeyGenerationService keyGen(backend, xeddsa);
-        auto identityKeyPair = keyGen.generateIdentityKeyPair();
-        Storage::E2EEIdentity newId;
-        newId.identity_id = 1;
-        newId.public_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.publicKey.data.data()), 32);
-        newId.private_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.privateKey.data.data()), 32);
-        m_secureStore->saveIdentity(newId);
-        
-        auto spk = keyGen.generateSignedPreKey(identityKeyPair, 1);
-        preKeyAdapter->storeSignedPreKey(std::move(spk));
-        
-        auto opks = keyGen.generateOneTimePreKeys(100, 1);
-        preKeyAdapter->storeOneTimePreKeys(std::move(opks));
-    }
-    
-    // Provide the E2EE identity key to the device service for registration
-    m_networkManager->deviceService()->setIdentityKeyProvider([this]() {
-        auto res = m_secureStore->getIdentity();
-        if (res.success) {
-            return QString::fromLatin1(res.data.value().public_key.toBase64());
-        }
-        return QString();
-    });
-
-    m_messageQueue = std::make_shared<Core::Messaging::MessageQueue>(dbPath);
     m_offlineQueueService = std::make_shared<Core::Messaging::OfflineQueueService>(
-        m_messageQueue,
+        std::weak_ptr<Core::Messaging::IMessageQueue>(),
         [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) {
             if (m_relayService) {
                 m_relayService->sendEncryptedEnvelope(rUser, rDev, msgId, env);
@@ -297,25 +238,22 @@ void Application::initializeServices() {
     );
 
     m_sessionManager = std::make_shared<Crypto::Session::SessionManager>(
-        m_secureStore, x3dh, ratchet, aead, backend, preKeyAdapter, xeddsa,
+        std::weak_ptr<Storage::ISecureE2EEStore>(), x3dh, ratchet, aead, backend, preKeyAdapter, xeddsa,
         [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) -> bool {
             if (m_offlineQueueService) {
                 return m_offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
             }
             return false;
         },
-        [this](const QString& sid, const QByteArray& pt) {
+        [this](const QString& sessionId, const QByteArray& plaintext) {
             if (m_coreMessageService) {
-                m_coreMessageService->receiveMessage(sid, pt);
+                m_coreMessageService->receiveMessage(sessionId, plaintext);
             }
         }
     );
+    m_relayService->setEnvelopeHandler(m_sessionManager);
 
-    if (m_relayService) {
-        m_relayService->setEnvelopeHandler(m_sessionManager);
-    }
-
-    m_coreMessageService = std::make_shared<Core::Messaging::MessageService>(m_messageStorage, m_sessionManager, m_messageQueue);
+    m_coreMessageService = std::make_shared<Core::Messaging::MessageService>(std::weak_ptr<Core::Messaging::IMessageStorage>(), m_sessionManager, std::weak_ptr<Core::Messaging::IMessageQueue>());
 
     m_coreMessageService->setOnMessageReceived([this](const Core::Messaging::Message& coreMsg) {
         if (m_messageService) {
@@ -324,14 +262,17 @@ void Application::initializeServices() {
             domainMsg.serverId = coreMsg.serverId;
             domainMsg.conversationId = coreMsg.conversationId;
             domainMsg.senderId = coreMsg.senderId;
+
+
+
             domainMsg.timestamp = coreMsg.timestamp;
             domainMsg.text = coreMsg.plaintext;
             domainMsg.type = "text";
             domainMsg.status = NeoNect::Domain::MessageStatus::Sent;
+
             m_messageService->handleIncomingMessage(domainMsg);
         }
     });
-
     m_coreMessageService->setPreKeyClaimRequestCallback([preKeyService](const QString& targetUser, const QString& targetDevice, auto resultCb) {
         auto connection = std::make_shared<QMetaObject::Connection>();
         *connection = QObject::connect(preKeyService.get(), &Services::PreKeyService::preKeyBundleClaimed,
@@ -367,6 +308,84 @@ void Application::initializeServices() {
 
         m_networkManager->deviceService()->fetchRecipientKeys(targetUser);
     });
+
+
+    m_networkManager->deviceService()->setIdentityKeyProvider([this]() {
+        if (auto store = m_secureStore.lock()) {
+            auto res = m_secureStore.lock()->getIdentity();
+            if (res.success) {
+                return QString::fromLatin1(res.data.value().public_key.toBase64());
+            }
+        }
+        return QString();
+    });
+
+    QObject::connect(m_networkManager.get(), &NetworkManager::deviceRegistrationResult, preKeyService.get(),
+        [this, preKeyService](bool success, const QString&) {
+            if (success && m_secureStore.lock()) {
+                preKeyService->uploadPreKeys(m_storage->deviceId());
+            }
+        });
+
+    auto onLoginChanged = [this, backend, xeddsa, preKeyAdapter](bool success, const QString& token) {
+        if (success) {
+            QString user = m_networkManager->currentUsername().trimmed().toLower();
+            QString server = m_storage->serverUrl();
+            if (user.isEmpty()) return; // Must have authenticated user
+
+            m_storageContext = std::make_unique<Storage::StorageContext>(server, user, m_isMockMode, m_profile);
+
+            m_messageStorage = m_storageContext->messageStorage();
+            m_messageQueue = m_storageContext->messageQueue();
+            m_secureStore = m_storageContext->secureStore();
+
+            m_messageService->setStorage(m_messageStorage);
+            m_offlineQueueService->setQueue(m_messageQueue);
+            m_coreMessageService->setStorage(m_messageStorage);
+            m_coreMessageService->setOfflineQueue(m_messageQueue);
+            preKeyAdapter->setStore(m_secureStore);
+            m_sessionManager->setStore(m_secureStore);
+
+            m_messageService->setCurrentUserId(user);
+
+            auto idRes = m_secureStore.lock()->getIdentity();
+            if (!idRes.success) {
+                Crypto::KeyGenerationService keyGen(backend, xeddsa);
+                auto identityKeyPair = keyGen.generateIdentityKeyPair();
+                Storage::E2EEIdentity newId;
+                newId.identity_id = 1;
+                newId.public_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.publicKey.data.data()), 32);
+                newId.private_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.privateKey.data.data()), 32);
+                m_secureStore.lock()->saveIdentity(newId);
+
+                auto spk = keyGen.generateSignedPreKey(identityKeyPair, 1);
+                preKeyAdapter->storeSignedPreKey(std::move(spk));
+
+                auto opks = keyGen.generateOneTimePreKeys(100, 1);
+                preKeyAdapter->storeOneTimePreKeys(std::move(opks));
+            }
+        } else {
+            // Logout
+            m_storageContext.reset();
+            m_messageStorage.reset();
+            m_messageQueue.reset();
+            m_secureStore.reset();
+
+            m_messageService->setStorage(std::weak_ptr<Core::Messaging::IMessageStorage>());
+            m_offlineQueueService->setQueue(std::weak_ptr<Core::Messaging::IMessageQueue>());
+            m_coreMessageService->setStorage(std::weak_ptr<Core::Messaging::IMessageStorage>());
+            m_coreMessageService->setOfflineQueue(std::weak_ptr<Core::Messaging::IMessageQueue>());
+            preKeyAdapter->setStore(std::weak_ptr<Storage::ISecureE2EEStore>());
+            m_sessionManager->setStore(std::weak_ptr<Storage::ISecureE2EEStore>());
+        }
+    };
+
+    QObject::connect(m_networkManager.get(), &NetworkManager::loginResult, onLoginChanged);
+
+    // Initial load check
+    if (!m_storage->authToken().isEmpty() && !m_storage->username().isEmpty()) {
+        onLoginChanged(true, m_storage->authToken());
+    }
 
     // RelayService -> MessageService (Incoming)
     // Legacy plaintext path disabled in A8.3

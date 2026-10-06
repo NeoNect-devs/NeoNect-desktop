@@ -37,6 +37,7 @@ NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTranspor
     }
 
     if (m_storage) {
+        m_sessionToken = m_storage->authToken();
         QVariantList raw = m_storage->openConversations();
         QString myUser = m_storage->username().trimmed().toLower();
         for (const auto &c : raw) {
@@ -568,6 +569,7 @@ void NetworkManager::logoutUser() {
     emit displayNameChanged();
     emit isConnectedChanged();
     emit effectiveStatusChanged();
+    emit loginResult(false, "");
 }
 
 void NetworkManager::registerDevice(const QString &deviceId, const QString &publicKey) {

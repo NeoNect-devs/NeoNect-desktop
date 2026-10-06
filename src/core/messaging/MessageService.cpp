@@ -9,19 +9,22 @@ namespace NeoNect {
 namespace Core {
 namespace Messaging {
 
-MessageService::MessageService(std::shared_ptr<IMessageStorage> storage, 
+MessageService::MessageService(std::weak_ptr<IMessageStorage> storage,
                                std::shared_ptr<Crypto::Session::SessionManager> sessionManager,
-                               std::shared_ptr<IMessageQueue> offlineQueue)
+                               std::weak_ptr<IMessageQueue> offlineQueue)
     : m_storage(std::move(storage)), m_sessionManager(std::move(sessionManager)), m_offlineQueue(std::move(offlineQueue))
 {
 }
 
 bool MessageService::sendMessage(Message& msg) {
+    auto storage = m_storage.lock();
+    if (!storage) return false;
+    auto offlineQueue = m_offlineQueue.lock();
     if (msg.state != MessageState::CREATED) return false;
-    
+
     // Save to DB initially, or proceed if already saved by the legacy facade
-    if (!m_storage->saveMessage(msg)) {
-        auto existing = m_storage->getMessage(msg.messageId);
+    if (!storage->saveMessage(msg)) {
+        auto existing = storage->getMessage(msg.messageId);
         if (!existing) {
             qDebug() << "[CoreMessageService] No existing message found for ID:" << msg.messageId;
             return false;
@@ -38,7 +41,7 @@ bool MessageService::sendMessage(Message& msg) {
         return false;
     }
     msg.state = MessageState::ENCRYPTING;
-    if (!m_storage->updateMessageState(msg.messageId, msg.state)) {
+    if (!storage->updateMessageState(msg.messageId, msg.state)) {
         qDebug() << "[CoreMessageService] updateMessageState to ENCRYPTING failed!";
         return false;
     }
@@ -59,23 +62,23 @@ bool MessageService::sendMessage(Message& msg) {
     if (!m_deviceResolverCb) {
         qDebug() << "[CoreMessageService] No device resolver callback available!";
         msg.state = MessageState::FAILED;
-        m_storage->updateMessageState(msg.messageId, msg.state);
+        storage->updateMessageState(msg.messageId, msg.state);
         return false;
     }
 
     m_deviceResolverCb(receiver, [weakSelf, msgId, receiver, rawPlaintext](std::optional<QString> targetDeviceOpt) {
         auto self = weakSelf.lock();
         if (!self) return;
-        
+
         if (!targetDeviceOpt) {
             qDebug() << "[CoreMessageService] Failed to resolve target device for" << receiver;
-            self->m_storage->updateMessageState(msgId, MessageState::FAILED);
+            if (auto s = self->m_storage.lock()) s->updateMessageState(msgId, MessageState::FAILED);
             return;
         }
-        
+
         QString targetDevice = *targetDeviceOpt;
         QString sessionId = receiver + ":" + targetDevice;
-        
+
         if (self->m_sessionManager->hasSession(sessionId)) {
             auto result = self->m_sessionManager->sendMessage(
                 sessionId,
@@ -86,22 +89,23 @@ bool MessageService::sendMessage(Message& msg) {
             );
 
             bool queued = false;
-            if (self->m_offlineQueue) {
-                queued = self->m_offlineQueue->getEntry(msgId).has_value();
+            auto offlineQueue = self->m_offlineQueue.lock();
+            if (offlineQueue) {
+                queued = offlineQueue->getEntry(msgId).has_value();
             } else {
                 queued = result.success;
             }
 
             if (!result.success || !queued) {
-                self->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                if (auto s = self->m_storage.lock()) s->updateMessageState(msgId, MessageState::FAILED);
                 return;
             }
 
-            self->m_storage->updateMessageState(msgId, MessageState::SENT);
+            if (auto s = self->m_storage.lock()) s->updateMessageState(msgId, MessageState::SENT);
         } else {
             if (!self->m_preKeyClaimCb) {
                 qDebug() << "[CoreMessageService] No session and no prekey claim callback available!";
-                self->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                if (auto s = self->m_storage.lock()) s->updateMessageState(msgId, MessageState::FAILED);
                 return;
             }
 
@@ -111,7 +115,7 @@ bool MessageService::sendMessage(Message& msg) {
 
                 if (!bundle.has_value()) {
                     qDebug() << "[CoreMessageService] Failed to claim prekey bundle for" << receiver;
-                    selfInner->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                    if (auto s = selfInner->m_storage.lock()) s->updateMessageState(msgId, MessageState::FAILED);
                     return;
                 }
 
@@ -124,19 +128,20 @@ bool MessageService::sendMessage(Message& msg) {
                 );
 
                 bool queued = false;
-                if (selfInner->m_offlineQueue) {
-                    queued = selfInner->m_offlineQueue->getEntry(msgId).has_value();
+                auto offlineQueue = selfInner->m_offlineQueue.lock();
+                if (offlineQueue) {
+                    queued = offlineQueue->getEntry(msgId).has_value();
                 } else {
                     queued = result.success;
                 }
 
                 if (!result.success || !queued) {
                     qDebug() << "[MessageService] createSession failed! success:" << result.success << "msg:" << result.message << "queued:" << queued;
-                    selfInner->m_storage->updateMessageState(msgId, MessageState::FAILED);
+                    if (auto s = selfInner->m_storage.lock()) s->updateMessageState(msgId, MessageState::FAILED);
                     return;
                 }
 
-                selfInner->m_storage->updateMessageState(msgId, MessageState::SENT);
+                if (auto s = selfInner->m_storage.lock()) s->updateMessageState(msgId, MessageState::SENT);
             });
         }
     });
@@ -145,13 +150,15 @@ bool MessageService::sendMessage(Message& msg) {
 }
 
 void MessageService::receiveMessage(const QString& sessionId, const QByteArray& plaintext) {
+    auto storage = m_storage.lock();
+    if (!storage) return;
     Message msg;
     QJsonParseError err;
     QJsonDocument doc = QJsonDocument::fromJson(plaintext, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
         return; // reject invalid JSON
     }
-    
+
     QJsonObject obj = doc.object();
     msg.messageId = obj["messageId"].toString();
     msg.conversationId = obj["conversationId"].toString();
@@ -159,44 +166,46 @@ void MessageService::receiveMessage(const QString& sessionId, const QByteArray& 
     msg.receiverId = obj["receiverId"].toString();
     msg.timestamp = obj["timestamp"].toVariant().toLongLong();
     msg.plaintext = obj["plaintext"].toString();
-    
+
     if (msg.messageId.isEmpty() || msg.senderId.isEmpty()) {
         return; // reject missing mandatory fields
     }
-    
+
     // Prevent spoofing by verifying senderId matches sessionId prefix
     if (!sessionId.startsWith(msg.senderId)) {
         return; // reject spoofed sender
     }
-    
+
     msg.state = MessageState::DELIVERED;
-    
+
     // Check if it already exists
-    auto existing = m_storage->getMessage(msg.messageId);
+    auto existing = storage->getMessage(msg.messageId);
     if (existing) {
         // Duplicate handling: return existing message state
         return;
     }
-    
+
     // Save locally
-    m_storage->saveMessage(msg);
-    
+    storage->saveMessage(msg);
+
     if (m_onMessageReceived) {
         m_onMessageReceived(msg);
     }
 }
 
 bool MessageService::updateDeliveryState(const QString& messageId, MessageState newState) {
-    auto optMsg = m_storage->getMessage(messageId);
+    auto storage = m_storage.lock();
+    if (!storage) return false;
+    auto optMsg = storage->getMessage(messageId);
     if (!optMsg) return false;
-    
+
     Message msg = optMsg.value();
     if (!isValidTransition(msg.state, newState)) {
         return false;
     }
-    
+
     msg.state = newState;
-    return m_storage->updateMessageState(messageId, newState);
+    return storage->updateMessageState(messageId, newState);
 }
 
 } // namespace Messaging

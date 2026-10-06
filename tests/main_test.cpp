@@ -323,6 +323,12 @@ int main(int argc, char *argv[]) {
         std::cout << "[TestProductionE2EE Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
+    {
+        TestOfflineQueue toq;
+        int res = QTest::qExec(&toq);
+        std::cout << "[TestOfflineQueue Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
     std::cout << "\n==========================================" << std::endl;
     std::cout << (status == 0 ? "  ALL NEONECT TESTS PASSED SUCCESSFULLY! [100%]" : "  SOME TESTS FAILED!") << std::endl;
     std::cout << "==========================================\n" << std::endl;

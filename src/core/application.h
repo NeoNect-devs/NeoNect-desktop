@@ -40,7 +40,7 @@ class AudioManager;
 class TestProductionE2EE;
 namespace NeoNect {
 
-namespace Storage { class SettingsRepository; class SecureE2EEStore; }
+namespace Storage { class SettingsRepository; class SecureE2EEStore; class StorageContext; }
 namespace Crypto { class ICryptoService; namespace Session { class SessionManager; } }
 namespace Transport { class IHttpTransport; }
 namespace Core { 
@@ -147,12 +147,13 @@ private:
     /** @brief Persistent client settings repository. */
     std::shared_ptr<Storage::SettingsRepository> m_storage;
     /** @brief Asynchronous SQLite message history repository. */
-    std::shared_ptr<Core::Messaging::IMessageStorage> m_messageStorage;
+    std::unique_ptr<Storage::StorageContext> m_storageContext;
+    std::weak_ptr<Core::Messaging::IMessageStorage> m_messageStorage;
     
     // E2EE Production Graph Objects
-    std::shared_ptr<Storage::SecureE2EEStore> m_secureStore;
+    std::weak_ptr<Storage::SecureE2EEStore> m_secureStore;
     std::shared_ptr<Crypto::Session::SessionManager> m_sessionManager;
-    std::shared_ptr<Core::Messaging::MessageQueue> m_messageQueue;
+    std::weak_ptr<Core::Messaging::MessageQueue> m_messageQueue;
     std::shared_ptr<Core::Messaging::OfflineQueueService> m_offlineQueueService;
     std::shared_ptr<Core::Messaging::MessageService> m_coreMessageService;
 

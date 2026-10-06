@@ -5,7 +5,9 @@ namespace Crypto {
 namespace Session {
 
 std::optional<IdentityKeyPair> SecurePreKeyStoreAdapter::identityKey() {
-    auto res = m_store->getIdentity();
+    auto store = m_store.lock();
+    if (!store) return std::nullopt;
+    auto res = store->getIdentity();
     if (!res.success) return std::nullopt;
     IdentityKeyPair kp;
     kp.privateKey.data.resize(32);
@@ -16,14 +18,18 @@ std::optional<IdentityKeyPair> SecurePreKeyStoreAdapter::identityKey() {
 }
 
 void SecurePreKeyStoreAdapter::storeIdentityKey(IdentityKeyPair key) {
+    auto store = m_store.lock();
+    if (!store) return;
     Storage::E2EEIdentity id;
     id.public_key = QByteArray(reinterpret_cast<const char*>(key.publicKey.data.data()), key.publicKey.data.size());
     id.private_key = QByteArray(reinterpret_cast<const char*>(key.privateKey.data.data()), key.privateKey.data.size());
-    m_store->saveIdentity(id);
+    store->saveIdentity(id);
 }
 
 std::optional<SignedPreKey> SecurePreKeyStoreAdapter::signedPreKey() {
-    auto res = m_store->getAllSignedPreKeys();
+    auto store = m_store.lock();
+    if (!store) return std::nullopt;
+    auto res = store->getAllSignedPreKeys();
     if (!res.success || res.data.value().empty()) return std::nullopt;
     auto spk = res.data.value().back(); // return the latest
     SignedPreKey key;
@@ -38,16 +44,20 @@ std::optional<SignedPreKey> SecurePreKeyStoreAdapter::signedPreKey() {
 }
 
 void SecurePreKeyStoreAdapter::storeSignedPreKey(SignedPreKey key) {
+    auto store = m_store.lock();
+    if (!store) return;
     Storage::E2EESignedPreKey spk;
     spk.key_id = key.id;
     spk.public_key = QByteArray(reinterpret_cast<const char*>(key.publicKey.data.data()), key.publicKey.data.size());
     spk.private_key = QByteArray(reinterpret_cast<const char*>(key.privateKey.data.data()), key.privateKey.data.size());
     spk.signature = QByteArray(reinterpret_cast<const char*>(key.signature.data.data()), key.signature.data.size());
-    m_store->saveSignedPreKey(spk);
+    store->saveSignedPreKey(spk);
 }
 
 std::vector<OneTimePreKeyPublic> SecurePreKeyStoreAdapter::availableOneTimePreKeys() {
-    auto res = m_store->getAvailableOneTimePreKeys();
+    auto store = m_store.lock();
+    if (!store) return {};
+    auto res = store->getAvailableOneTimePreKeys();
     std::vector<OneTimePreKeyPublic> keys;
     if (res.success) {
         for (const auto& opk : res.data.value()) {
@@ -62,6 +72,8 @@ std::vector<OneTimePreKeyPublic> SecurePreKeyStoreAdapter::availableOneTimePreKe
 }
 
 void SecurePreKeyStoreAdapter::storeOneTimePreKeys(std::vector<OneTimePreKey> keys) {
+    auto store = m_store.lock();
+    if (!store) return;
     std::vector<Storage::E2EEOneTimePreKey> opks;
     for (const auto& k : keys) {
         Storage::E2EEOneTimePreKey opk;
@@ -71,14 +83,16 @@ void SecurePreKeyStoreAdapter::storeOneTimePreKeys(std::vector<OneTimePreKey> ke
         opk.state = Storage::OPKState::AVAILABLE;
         opks.push_back(opk);
     }
-    m_store->saveOneTimePreKeys(opks);
+    store->saveOneTimePreKeys(opks);
 }
 
 std::optional<OneTimePreKey> SecurePreKeyStoreAdapter::consumeOneTimePreKey(KeyId id) {
-    auto getRes = m_store->getOneTimePreKey(id);
+    auto store = m_store.lock();
+    if (!store) return std::nullopt;
+    auto getRes = store->getOneTimePreKey(id);
     if (!getRes.success || getRes.data.value().state != Storage::OPKState::AVAILABLE) return std::nullopt;
     
-    auto consumeRes = m_store->consumeOneTimePreKeyAtomically(id);
+    auto consumeRes = store->consumeOneTimePreKeyAtomically(id);
     if (!consumeRes.success) return std::nullopt;
 
     OneTimePreKey pk;
@@ -91,7 +105,9 @@ std::optional<OneTimePreKey> SecurePreKeyStoreAdapter::consumeOneTimePreKey(KeyI
 }
 
 std::optional<OneTimePreKey> SecurePreKeyStoreAdapter::getOneTimePreKey(KeyId id) {
-    auto getRes = m_store->getOneTimePreKey(id);
+    auto store = m_store.lock();
+    if (!store) return std::nullopt;
+    auto getRes = store->getOneTimePreKey(id);
     if (!getRes.success) return std::nullopt;
 
     OneTimePreKey pk;
@@ -104,7 +120,9 @@ std::optional<OneTimePreKey> SecurePreKeyStoreAdapter::getOneTimePreKey(KeyId id
 }
 
 size_t SecurePreKeyStoreAdapter::availableOneTimePreKeyCount() {
-    auto res = m_store->getAvailableOneTimePreKeys();
+    auto store = m_store.lock();
+    if (!store) return 0;
+    auto res = store->getAvailableOneTimePreKeys();
     if (!res.success) return 0;
     return res.data.value().size();
 }

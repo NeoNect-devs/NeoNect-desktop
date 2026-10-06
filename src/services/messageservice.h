@@ -51,7 +51,7 @@ public:
      * @param repository Shared pointer to the asynchronous message repository.
      * @param parent Optional parent QObject for Qt tree ownership.
      */
-    explicit MessageService(std::shared_ptr<NeoNect::Core::Messaging::IMessageStorage> storage, QObject* parent = nullptr);
+    explicit MessageService(std::weak_ptr<NeoNect::Core::Messaging::IMessageStorage> storage, QObject* parent = nullptr);
 
     /**
      * @brief Destructor. Cleans up active file transfer timers.
@@ -155,6 +155,9 @@ public:
      */
     void setCurrentUserId(const QString &userId);
 
+    // Temporary compatibility bridge for Phase 2 StorageContext
+    void setStorage(std::weak_ptr<NeoNect::Core::Messaging::IMessageStorage> storage) { m_storage = std::move(storage); }
+
     /**
      * @brief Checks if stealth/invisible mode is enabled.
      */
@@ -211,7 +214,7 @@ private:
     QVariantMap domainToVariantMap(const Domain::Message &msg) const;
 
     /** @brief Local SQLite message repository. */
-    std::shared_ptr<NeoNect::Core::Messaging::IMessageStorage> m_storage;
+    std::weak_ptr<NeoNect::Core::Messaging::IMessageStorage> m_storage;
     QThread* m_workerThread = nullptr;
     QObject* m_workerContext = nullptr;
 

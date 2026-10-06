@@ -36,7 +36,7 @@ static qint64 determineFileSize(const QString &mediaUrl, qint64 providedSize) {
     return (fi.exists() && fi.isFile()) ? fi.size() : 0;
 }
 
-MessageService::MessageService(std::shared_ptr<NeoNect::Core::Messaging::IMessageStorage> storage, QObject* parent)
+MessageService::MessageService(std::weak_ptr<NeoNect::Core::Messaging::IMessageStorage> storage, QObject* parent)
     : QObject(parent), m_storage(std::move(storage))
 {
     m_workerThread = new QThread(this);
@@ -836,7 +836,9 @@ void MessageService::saveMessageAsync(const Domain::Message &msg, const QObject*
     auto storage = m_storage;
     
     QMetaObject::invokeMethod(m_workerContext, [self, coreMsg, ctx, callback, storage, context]() {
-        bool success = storage->saveMessage(coreMsg);
+        auto s = storage.lock();
+        if (!s) return;
+        bool success = s->saveMessage(coreMsg);
         if (callback && self) {
             QMetaObject::invokeMethod(self, [context, ctx, callback, success]() {
                 if (context && !ctx) return;
@@ -867,7 +869,9 @@ void MessageService::saveMessagesAsync(const std::vector<Domain::Message> &msgs,
     QMetaObject::invokeMethod(m_workerContext, [self, coreMsgs, ctx, callback, storage, context]() {
         bool allSuccess = true;
         for (const auto& coreMsg : coreMsgs) {
-            if (!storage->saveMessage(coreMsg)) {
+            auto s = storage.lock();
+        if (!s) return;
+        if (!s->saveMessage(coreMsg)) {
                 allSuccess = false;
             }
         }
@@ -887,7 +891,9 @@ void MessageService::updateMessageStatusAsync(const QString &id, Domain::Message
     auto storage = m_storage;
     
     QMetaObject::invokeMethod(m_workerContext, [self, id, coreStatus, ctx, callback, storage, context]() {
-        bool success = storage->updateMessageState(id, coreStatus);
+        auto s = storage.lock();
+        if (!s) return;
+        bool success = s->updateMessageState(id, coreStatus);
         if (callback && self) {
             QMetaObject::invokeMethod(self, [context, ctx, callback, success]() {
                 if (context && !ctx) return;
@@ -907,7 +913,9 @@ void MessageService::markMessagesSeenAsync(const QString &conversationId, const 
 void MessageService::deleteMessageAsync(const QString &id) {
     auto storage = m_storage;
     QMetaObject::invokeMethod(m_workerContext, [storage, id]() {
-        storage->deleteMessage(id);
+        auto s = storage.lock();
+        if (!s) return;
+        s->deleteMessage(id);
     });
 }
 
@@ -917,7 +925,9 @@ void MessageService::getMessagesAsync(const QString &conversationId, int limit, 
     auto storage = m_storage;
     
     QMetaObject::invokeMethod(m_workerContext, [self, conversationId, ctx, callback, storage, context]() {
-        auto coreMsgs = storage->getConversationMessages(conversationId);
+        auto s = storage.lock();
+        if (!s) return;
+        auto coreMsgs = s->getConversationMessages(conversationId);
         std::vector<Domain::Message> messages;
         for (const auto& cm : coreMsgs) {
             Domain::Message dm;
@@ -946,7 +956,9 @@ void MessageService::getMessageByIdAsync(const QString &id, const QObject* conte
     auto storage = m_storage;
     
     QMetaObject::invokeMethod(m_workerContext, [self, id, ctx, callback, storage, context]() {
-        auto cmOpt = storage->getMessage(id);
+        auto s = storage.lock();
+        if (!s) return;
+        auto cmOpt = s->getMessage(id);
         std::optional<Domain::Message> optMsg;
         if (cmOpt) {
             Domain::Message dm;

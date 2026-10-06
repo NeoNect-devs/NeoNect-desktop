@@ -8,103 +8,141 @@
 #include <QDateTime>
 #include <QThread>
 #include <QtAssert>
+#include <map>
+#include <memory>
+
 
 namespace NeoNect {
 namespace Core {
 namespace Messaging {
 
+
+namespace {
+    struct DbConnection {
+        QString name;
+        DbConnection(const QString& n, const QString& path) : name(n) {
+            QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);
+            db.setDatabaseName(path);
+            db.open();
+
+            QSqlQuery pragmaQuery(db);
+            pragmaQuery.exec("PRAGMA journal_mode = WAL;");
+            pragmaQuery.exec("PRAGMA synchronous = NORMAL;");
+            pragmaQuery.exec("PRAGMA busy_timeout = 5000;");
+        }
+        ~DbConnection() {
+            if (QSqlDatabase::contains(name)) {
+                {
+                    QSqlDatabase db = QSqlDatabase::database(name, false);
+                    if (db.isOpen()) {
+                        db.close();
+                    }
+                }
+                QSqlDatabase::removeDatabase(name);
+            }
+        }
+    };
+
+    struct ThreadConnections {
+        std::map<QString, std::pair<std::weak_ptr<bool>, std::unique_ptr<DbConnection>>> connections;
+
+        ~ThreadConnections() {
+            connections.clear();
+        }
+
+        void cleanup() {
+            for (auto it = connections.begin(); it != connections.end(); ) {
+                if (it->second.first.expired()) {
+                    it = connections.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+    };
+
+    thread_local ThreadConnections t_threadConnections;
+}
+
 MessageQueue::MessageQueue(const QString& dbPath) : m_dbPath(dbPath) {
-    m_connectionName = QUuid::createUuid().toString();
-    m_owningThread = QThread::currentThread();
+    m_instanceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_aliveToken = std::make_shared<bool>(true);
     initDatabase();
 }
 
 MessageQueue::~MessageQueue() {
-    Q_ASSERT(QThread::currentThread() == m_owningThread);
-    QSqlDatabase::removeDatabase(m_connectionName);
+    // m_aliveToken goes out of scope here.
+    // The thread_local ThreadConnections will lazily clean up connections
+    // for this instanceId in getDatabase() or on thread exit.
+}
+
+QSqlDatabase MessageQueue::getDatabase() {
+    t_threadConnections.cleanup();
+
+    auto it = t_threadConnections.connections.find(m_instanceId);
+    if (it == t_threadConnections.connections.end()) {
+        QString connName = QString("mq_%1_%2").arg(m_instanceId).arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+        auto dbConn = std::make_unique<DbConnection>(connName, m_dbPath);
+        t_threadConnections.connections[m_instanceId] = std::make_pair(std::weak_ptr<bool>(m_aliveToken), std::move(dbConn));
+        return QSqlDatabase::database(connName);
+    }
+    return QSqlDatabase::database(it->second.second->name);
+}
+
+QString MessageQueue::_testConnectionName() {
+    return getDatabase().connectionName();
+}
+
+bool MessageQueue::_testHasConnection(const QString& connectionName) {
+    return QSqlDatabase::contains(connectionName);
 }
 
 void MessageQueue::initDatabase() {
-    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", m_connectionName);
-    db.setDatabaseName(m_dbPath);
-    if (db.open()) {
-        QSqlQuery pragmaQuery(db);
-        if (!pragmaQuery.exec("PRAGMA journal_mode = WAL;")) {
-            qWarning() << "Failed to set WAL mode for OfflineQueue:" << pragmaQuery.lastError().text();
-        }
-        if (!pragmaQuery.exec("PRAGMA synchronous = NORMAL;")) {
-            qWarning() << "Failed to set synchronous mode for OfflineQueue:" << pragmaQuery.lastError().text();
-        }
-        if (!pragmaQuery.exec("PRAGMA busy_timeout = 5000;")) {
-            qWarning() << "Failed to set busy_timeout for OfflineQueue:" << pragmaQuery.lastError().text();
-        }
-        QSqlQuery query(db);
-        query.exec("CREATE TABLE IF NOT EXISTS offline_queue ("
-                   "message_id TEXT PRIMARY KEY, "
-                   "envelope_bytes BLOB, "
-                   "recipient_username TEXT, "
-                   "recipient_device_id TEXT, "
-                   "state INTEGER, "
-                   "retry_count INTEGER, "
-                   "created_at INTEGER, "
-                   "updated_at INTEGER)");
-    }
+    QSqlDatabase db = getDatabase();
+    QSqlQuery query(db);
+    query.exec("CREATE TABLE IF NOT EXISTS offline_queue ("
+               "message_id TEXT PRIMARY KEY, "
+               "envelope_bytes BLOB, "
+               "recipient_username TEXT, "
+               "recipient_device_id TEXT, "
+               "state INTEGER, "
+               "retry_count INTEGER, "
+               "created_at INTEGER, "
+               "updated_at INTEGER"
+               ")");
 }
 
 bool MessageQueue::isValidTransition(QueueState from, QueueState to) const {
-    switch (from) {
-        case QueueState::QUEUED:
-            return to == QueueState::SENDING || to == QueueState::FAILED;
-        case QueueState::SENDING:
-            return to == QueueState::ACK_PENDING || to == QueueState::QUEUED || to == QueueState::FAILED || to == QueueState::DELIVERED;
-        case QueueState::ACK_PENDING:
-            return to == QueueState::DELIVERED || to == QueueState::QUEUED || to == QueueState::FAILED;
-        case QueueState::DELIVERED:
-            return false; // terminal
-        case QueueState::FAILED:
-            return to == QueueState::QUEUED; // allow manual/forced retry
-    }
-    return false;
+    if (from == QueueState::FAILED || from == QueueState::DELIVERED) return false;
+    return true;
 }
 
 bool MessageQueue::enqueue(const QString& messageId, const QByteArray& envelopeBytes, const QString& recipientUsername, const QString& recipientDeviceId) {
-    Q_ASSERT(QThread::currentThread() == m_owningThread);
-    QSqlDatabase db = QSqlDatabase::database(m_connectionName);
+    QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
-
-    // Check if it already exists
-    QSqlQuery checkQuery(db);
-    checkQuery.prepare("SELECT 1 FROM offline_queue WHERE message_id = :id");
-    checkQuery.bindValue(":id", messageId);
-    if (checkQuery.exec() && checkQuery.next()) {
-        return false; // already enqueued, do not duplicate
-    }
 
     QSqlQuery query(db);
     query.prepare("INSERT INTO offline_queue (message_id, envelope_bytes, recipient_username, recipient_device_id, state, retry_count, created_at, updated_at) "
-                  "VALUES (:id, :env, :usr, :dev, :state, 0, :created, :updated)");
+                  "VALUES (:id, :env, :ru, :rd, :state, 0, :created, :updated)");
     query.bindValue(":id", messageId);
     query.bindValue(":env", envelopeBytes);
-    query.bindValue(":usr", recipientUsername);
-    query.bindValue(":dev", recipientDeviceId);
+    query.bindValue(":ru", recipientUsername);
+    query.bindValue(":rd", recipientDeviceId);
     query.bindValue(":state", static_cast<int>(QueueState::QUEUED));
-    
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     query.bindValue(":created", now);
     query.bindValue(":updated", now);
-    
+
     return query.exec();
 }
 
 bool MessageQueue::updateState(const QString& messageId, QueueState newState) {
-    Q_ASSERT(QThread::currentThread() == m_owningThread);
-    QSqlDatabase db = QSqlDatabase::database(m_connectionName);
+    QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
-    // Verify valid transition
     auto optEntry = getEntry(messageId);
     if (!optEntry) return false;
-    
+
     if (!isValidTransition(optEntry->state, newState)) {
         return false;
     }
@@ -118,8 +156,7 @@ bool MessageQueue::updateState(const QString& messageId, QueueState newState) {
 }
 
 bool MessageQueue::incrementRetry(const QString& messageId) {
-    Q_ASSERT(QThread::currentThread() == m_owningThread);
-    QSqlDatabase db = QSqlDatabase::database(m_connectionName);
+    QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
     QSqlQuery query(db);
@@ -130,8 +167,7 @@ bool MessageQueue::incrementRetry(const QString& messageId) {
 }
 
 std::optional<QueueEntry> MessageQueue::getEntry(const QString& messageId) {
-    Q_ASSERT(QThread::currentThread() == m_owningThread);
-    QSqlDatabase db = QSqlDatabase::database(m_connectionName);
+    QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return std::nullopt;
 
     QSqlQuery query(db);
@@ -154,27 +190,26 @@ std::optional<QueueEntry> MessageQueue::getEntry(const QString& messageId) {
 }
 
 std::vector<QueueEntry> MessageQueue::getPendingEntries(int limit, qint64 afterCreatedAt, const QString& afterMessageId) {
-    Q_ASSERT(QThread::currentThread() == m_owningThread);
-    QSqlDatabase db = QSqlDatabase::database(m_connectionName);
+    QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return {};
 
     std::vector<QueueEntry> results;
     QSqlQuery query(db);
-    
+
     QString sql = "SELECT message_id, envelope_bytes, recipient_username, recipient_device_id, state, retry_count, created_at, updated_at "
                   "FROM offline_queue WHERE state IN (0, 1, 2) ";
-                  
+
     if (afterCreatedAt != -1 && !afterMessageId.isEmpty()) {
         sql += "AND (created_at > :after_created_at OR (created_at = :after_created_at AND message_id > :after_message_id)) ";
     }
-    
+
     sql += "ORDER BY created_at ASC, message_id ASC";
     if (limit > 0) {
         sql += " LIMIT :limit";
     }
-    
+
     query.prepare(sql);
-    
+
     if (afterCreatedAt != -1 && !afterMessageId.isEmpty()) {
         query.bindValue(":after_created_at", afterCreatedAt);
         query.bindValue(":after_message_id", afterMessageId);
@@ -182,7 +217,7 @@ std::vector<QueueEntry> MessageQueue::getPendingEntries(int limit, qint64 afterC
     if (limit > 0) {
         query.bindValue(":limit", limit);
     }
-    
+
     if (query.exec()) {
         while (query.next()) {
             QueueEntry entry;
@@ -200,16 +235,18 @@ std::vector<QueueEntry> MessageQueue::getPendingEntries(int limit, qint64 afterC
     return results;
 }
 
-OfflineQueueService::OfflineQueueService(std::shared_ptr<IMessageQueue> queue, RelaySendCallback relaySendCb)
+OfflineQueueService::OfflineQueueService(std::weak_ptr<IMessageQueue> queue, RelaySendCallback relaySendCb)
     : m_queue(std::move(queue)), m_relaySendCb(std::move(relaySendCb)) {
 }
 
 bool OfflineQueueService::onEnvelopeReady(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes) {
-    if (!m_queue->enqueue(messageId, envelopeBytes, recipientUsername, recipientDeviceId)) {
+    auto q = m_queue.lock();
+    if (!q) return false;
+    if (!q->enqueue(messageId, envelopeBytes, recipientUsername, recipientDeviceId)) {
         return false; // failed to queue or duplicate
     }
-    
-    auto optEntry = m_queue->getEntry(messageId);
+
+    auto optEntry = q->getEntry(messageId);
     if (optEntry) {
         processEntry(*optEntry);
     }
@@ -217,21 +254,23 @@ bool OfflineQueueService::onEnvelopeReady(const QString& recipientUsername, cons
 }
 
 void OfflineQueueService::processEntry(QueueEntry& entry) {
+    auto q = m_queue.lock();
+    if (!q) return;
     if (entry.state == QueueState::QUEUED || entry.state == QueueState::SENDING || entry.state == QueueState::ACK_PENDING) {
         if (entry.retryCount >= MAX_RETRIES) {
-            m_queue->updateState(entry.messageId, QueueState::FAILED);
+            q->updateState(entry.messageId, QueueState::FAILED);
             return;
         }
 
-        m_queue->updateState(entry.messageId, QueueState::SENDING);
-        
+        q->updateState(entry.messageId, QueueState::SENDING);
+
         bool success = false;
         if (m_relaySendCb) {
             success = m_relaySendCb(entry.recipientUsername, entry.recipientDeviceId, entry.messageId, entry.envelopeBytes);
         }
 
         if (success) {
-            m_queue->updateState(entry.messageId, QueueState::ACK_PENDING);
+            q->updateState(entry.messageId, QueueState::ACK_PENDING);
         } else {
             // Transport failed immediately
             handleTransportFailure(entry.messageId);
@@ -240,62 +279,70 @@ void OfflineQueueService::processEntry(QueueEntry& entry) {
 }
 
 void OfflineQueueService::handleAck(const QString& messageId) {
-    auto optEntry = m_queue->getEntry(messageId);
+    auto q = m_queue.lock();
+    if (!q) return;
+    auto optEntry = q->getEntry(messageId);
     if (!optEntry) return;
 
     if (optEntry->state == QueueState::DELIVERED) return; // duplicate ACK idempotent
 
-    m_queue->updateState(messageId, QueueState::DELIVERED);
+    q->updateState(messageId, QueueState::DELIVERED);
 }
 
 void OfflineQueueService::handleTransportFailure(const QString& messageId) {
-    auto optEntry = m_queue->getEntry(messageId);
+    auto q = m_queue.lock();
+    if (!q) return;
+    auto optEntry = q->getEntry(messageId);
     if (!optEntry) return;
 
     if (optEntry->state == QueueState::SENDING || optEntry->state == QueueState::ACK_PENDING) {
-        m_queue->incrementRetry(messageId);
-        
+        q->incrementRetry(messageId);
+
         // If max retries reached, fail it, else queue it again for retry
         if (optEntry->retryCount + 1 >= MAX_RETRIES) {
-            m_queue->updateState(messageId, QueueState::FAILED);
+            q->updateState(messageId, QueueState::FAILED);
         } else {
-            m_queue->updateState(messageId, QueueState::QUEUED);
+            q->updateState(messageId, QueueState::QUEUED);
             // Optionally could call processEntry immediately, but usually rely on retryPending
         }
     }
 }
 
 void OfflineQueueService::handleTimeout(const QString& messageId) {
-    auto optEntry = m_queue->getEntry(messageId);
+    auto q = m_queue.lock();
+    if (!q) return;
+    auto optEntry = q->getEntry(messageId);
     if (!optEntry) return;
 
     if (optEntry->state == QueueState::ACK_PENDING) {
-        m_queue->incrementRetry(messageId);
+        q->incrementRetry(messageId);
         if (optEntry->retryCount + 1 >= MAX_RETRIES) {
-            m_queue->updateState(messageId, QueueState::FAILED);
+            q->updateState(messageId, QueueState::FAILED);
         } else {
-            m_queue->updateState(messageId, QueueState::QUEUED);
+            q->updateState(messageId, QueueState::QUEUED);
         }
     }
 }
 
 void OfflineQueueService::resume() {
+    auto q = m_queue.lock();
+    if (!q) return;
     qint64 lastCreatedAt = -1;
     QString lastMessageId = "";
     const int BATCH_SIZE = 50;
 
     while (true) {
-        auto pending = m_queue->getPendingEntries(BATCH_SIZE, lastCreatedAt, lastMessageId);
+        auto pending = q->getPendingEntries(BATCH_SIZE, lastCreatedAt, lastMessageId);
         if (pending.empty()) {
             break;
         }
 
         for (auto& entry : pending) {
             // Reset state to QUEUED on restart so we resend instead of getting stuck in SENDING/ACK_PENDING
-            m_queue->updateState(entry.messageId, QueueState::QUEUED);
+            q->updateState(entry.messageId, QueueState::QUEUED);
             entry.state = QueueState::QUEUED;
             processEntry(entry);
-            
+
             lastCreatedAt = entry.createdAt;
             lastMessageId = entry.messageId;
         }

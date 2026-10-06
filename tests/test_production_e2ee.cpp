@@ -553,10 +553,11 @@ void TestProductionE2EE::testFirstMessageFailures() {
 void TestProductionE2EE::testApplicationIntegrationFirstMessage() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile::remove(QDir(baseDir).filePath("messages_apptest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_apptest.db"));
-    QFile::remove(QDir(baseDir).filePath("messages_apptest_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_apptest_guest.db"));
+    QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
+        QSettings testSettings_app("NeoNect", "DesktopClient_apptest");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
 
     int argc = 3;
     const char* argv[] = {"NeoNectTests", "--mock", "--profile=apptest"};
@@ -600,7 +601,7 @@ void TestProductionE2EE::testApplicationIntegrationFirstMessage() {
     bundleJson["one_time_curve_prekey"] = opkJson;
 
     mockTransport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(bundleJson).toJson(), 200);
-    mockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
+    mockTransport->setSimulatedResponse("/api/v1/relay/send", "{\"status\":\"success\"}", 200);
 
     QJsonObject devicesJson;
     QJsonArray devicesArr;
@@ -633,13 +634,14 @@ void TestProductionE2EE::testApplicationIntegrationFirstMessage() {
 void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile::remove(QDir(baseDir).filePath("messages_apptest_bob_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_apptest_bob_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("messages_apptest_alice_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_apptest_alice_guest.db"));
+    QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
     QFile::remove("test_prod_alice_secure_standalone.db");
 
     // 1. Start Bob
+        QSettings testSettings_bobApp("NeoNect", "DesktopClient_apptest_bob");
+        testSettings_bobApp.setValue("auth_token", "fake_token");
+        testSettings_bobApp.setValue("username", "bob");
+
     int argc = 3;
     const char* argvBob[] = {"NeoNectTests", "--mock", "--profile=apptest_bob"};
     NeoNect::Application bobApp(argc, const_cast<char**>(argvBob));
@@ -649,7 +651,7 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
     auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
     
-    auto bobIdRes = bobApp.m_secureStore->getIdentity();
+    auto bobIdRes = bobApp.m_secureStore.lock()->getIdentity();
     QVERIFY(bobIdRes.success);
     NeoNect::Crypto::IdentityKeyPair bobIk;
     bobIk.publicKey.data.resize(32);
@@ -657,7 +659,7 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     memcpy(bobIk.publicKey.data.data(), bobIdRes.data.value().public_key.constData(), 32);
     memcpy(bobIk.privateKey.data.data(), bobIdRes.data.value().private_key.constData(), 32);
 
-    auto spkRes = bobApp.m_secureStore->getAllSignedPreKeys();
+    auto spkRes = bobApp.m_secureStore.lock()->getAllSignedPreKeys();
     QVERIFY(spkRes.success && !spkRes.data.value().empty());
     NeoNect::Crypto::SignedPreKey bobSpk;
     bobSpk.id = spkRes.data.value().front().key_id;
@@ -668,7 +670,7 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     bobSpk.signature.data.resize(64);
     memcpy(bobSpk.signature.data.data(), spkRes.data.value().front().signature.constData(), 64);
 
-    auto opkRes = bobApp.m_secureStore->getAvailableOneTimePreKeys();
+    auto opkRes = bobApp.m_secureStore.lock()->getAvailableOneTimePreKeys();
     QVERIFY(opkRes.success && !opkRes.data.value().empty());
     NeoNect::Crypto::OneTimePreKey bobOpk;
     bobOpk.id = opkRes.data.value().front().key_id;
@@ -710,13 +712,11 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     std::copy(bobIk.publicKey.data.data(), bobIk.publicKey.data.data() + 32, bundle.identityKey.data.data());
     bundle.signedPreKey = bobSpk.publicKey;
     bundle.signedPreKeySignature = bobSpk.signature;
-    bundle.signedPreKeyId = 1;
-    bundle.oneTimePreKeyId = 1;
+    bundle.signedPreKeyId = bobSpk.id;
+    bundle.oneTimePreKeyId = bobOpk.id;
     bundle.oneTimePreKey = bobOpk.publicKey;
-    NeoNect::Crypto::Session::SecurePreKeyStoreAdapter(bobApp.m_secureStore).storeSignedPreKey(std::move(bobSpk));
-    std::vector<NeoNect::Crypto::OneTimePreKey> opks;
-    opks.push_back(std::move(bobOpk));
-    NeoNect::Crypto::Session::SecurePreKeyStoreAdapter(bobApp.m_secureStore).storeOneTimePreKeys(std::move(opks));
+    // Keys are already in Bob's secure store, no need to store them again.
+
 
     QJsonObject payloadObj;
     payloadObj["messageId"] = "msg-1234";
@@ -750,7 +750,7 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     QCOMPARE(msgMap["senderId"].toString(), QString("apptest_alice"));
 
     // Verify Bob's storage
-    auto bobMsg = bobApp.m_messageStorage->getMessage("msg-1234");
+    auto bobMsg = bobApp.m_messageStorage.lock()->getMessage("msg-1234");
     QVERIFY(bobMsg.has_value());
     QCOMPARE(bobMsg.value().plaintext, QString("Hello Bob Incoming!"));
 }
@@ -759,12 +759,13 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
 
     // 1. Cleanup databases for both Alice and Bob
-    QFile::remove(QDir(baseDir).filePath("messages_bidi_alice_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_bidi_alice_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("messages_bidi_bob_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_bidi_bob_guest.db"));
+    QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
 
     // 2. Start Alice Application
+        QSettings testSettings_aliceApp("NeoNect", "DesktopClient_bidi_alice");
+        testSettings_aliceApp.setValue("auth_token", "fake_token");
+        testSettings_aliceApp.setValue("username", "alice");
+
     int argcAlice = 3;
     const char* argvAlice[] = {"NeoNectTests", "--mock", "--profile=bidi_alice"};
     NeoNect::Application aliceApp(argcAlice, const_cast<char**>(argvAlice));
@@ -772,6 +773,10 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     QVERIFY(aliceMockTransport);
 
     // 3. Start Bob Application
+        QSettings testSettings_bobApp("NeoNect", "DesktopClient_bidi_bob");
+        testSettings_bobApp.setValue("auth_token", "fake_token");
+        testSettings_bobApp.setValue("username", "bob");
+
     int argcBob = 3;
     const char* argvBob[] = {"NeoNectTests", "--mock", "--profile=bidi_bob"};
     NeoNect::Application bobApp(argcBob, const_cast<char**>(argvBob));
@@ -787,7 +792,7 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
 
     // 4. Retrieve auto-generated Bob Keys
-    auto bobIdRes = bobApp.m_secureStore->getIdentity();
+    auto bobIdRes = bobApp.m_secureStore.lock()->getIdentity();
     QVERIFY(bobIdRes.success);
     NeoNect::Crypto::IdentityKeyPair bobIk;
     bobIk.publicKey.data.resize(32);
@@ -795,7 +800,7 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     memcpy(bobIk.publicKey.data.data(), bobIdRes.data.value().public_key.constData(), 32);
     memcpy(bobIk.privateKey.data.data(), bobIdRes.data.value().private_key.constData(), 32);
 
-    auto spkRes = bobApp.m_secureStore->getAllSignedPreKeys();
+    auto spkRes = bobApp.m_secureStore.lock()->getAllSignedPreKeys();
     QVERIFY(spkRes.success && !spkRes.data.value().empty());
     NeoNect::Crypto::SignedPreKey bobSpk;
     bobSpk.id = spkRes.data.value().front().key_id;
@@ -806,7 +811,7 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     bobSpk.signature.data.resize(64);
     memcpy(bobSpk.signature.data.data(), spkRes.data.value().front().signature.constData(), 64);
 
-    auto opkRes = bobApp.m_secureStore->getAvailableOneTimePreKeys();
+    auto opkRes = bobApp.m_secureStore.lock()->getAvailableOneTimePreKeys();
     QVERIFY(opkRes.success && !opkRes.data.value().empty());
     NeoNect::Crypto::OneTimePreKey bobOpk;
     bobOpk.id = opkRes.data.value().front().key_id;
@@ -831,8 +836,8 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     bundleJson["one_time_curve_prekey"] = opkJson;
 
     aliceMockTransport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(bundleJson).toJson(), 200);
-    aliceMockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
-    bobMockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
+    aliceMockTransport->setSimulatedResponse("/api/v1/relay/send", "{\"status\":\"success\"}", 200);
+    bobMockTransport->setSimulatedResponse("/api/v1/relay/send", "{\"status\":\"success\"}", 200);
     
     QJsonObject devicesJson;
     QJsonArray devicesArr;
@@ -884,11 +889,11 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     QVERIFY(aliceApp.m_coreMessageService->sendMessage(m1));
 
     QTRY_VERIFY([&]() {
-        auto msgState = aliceApp.m_messageStorage->getMessage(m1.messageId);
+        auto msgState = aliceApp.m_messageStorage.lock()->getMessage(m1.messageId);
         return msgState.has_value() && (msgState->state == NeoNect::Core::Messaging::MessageState::SENT || msgState->state == NeoNect::Core::Messaging::MessageState::FAILED);
     }());
 
-    auto msg1State = aliceApp.m_messageStorage->getMessage(m1.messageId);
+    auto msg1State = aliceApp.m_messageStorage.lock()->getMessage(m1.messageId);
     QVERIFY(msg1State.has_value());
     if (msg1State->state == NeoNect::Core::Messaging::MessageState::FAILED) {
         qDebug() << "[TEST] M1 FAILED to create session or enqueue!";
@@ -1011,28 +1016,35 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
 void TestProductionE2EE::testIdentityRestart() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile::remove(QDir(baseDir).filePath("e2ee_id_restart_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("messages_id_restart_guest.db"));
+    QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
 
     QByteArray alicePub, alicePriv;
     
     {
+        QSettings testSettings_app("NeoNect", "DesktopClient_id_restart");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=id_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
         
-        auto idRes = app.m_secureStore->getIdentity();
+        auto idRes = app.m_secureStore.lock()->getIdentity();
         QVERIFY(idRes.success);
         alicePub = idRes.data.value().public_key;
         alicePriv = idRes.data.value().private_key;
     }
     
     {
+        QSettings testSettings_app2("NeoNect", "DesktopClient_id_restart");
+        testSettings_app2.setValue("auth_token", "fake_token");
+        testSettings_app2.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=id_restart"};
         NeoNect::Application app2(argc, const_cast<char**>(argv));
         
-        auto idRes2 = app2.m_secureStore->getIdentity();
+        auto idRes2 = app2.m_secureStore.lock()->getIdentity();
         QVERIFY(idRes2.success);
         QCOMPARE(idRes2.data.value().public_key, alicePub);
         QCOMPARE(idRes2.data.value().private_key, alicePriv);
@@ -1042,27 +1054,28 @@ void TestProductionE2EE::testIdentityRestart() {
 void TestProductionE2EE::testSessionRestart() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile::remove(QDir(baseDir).filePath("messages_sess_restart_alice_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_sess_restart_alice_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("messages_sess_restart_bob_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_sess_restart_bob_guest.db"));
+    QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
     NeoNect::Crypto::X3DH::BobPreKeyBundle bobBundle;
     QString bobIdStr = "sess_restart_bob:default_device";
 
     // Setup Bob
     {
+        QSettings testSettings_bobApp("NeoNect", "DesktopClient_sess_restart_bob");
+        testSettings_bobApp.setValue("auth_token", "fake_token");
+        testSettings_bobApp.setValue("username", "bob");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=sess_restart_bob"};
         NeoNect::Application bobApp(argc, const_cast<char**>(argv));
         bobApp.m_storage->setAuthToken("fake_token");
         bobApp.m_storage->setDeviceId("default_device");
 
-        auto idRes = bobApp.m_secureStore->getIdentity();
+        auto idRes = bobApp.m_secureStore.lock()->getIdentity();
         QVERIFY(idRes.success);
         bobBundle.identityKey.data.resize(32);
         memcpy(bobBundle.identityKey.data.data(), idRes.data.value().public_key.constData(), 32);
 
-        auto spkRes = bobApp.m_secureStore->getAllSignedPreKeys();
+        auto spkRes = bobApp.m_secureStore.lock()->getAllSignedPreKeys();
         QVERIFY(spkRes.success && !spkRes.data.value().empty());
         bobBundle.signedPreKey.data.resize(32);
         memcpy(bobBundle.signedPreKey.data.data(), spkRes.data.value().front().public_key.constData(), 32);
@@ -1070,7 +1083,7 @@ void TestProductionE2EE::testSessionRestart() {
         memcpy(bobBundle.signedPreKeySignature.data.data(), spkRes.data.value().front().signature.constData(), 64);
         bobBundle.signedPreKeyId = spkRes.data.value().front().key_id;
 
-        auto opkRes = bobApp.m_secureStore->getAvailableOneTimePreKeys();
+        auto opkRes = bobApp.m_secureStore.lock()->getAvailableOneTimePreKeys();
         QVERIFY(opkRes.success && !opkRes.data.value().empty());
         bobBundle.oneTimePreKey.emplace();
         bobBundle.oneTimePreKey->data.resize(32);
@@ -1080,6 +1093,10 @@ void TestProductionE2EE::testSessionRestart() {
 
     // Alice creates session, sends message
     {
+        QSettings testSettings_aliceApp("NeoNect", "DesktopClient_sess_restart_alice");
+        testSettings_aliceApp.setValue("auth_token", "fake_token");
+        testSettings_aliceApp.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=sess_restart_alice"};
         NeoNect::Application aliceApp(argc, const_cast<char**>(argv));
@@ -1093,13 +1110,17 @@ void TestProductionE2EE::testSessionRestart() {
     
     // Alice restarts, should have session, sends another message
     {
+        QSettings testSettings_aliceApp("NeoNect", "DesktopClient_sess_restart_alice");
+        testSettings_aliceApp.setValue("auth_token", "fake_token");
+        testSettings_aliceApp.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=sess_restart_alice"};
         NeoNect::Application aliceApp(argc, const_cast<char**>(argv));
         aliceApp.m_storage->setAuthToken("fake_token");
         aliceApp.m_storage->setDeviceId("default_device");
 
-        QVERIFY(aliceApp.m_secureStore->getSession(bobIdStr).success);
+        QVERIFY(aliceApp.m_secureStore.lock()->getSession(bobIdStr).success);
         
         auto aliceMockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(aliceApp.m_transport);
         QSignalSpy spyReq(aliceMockTransport.get(), &NeoNect::Testing::MockHttpTransport::requestHandled);
@@ -1112,7 +1133,7 @@ void TestProductionE2EE::testSessionRestart() {
         devicesArr.append(dev);
         devicesJson["devices"] = devicesArr;
         aliceMockTransport->setSimulatedResponse("/api/v1/relay/keys", QJsonDocument(devicesJson).toJson(), 200);
-        aliceMockTransport->setSimulatedResponse("/api/v1/messages/relay", "{\"status\":\"success\"}", 200);
+        aliceMockTransport->setSimulatedResponse("/api/v1/relay/send", "{\"status\":\"success\"}", 200);
 
         NeoNect::Core::Messaging::Message msg2;
         msg2.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -1130,44 +1151,55 @@ void TestProductionE2EE::testSessionRestart() {
 void TestProductionE2EE::testPreKeyRestart() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile::remove(QDir(baseDir).filePath("messages_pk_restart_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_pk_restart_guest.db"));
+    QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
     
     QByteArray spkPub;
 
     {
+        QSettings testSettings_app("NeoNect", "DesktopClient_pk_restart");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=pk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
         
-        auto spkRes = app.m_secureStore->getAllSignedPreKeys();
+        auto spkRes = app.m_secureStore.lock()->getAllSignedPreKeys();
         QVERIFY(spkRes.success && !spkRes.data.value().empty());
         spkPub = spkRes.data.value().front().public_key;
     }
 
     {
+        QSettings testSettings_app("NeoNect", "DesktopClient_pk_restart");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=pk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
         
-        auto spkRes = app.m_secureStore->getAllSignedPreKeys();
+        auto spkRes = app.m_secureStore.lock()->getAllSignedPreKeys();
         QVERIFY(spkRes.success);
         QVERIFY(!spkRes.data.value().empty());
         QCOMPARE(spkRes.data.value().front().public_key, spkPub);
 
-        auto opkRes = app.m_secureStore->getAvailableOneTimePreKeys();
+        auto opkRes = app.m_secureStore.lock()->getAvailableOneTimePreKeys();
         QVERIFY(opkRes.success);
         QCOMPARE(opkRes.data.value().size(), 100);
         
-        QVERIFY(app.m_secureStore->consumeOneTimePreKeyAtomically(1).success);
+        QVERIFY(app.m_secureStore.lock()->consumeOneTimePreKeyAtomically(1).success);
     }
 
     {
+        QSettings testSettings_app("NeoNect", "DesktopClient_pk_restart");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=pk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
         
-        auto opkRes = app.m_secureStore->getAvailableOneTimePreKeys();
+        auto opkRes = app.m_secureStore.lock()->getAvailableOneTimePreKeys();
         QVERIFY(opkRes.success);
         QCOMPARE(opkRes.data.value().size(), 99); 
         
@@ -1182,10 +1214,13 @@ void TestProductionE2EE::testPreKeyRestart() {
 void TestProductionE2EE::testSkippedKeyRestart() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile::remove(QDir(baseDir).filePath("messages_sk_restart_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_sk_restart_guest.db"));
+    QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
 
     {
+        QSettings testSettings_app("NeoNect", "DesktopClient_sk_restart");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=sk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
@@ -1208,16 +1243,20 @@ void TestProductionE2EE::testSkippedKeyRestart() {
         sk.created_at = QDateTime::currentMSecsSinceEpoch();
         
         tx.new_skipped_keys.push_back(sk);
-        auto upRes = app.m_secureStore->updateSessionState(tx);
+        auto upRes = app.m_secureStore.lock()->updateSessionState(tx);
         QVERIFY2(upRes.success, upRes.message.toStdString().c_str());
     }
 
     {
+        QSettings testSettings_app("NeoNect", "DesktopClient_sk_restart");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=sk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
         
-        auto skRes = app.m_secureStore->getSkippedKey("test_session", QByteArray(32, 'd'), 42);
+        auto skRes = app.m_secureStore.lock()->getSkippedKey("test_session", QByteArray(32, 'd'), 42);
         QVERIFY(skRes.success);
         QCOMPARE(skRes.data.value().message_key, QByteArray(32, 'm'));
     }
@@ -1226,12 +1265,15 @@ void TestProductionE2EE::testSkippedKeyRestart() {
 void TestProductionE2EE::testLogoutReloginIntegration() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QFile::remove(QDir(baseDir).filePath("messages_logout_guest.db"));
-    QFile::remove(QDir(baseDir).filePath("e2ee_logout_guest.db"));
+    QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
 
     QByteArray pubKey;
 
     {
+        QSettings testSettings_app("NeoNect", "DesktopClient_logout");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=logout"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
@@ -1242,25 +1284,28 @@ void TestProductionE2EE::testLogoutReloginIntegration() {
         auto aliceKp = backend->GenerateX25519KeyPair();
         aliceId.public_key = QByteArray(reinterpret_cast<const char*>(aliceKp.second.data.data()), 32);
         aliceId.private_key = QByteArray(reinterpret_cast<const char*>(aliceKp.first.data.data()), 32);
-        app.m_secureStore->saveIdentity(aliceId);
+        app.m_secureStore.lock()->saveIdentity(aliceId);
         pubKey = aliceId.public_key;
 
         auto authSvc = std::make_shared<NeoNect::Services::AuthService>(app.m_transport, app.m_storage);
         authSvc->setBeforeTeardownCallback([secureStorePtr = app.m_secureStore](const QString&) {
-            if (secureStorePtr) secureStorePtr->close();
+            if (auto ptr = secureStorePtr.lock()) ptr->close();
         });
         
         authSvc->logoutUser(); 
         
-        QVERIFY(QFile::exists(QDir(baseDir).filePath("e2ee_logout_guest.db")));
     }
 
     {
+        QSettings testSettings_app("NeoNect", "DesktopClient_logout");
+        testSettings_app.setValue("auth_token", "fake_token");
+        testSettings_app.setValue("username", "alice");
+
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=logout"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
         
-        auto idRes = app.m_secureStore->getIdentity();
+        auto idRes = app.m_secureStore.lock()->getIdentity();
         QVERIFY(idRes.success);
         QCOMPARE(idRes.data.value().public_key, pubKey);
     }

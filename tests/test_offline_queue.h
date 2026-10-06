@@ -18,4 +18,6 @@ private slots:
     void testCrashRecovery();
     void testAtomicFailure();
     void testBatchPagination();
+    void testThreadAffinity();
+    void testConnectionIsolation();
 };

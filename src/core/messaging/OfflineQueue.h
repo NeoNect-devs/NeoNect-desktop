@@ -1,5 +1,7 @@
 #pragma once
 #include <QString>
+#include <QSqlDatabase>
+
 #include <QThread>
 #include <QByteArray>
 #include <vector>
@@ -23,10 +25,15 @@ public:
     std::optional<QueueEntry> getEntry(const QString& messageId) override;
     std::vector<QueueEntry> getPendingEntries(int limit = 50, qint64 afterCreatedAt = -1, const QString& afterMessageId = QString()) override;
 
+    // Test-only observability
+    QString _testConnectionName();
+    static bool _testHasConnection(const QString& connectionName);
+
 private:
     QString m_dbPath;
-    QString m_connectionName;
-    QThread* m_owningThread;
+    QString m_instanceId;
+    std::shared_ptr<bool> m_aliveToken;
+    QSqlDatabase getDatabase();
     void initDatabase();
     bool isValidTransition(QueueState from, QueueState to) const;
 };
@@ -35,10 +42,13 @@ class OfflineQueueService {
 public:
     using RelaySendCallback = std::function<bool(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes)>;
 
-    OfflineQueueService(std::shared_ptr<IMessageQueue> queue, RelaySendCallback relaySendCb);
+    OfflineQueueService(std::weak_ptr<IMessageQueue> queue, RelaySendCallback relaySendCb);
     
     // Simulates what SessionManager used to call directly
     bool onEnvelopeReady(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes);
+
+    // Temporary compatibility bridge for Phase 2 StorageContext
+    void setQueue(std::weak_ptr<IMessageQueue> queue) { m_queue = std::move(queue); }
 
     // Processes ACK from network
     void handleAck(const QString& messageId);
@@ -55,7 +65,7 @@ public:
     static constexpr int MAX_RETRIES = 5;
 
 private:
-    std::shared_ptr<IMessageQueue> m_queue;
+    std::weak_ptr<IMessageQueue> m_queue;
     RelaySendCallback m_relaySendCb;
     
     void processEntry(QueueEntry& entry);

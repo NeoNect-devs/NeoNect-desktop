@@ -23,9 +23,13 @@ public:
     void setPreKeyClaimRequestCallback(PreKeyClaimRequestCallback cb) { m_preKeyClaimCb = cb; }
     void setDeviceResolverCallback(DeviceResolverCallback cb) { m_deviceResolverCb = cb; }
 
-    MessageService(std::shared_ptr<IMessageStorage> storage, 
+    MessageService(std::weak_ptr<IMessageStorage> storage,
                    std::shared_ptr<Crypto::Session::SessionManager> sessionManager,
-                   std::shared_ptr<IMessageQueue> offlineQueue = nullptr);
+                   std::weak_ptr<IMessageQueue> offlineQueue = {});
+
+    // Temporary compatibility bridges for Phase 2 StorageContext
+    void setStorage(std::weak_ptr<IMessageStorage> storage) { m_storage = std::move(storage); }
+    void setOfflineQueue(std::weak_ptr<IMessageQueue> queue) { m_offlineQueue = std::move(queue); }
 
     // Sends a message
     bool sendMessage(Message& msg);
@@ -39,9 +43,9 @@ public:
     void setOnMessageReceived(MessageReceivedCallback cb) { m_onMessageReceived = cb; }
 
 private:
-    std::shared_ptr<IMessageStorage> m_storage;
+    std::weak_ptr<IMessageStorage> m_storage;
     std::shared_ptr<Crypto::Session::SessionManager> m_sessionManager;
-    std::shared_ptr<IMessageQueue> m_offlineQueue;
+    std::weak_ptr<IMessageQueue> m_offlineQueue;
     MessageReceivedCallback m_onMessageReceived;
     PreKeyClaimRequestCallback m_preKeyClaimCb;
     DeviceResolverCallback m_deviceResolverCb;
