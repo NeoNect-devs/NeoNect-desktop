@@ -6,7 +6,7 @@ namespace Storage {
 
 class PlatformSecretStore : public IOSSecretStore {
 public:
-    PlatformSecretStore();
+    explicit PlatformSecretStore(const QString& baseDir = QString());
     ~PlatformSecretStore() override;
 
     ServiceResult<QByteArray> readSecret(const QString& name) override;
@@ -14,6 +14,7 @@ public:
     ServiceResult<std::monostate> deleteSecret(const QString& name) override;
 
 private:
+    QString m_baseDir;
     QString getSecretFilePath(const QString& name) const;
 };
 

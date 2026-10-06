@@ -56,4 +56,12 @@ private slots:
     void testIsolation_DifferentProfilesDifferentKeys();
     void testIsolation_ProfileCannotOpenOtherProfileDb();
     void testLifecycle_CloseAndWipeDatabase();
+
+    // Phase 3.2.1 tests
+    void testMasterKey_LegacyMigration();
+    void testMasterKey_ScopedCreation();
+    void testMasterKey_CrossServerIsolation();
+    void testMasterKey_RestartPersistence();
+    void testMasterKey_MigrationIdempotency();
+    void testMasterKey_MigrationReadBackFailureSafety();
 };

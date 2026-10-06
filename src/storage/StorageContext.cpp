@@ -31,16 +31,20 @@ StorageContext::StorageContext(const QString& serverUrl, const QString& username
     QDir().mkpath(e2eeDir);
     
     // Instantiate E2EE Core
+    std::shared_ptr<IOSSecretStore> legacySecretStore;
+    QString legacyProfileId = profile.isEmpty() ? username : QString("%1_%2").arg(profile, username);
+
     if (isMockMode) {
         m_secretStore = std::make_shared<StorageContextMockSecretStore>();
     } else {
-        m_secretStore = std::make_shared<PlatformSecretStore>();
+        m_secretStore = std::make_shared<PlatformSecretStore>(e2eeDir);
+        legacySecretStore = std::make_shared<PlatformSecretStore>();
     }
-    m_keyProvider = std::make_shared<MasterKeyProvider>(m_secretStore);
+    m_keyProvider = std::make_shared<MasterKeyProvider>(m_secretStore, legacySecretStore, legacyProfileId);
     m_secureStore = std::make_shared<SecureE2EEStore>(m_keyProvider);
     
     QString secureDbPath = StoragePathResolver::e2eeDbPath(serverUrl, username);
-    QString keyProfileId = profile.isEmpty() ? username : QString("%1_%2").arg(profile, username);
+    QString keyProfileId = StoragePathResolver::serverKey(serverUrl) + "_" + StoragePathResolver::accountKey(username);
     m_secureStore->initialize(secureDbPath, keyProfileId);
     
     // Instantiate Message Storage

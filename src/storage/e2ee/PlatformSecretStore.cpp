@@ -27,11 +27,12 @@ static const SecretSchema* get_neonect_schema() {
 namespace NeoNect {
 namespace Storage {
 
-PlatformSecretStore::PlatformSecretStore() = default;
+PlatformSecretStore::PlatformSecretStore(const QString& baseDir)
+    : m_baseDir(baseDir) {}
 PlatformSecretStore::~PlatformSecretStore() = default;
 
 QString PlatformSecretStore::getSecretFilePath(const QString& name) const {
-    QString appDataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString appDataDir = m_baseDir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : m_baseDir;
     QDir dir(appDataDir);
     if (!dir.exists()) {
         dir.mkpath(".");

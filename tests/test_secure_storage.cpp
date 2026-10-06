@@ -62,7 +62,7 @@ void TestSecureStorage::testMasterKey_SecondLoadSameKey() {
     MasterKeyProvider provider(store);
     auto res1 = provider.loadOrCreate("testProfile");
     QVERIFY(res1.success);
-    
+
     auto res2 = provider.loadOrCreate("testProfile");
     QVERIFY(res2.success);
     QCOMPARE(*res1.data, *res2.data);
@@ -195,7 +195,7 @@ void TestSecureStorage::testDatabase_SchemaVersionStored() {
     auto provider = std::make_shared<MasterKeyProvider>(store);
     SecureE2EEStore db(provider);
     QVERIFY(db.initialize("test_e2ee.db", "testProfile").success);
-    
+
     // We can't directly read without querying, but schema validation logic does it.
 }
 
@@ -229,7 +229,7 @@ void TestSecureStorage::testIdentity_Exact32ByteValidation() {
 
     E2EEIdentity id{1, QByteArray(32, 'x'), QByteArray(32, 'y'), 100, 1};
     QVERIFY(db.saveIdentity(id).success);
-    
+
     auto res = db.getIdentity();
     QCOMPARE(res.data->public_key.size(), 32);
     QCOMPARE(res.data->private_key.size(), 32);
@@ -304,7 +304,7 @@ void TestSecureStorage::testOneTimePreKeys_BatchInsertion() {
     std::vector<E2EEOneTimePreKey> opks;
     opks.push_back({1, QByteArray(32, '1'), QByteArray(32, 'a'), OPKState::AVAILABLE, 100, 0});
     opks.push_back({2, QByteArray(32, '2'), QByteArray(32, 'b'), OPKState::AVAILABLE, 100, 0});
-    
+
     QVERIFY(db.saveOneTimePreKeys(opks).success);
 }
 
@@ -499,14 +499,14 @@ void TestSecureStorage::testTransactions_RollbackSkippedKey() {
 void TestSecureStorage::testCrashRecovery_WriteCloseReopenVerify() {
     auto store = std::make_shared<MockSecretStore>();
     auto provider = std::make_shared<MasterKeyProvider>(store);
-    
+
     {
         SecureE2EEStore db(provider);
         db.initialize("test_e2ee.db", "testProfile");
         E2EESession s{"s1", QByteArray(32, 'r'), 1, QByteArray(32, 'd'), QByteArray(32, 'D'), QByteArray(32, 'K'), QByteArray(32, 'c'), QByteArray(32, 'C'), 10, 20, 30, 100, 200, 1};
         db.saveSession(s);
     }
-    
+
     {
         SecureE2EEStore db2(provider);
         db2.initialize("test_e2ee.db", "testProfile");
@@ -532,7 +532,7 @@ void TestSecureStorage::testIsolation_DifferentProfilesDifferentKeys() {
 void TestSecureStorage::testIsolation_ProfileCannotOpenOtherProfileDb() {
     auto store = std::make_shared<MockSecretStore>();
     auto provider = std::make_shared<MasterKeyProvider>(store);
-    
+
     // Alice creates a db
     {
         SecureE2EEStore dbAlice(provider);
@@ -540,7 +540,7 @@ void TestSecureStorage::testIsolation_ProfileCannotOpenOtherProfileDb() {
         QVERIFY(res.success);
         dbAlice.saveIdentity(E2EEIdentity{1, QByteArray(32, 'A'), QByteArray(32, 'a'), 123456789, 1});
     }
-    
+
     // Bob tries to open Alice's db
     {
         SecureE2EEStore dbBob(provider);
@@ -552,19 +552,131 @@ void TestSecureStorage::testIsolation_ProfileCannotOpenOtherProfileDb() {
 void TestSecureStorage::testLifecycle_CloseAndWipeDatabase() {
     auto store = std::make_shared<MockSecretStore>();
     auto provider = std::make_shared<MasterKeyProvider>(store);
-    
+
     SecureE2EEStore db(provider);
     db.initialize("test_e2ee.db", "testProfile");
-    
+
     QVERIFY(QFile::exists("test_e2ee.db"));
-    
+
     auto res = db.closeAndWipeDatabase();
     QVERIFY(res.success);
-    
+
     QVERIFY(!QFile::exists("test_e2ee.db"));
     QVERIFY(!QFile::exists("test_e2ee.db-wal"));
     QVERIFY(!QFile::exists("test_e2ee.db-shm"));
 }
 
-// Ensure this generates a main runner since it uses QtTest? 
+// Ensure this generates a main runner since it uses QtTest?
 // No, the test suite is called from main_test.cpp.
+
+void TestSecureStorage::testMasterKey_LegacyMigration() {
+    auto legacyStore = std::make_shared<MockSecretStore>();
+    auto newStore = std::make_shared<MockSecretStore>();
+
+    QByteArray legacyKey(32, 'L');
+    legacyStore->writeSecret("e2ee_master_key_alice", legacyKey);
+
+    MasterKeyProvider provider(newStore, legacyStore, "alice");
+    auto res = provider.loadOrCreate("server1_alice");
+
+    QVERIFY(res.success);
+    QCOMPARE(res.data.value(), legacyKey);
+    QVERIFY(newStore->readSecret("e2ee_master_key_server1_alice").success);
+    QCOMPARE(newStore->readSecret("e2ee_master_key_server1_alice").data.value(), legacyKey);
+    QVERIFY(!legacyStore->readSecret("e2ee_master_key_alice").success);
+}
+
+void TestSecureStorage::testMasterKey_ScopedCreation() {
+    auto newStore = std::make_shared<MockSecretStore>();
+    MasterKeyProvider provider(newStore, nullptr, "");
+
+    auto res = provider.loadOrCreate("server1_alice");
+    QVERIFY(res.success);
+    QCOMPARE(res.data->size(), 32);
+    QVERIFY(newStore->readSecret("e2ee_master_key_server1_alice").success);
+}
+
+void TestSecureStorage::testMasterKey_CrossServerIsolation() {
+    auto newStore = std::make_shared<MockSecretStore>();
+    MasterKeyProvider provider(newStore, nullptr, "");
+
+    auto res1 = provider.loadOrCreate("server1_alice");
+    auto res2 = provider.loadOrCreate("server2_alice");
+
+    QVERIFY(res1.success);
+    QVERIFY(res2.success);
+    QVERIFY(res1.data.value() != res2.data.value());
+}
+
+void TestSecureStorage::testMasterKey_RestartPersistence() {
+    auto newStore = std::make_shared<MockSecretStore>();
+
+    QByteArray key;
+    {
+        MasterKeyProvider provider1(newStore, nullptr, "");
+        auto res1 = provider1.loadOrCreate("server1_alice");
+        QVERIFY(res1.success);
+        key = res1.data.value();
+    }
+
+    {
+        MasterKeyProvider provider2(newStore, nullptr, "");
+        auto res2 = provider2.loadOrCreate("server1_alice");
+        QVERIFY(res2.success);
+        QCOMPARE(res2.data.value(), key);
+    }
+}
+
+void TestSecureStorage::testMasterKey_MigrationIdempotency() {
+    auto legacyStore = std::make_shared<MockSecretStore>();
+    auto newStore = std::make_shared<MockSecretStore>();
+
+    QByteArray legacyKey(32, 'L');
+    legacyStore->writeSecret("e2ee_master_key_alice", legacyKey);
+
+    MasterKeyProvider provider(newStore, legacyStore, "alice");
+    auto res1 = provider.loadOrCreate("server1_alice");
+
+    // Legacy should be deleted, so second run shouldn't find it, but the new store has it.
+    auto res2 = provider.loadOrCreate("server1_alice");
+
+    QVERIFY(res1.success);
+    QVERIFY(res2.success);
+    QCOMPARE(res1.data.value(), legacyKey);
+    QCOMPARE(res2.data.value(), legacyKey);
+}
+
+class WriteOnlyMockSecretStore : public MockSecretStore {
+public:
+    ServiceResult<QByteArray> readSecret(const QString& name) override {
+        // Fail reading back the specific new scoped key to simulate corruption/failure after write
+        if (name == "e2ee_master_key_server1_alice") {
+            return ServiceResult<QByteArray>::fail("Simulated read-back failure");
+        }
+        return MockSecretStore::readSecret(name);
+    }
+};
+
+void TestSecureStorage::testMasterKey_MigrationReadBackFailureSafety() {
+    auto legacyStore = std::make_shared<MockSecretStore>();
+    auto newStore = std::make_shared<WriteOnlyMockSecretStore>();
+
+    QByteArray legacyKey(32, 'L');
+    legacyStore->writeSecret("e2ee_master_key_alice", legacyKey);
+
+    MasterKeyProvider provider(newStore, legacyStore, "alice");
+    auto res = provider.loadOrCreate("server1_alice");
+
+    // The read-back fails, so loadOrCreate should fail.
+    QVERIFY(!res.success);
+    QVERIFY(res.message.contains("via read-back"));
+
+    // Legacy store must NOT be deleted.
+    auto legacyRead = legacyStore->readSecret("e2ee_master_key_alice");
+    QVERIFY(legacyRead.success);
+    QCOMPARE(legacyRead.data.value(), legacyKey);
+
+    // New store should have had the key deleted.
+    auto newRead = newStore->store.contains("e2ee_master_key_server1_alice");
+    QVERIFY(!newRead);
+}
