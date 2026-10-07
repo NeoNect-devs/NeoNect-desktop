@@ -10,10 +10,38 @@
 #include <QBuffer>
 #include <QStandardPaths>
 #include <QDir>
+#include "../storage/StoragePathResolver.h"
 #include <QFileInfo>
 #include <QUrl>
 #include <QUuid>
 #include <algorithm>
+
+static QString verifyContainment(const QString &isolatedRoot, const QString &candidatePath) {
+    if (isolatedRoot.isEmpty() || candidatePath.isEmpty()) return QString();
+    QFileInfo rootFi(isolatedRoot);
+    if (!rootFi.exists()) return QString();
+    QString canonicalRoot = rootFi.canonicalFilePath();
+    
+    QFileInfo fi(candidatePath);
+    QString canonicalPath;
+    if (fi.exists()) {
+        canonicalPath = fi.canonicalFilePath();
+    } else {
+        QString parentPath = fi.dir().canonicalPath();
+        if (parentPath.isEmpty()) return QString();
+        canonicalPath = QDir(parentPath).filePath(fi.fileName());
+    }
+    
+    QString canonicalRootPrefix = canonicalRoot;
+    if (!canonicalRootPrefix.endsWith("/")) {
+        canonicalRootPrefix += "/";
+    }
+    
+    if (canonicalPath.startsWith(canonicalRootPrefix) || canonicalPath == canonicalRoot) {
+        return canonicalPath;
+    }
+    return QString();
+}
 
 NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
                                std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
@@ -288,6 +316,15 @@ void NetworkManager::setPeerDisplayName(const QString &username, const QString &
 
 QString NetworkManager::avatarUrl() const {
     if (!m_storage) return QString();
+    QString username = m_storage->username().trimmed().toLower();
+    QString sUrl = m_storage->serverUrl();
+    if (username.isEmpty() || sUrl.isEmpty()) {
+        return QString();
+    }
+    
+    QString isolatedRoot = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, username);
+    QDir().mkpath(isolatedRoot + "/avatars");
+    
     QString localUrl = m_storage->avatarUrl().trimmed();
     if (!localUrl.isEmpty()) {
         QString path = localUrl;
@@ -296,18 +333,18 @@ QString NetworkManager::avatarUrl() const {
         } else if (path.startsWith("file://")) {
             path = path.mid(7);
         }
-        if (QFile::exists(path)) {
+        
+        QString safePath = verifyContainment(isolatedRoot + "/avatars", path);
+        if (!safePath.isEmpty() && QFile::exists(safePath)) {
             return localUrl;
         }
     }
-    QString profile = m_storage->profile();
-    QString username = m_storage->username().trimmed().toLower();
-    if (!username.isEmpty()) {
-        QString avatarPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/avatars/" + (profile.isEmpty() ? "" : profile + "_") + username + "_avatar.jpg";
-        if (QFile::exists(avatarPath)) {
-            return QUrl::fromLocalFile(avatarPath).toString();
-        }
+    
+    QString defaultPath = isolatedRoot + "/avatars/avatar.jpg";
+    if (QFile::exists(defaultPath)) {
+        return QUrl::fromLocalFile(defaultPath).toString();
     }
+    
     return QString();
 }
 
@@ -316,6 +353,15 @@ bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
         clearAvatar();
         return true;
     }
+    
+    if (!m_storage) return false;
+    QString username = currentUsername().trimmed().toLower();
+    QString sUrl = serverUrl();
+    if (username.isEmpty() || sUrl.isEmpty()) {
+        qWarning() << "[NetworkManager] setAvatar auth gating failed";
+        return false;
+    }
+
     QString localPath = filePathOrUrl;
     if (localPath.startsWith("file:///")) {
         localPath = QUrl(localPath).toLocalFile();
@@ -366,13 +412,11 @@ bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
         buffer.close();
     }
 
-    // 4. Save to AppData avatar location
-    QString profile = m_storage ? m_storage->profile() : "";
-    QString username = m_storage ? m_storage->username().trimmed().toLower() : "user";
-    QString avatarDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/avatars/";
+    // 4. Save to isolated location
+    QString avatarDir = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, username) + "/avatars";
     QDir().mkpath(avatarDir);
 
-    QString savedLocalPath = avatarDir + (profile.isEmpty() ? "" : profile + "_") + username + "_avatar.jpg";
+    QString savedLocalPath = avatarDir + "/avatar.jpg";
     QFile file(savedLocalPath);
     if (!file.open(QIODevice::WriteOnly)) {
         qWarning() << "[NetworkManager] setAvatar failed to write to:" << savedLocalPath;
@@ -381,25 +425,37 @@ bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
     file.write(compressedData);
     file.close();
 
-    QString fileUrl = QUrl::fromLocalFile(savedLocalPath).toString();
-    if (m_storage) {
-        m_storage->setAvatarUrl(fileUrl);
+    // Verify it was written successfully
+    if (!QFile::exists(savedLocalPath)) {
+        qWarning() << "[NetworkManager] setAvatar failed validation";
+        return false;
     }
+
+    QString fileUrl = QUrl::fromLocalFile(savedLocalPath).toString();
+    
+    // Check if we need to remove the old avatar if it's different and isolated
+    QString currentUrl = m_storage->avatarUrl().trimmed();
+    if (!currentUrl.isEmpty() && currentUrl != fileUrl) {
+        QString oldPath = currentUrl;
+        if (oldPath.startsWith("file:///")) oldPath = QUrl(oldPath).toLocalFile();
+        else if (oldPath.startsWith("file://")) oldPath = oldPath.mid(7);
+        
+        QString safeOldPath = verifyContainment(avatarDir, oldPath);
+        if (!safeOldPath.isEmpty() && safeOldPath != verifyContainment(avatarDir, savedLocalPath)) {
+            QFile::remove(safeOldPath);
+        }
+    }
+
+    m_storage->setAvatarUrl(fileUrl);
     emit avatarUrlChanged();
 
     // Broadcast avatar update to open conversations / friends
-    if (m_relayService && m_friendService) {
+    if (m_friendService) {
         QStringList friendList = m_friendService->friends();
         for (const QString &fr : friendList) {
             if (fr.trimmed().isEmpty()) continue;
-            NeoNect::Domain::Message avMsg;
-            avMsg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-            avMsg.conversationId = "dms:" + fr.trimmed().toLower();
-            avMsg.senderId = currentUsername();
-            avMsg.type = "avatar_update";
-            avMsg.text = QString::fromLatin1(compressedData.toBase64());
-            avMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
-            m_relayService->sendDomainMessage(avMsg);
+            QString convId = "dms:" + fr.trimmed().toLower();
+            emit systemMessageRequested(convId, QString::fromLatin1(compressedData.toBase64()), "avatar_update");
         }
     }
 
@@ -407,9 +463,28 @@ bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
 }
 
 void NetworkManager::clearAvatar() {
-    if (m_storage) {
-        m_storage->setAvatarUrl(QString());
+    if (!m_storage) return;
+
+    QString currentUrl = m_storage->avatarUrl().trimmed();
+    if (!currentUrl.isEmpty()) {
+        QString path = currentUrl;
+        if (path.startsWith("file:///")) {
+            path = QUrl(path).toLocalFile();
+        } else if (path.startsWith("file://")) {
+            path = path.mid(7);
+        }
+        
+        QString sUrl = m_storage->serverUrl();
+        QString u = m_storage->username().trimmed().toLower();
+        if (!sUrl.isEmpty() && !u.isEmpty()) {
+            QString isolatedRoot = QDir::cleanPath(NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, u));
+            QString cleanPath = QDir::cleanPath(path);
+            if (cleanPath.startsWith(isolatedRoot)) {
+                QFile::remove(path);
+            }
+        }
     }
+    m_storage->setAvatarUrl(QString());
     emit avatarUrlChanged();
 }
 
@@ -419,23 +494,128 @@ QString NetworkManager::getAvatarUrl(const QString &username) const {
     if (u.isEmpty() || u == myUser) {
         return avatarUrl();
     }
-    if (m_storage) {
-        QString url = m_storage->peerAvatarUrl(u);
-        if (!url.isEmpty()) return url;
+    
+    QString sUrl = serverUrl();
+    if (myUser.isEmpty() || sUrl.isEmpty()) {
+        qWarning() << "getAvatarUrl myUser or sUrl empty. myUser:" << myUser << "sUrl:" << sUrl;
+        return QString();
     }
-    QString profile = m_storage ? m_storage->profile() : "";
-    QString peerAvatarPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/avatars/peers/" + (profile.isEmpty() ? "" : profile + "_") + u + "_avatar.jpg";
+
+    QString isolatedRoot = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, myUser);
+    QDir().mkpath(isolatedRoot + "/avatars/peers");
+
+    if (m_storage) {
+        QString localUrl = m_storage->peerAvatarUrl(u).trimmed();
+        if (!localUrl.isEmpty()) {
+            QString path = localUrl;
+            if (path.startsWith("file:///")) {
+                path = QUrl(path).toLocalFile();
+            } else if (path.startsWith("file://")) {
+                path = path.mid(7);
+            }
+            
+            QString safePath = verifyContainment(isolatedRoot + "/avatars/peers", path);
+            if (!safePath.isEmpty()) {
+                if (QFile::exists(safePath)) {
+                    return localUrl;
+                } else {
+                    qWarning() << "getAvatarUrl file doesn't exist:" << safePath;
+                }
+            } else {
+                qWarning() << "getAvatarUrl path check failed. path:" << path << "isolatedRoot:" << isolatedRoot;
+            }
+        }
+    }
+    
+    QString peerAvatarPath = isolatedRoot + "/avatars/peers/" + NeoNect::Storage::StoragePathResolver::accountKey(u) + ".jpg";
     if (QFile::exists(peerAvatarPath)) {
         return QUrl::fromLocalFile(peerAvatarPath).toString();
     }
+    qWarning() << "getAvatarUrl fallback file doesn't exist:" << peerAvatarPath;
     return QString();
 }
 
 void NetworkManager::setPeerAvatarUrl(const QString &username, const QString &avatarUrl) {
     QString u = username.trimmed().toLower();
     if (u.isEmpty() || !m_storage) return;
-    m_storage->setPeerAvatarUrl(u, avatarUrl.trimmed());
-    emit peerAvatarUpdated(u, avatarUrl.trimmed());
+
+    QString myUsername = currentUsername().trimmed().toLower();
+    QString sUrl = serverUrl();
+    if (myUsername.isEmpty() || sUrl.isEmpty()) {
+        qWarning() << "[NetworkManager] setPeerAvatarUrl auth gating failed";
+        return;
+    }
+
+    QString isolatedRoot = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, myUsername);
+    QString peerAvatarDir = isolatedRoot + "/avatars/peers";
+    QDir().mkpath(peerAvatarDir);
+    QString targetPeerAvatarPath = peerAvatarDir + "/" + NeoNect::Storage::StoragePathResolver::accountKey(u) + ".jpg";
+
+    QString srcUrl = avatarUrl.trimmed();
+    if (srcUrl.isEmpty()) {
+        if (QFile::exists(targetPeerAvatarPath)) {
+            QFile::remove(targetPeerAvatarPath);
+        }
+        m_storage->setPeerAvatarUrl(u, "");
+        emit peerAvatarUpdated(u, "");
+        return;
+    }
+
+    QString localPath = srcUrl;
+    if (localPath.startsWith("file:///")) {
+        localPath = QUrl(localPath).toLocalFile();
+    } else if (localPath.startsWith("file://")) {
+        localPath = localPath.mid(7);
+    }
+
+    QString safePath = verifyContainment(peerAvatarDir, localPath);
+    if (!safePath.isEmpty() && safePath != verifyContainment(peerAvatarDir, targetPeerAvatarPath)) {
+        if (QFile::exists(safePath)) {
+            if (QFile::exists(targetPeerAvatarPath)) {
+                QFile::remove(targetPeerAvatarPath);
+            }
+            if (!QFile::copy(safePath, targetPeerAvatarPath)) {
+                qWarning() << "[NetworkManager] Failed to copy peer avatar to isolated storage";
+                return;
+            }
+        }
+    }
+
+    if (QFile::exists(targetPeerAvatarPath)) {
+        QString finalUrl = QUrl::fromLocalFile(targetPeerAvatarPath).toString();
+        m_storage->setPeerAvatarUrl(u, finalUrl);
+        emit peerAvatarUpdated(u, finalUrl);
+    } else {
+        qWarning() << "[NetworkManager] Peer avatar file does not exist after setting";
+    }
+}
+
+void NetworkManager::setPeerAvatarData(const QString &username, const QByteArray &data) {
+    QString u = username.trimmed().toLower();
+    if (u.isEmpty() || !m_storage || data.isEmpty()) return;
+
+    QString myUsername = currentUsername().trimmed().toLower();
+    QString sUrl = serverUrl();
+    if (myUsername.isEmpty() || sUrl.isEmpty()) {
+        qWarning() << "[NetworkManager] setPeerAvatarData auth gating failed";
+        return;
+    }
+
+    QString isolatedRoot = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, myUsername);
+    QString peerAvatarDir = isolatedRoot + "/avatars/peers";
+    QDir().mkpath(peerAvatarDir);
+    QString targetPeerAvatarPath = peerAvatarDir + "/" + NeoNect::Storage::StoragePathResolver::accountKey(u) + ".jpg";
+
+    QFile outFile(targetPeerAvatarPath);
+    if (outFile.open(QIODevice::WriteOnly)) {
+        outFile.write(data);
+        outFile.close();
+        QString finalUrl = QUrl::fromLocalFile(targetPeerAvatarPath).toString();
+        m_storage->setPeerAvatarUrl(u, finalUrl);
+        emit peerAvatarUpdated(u, finalUrl);
+    } else {
+        qWarning() << "[NetworkManager] Failed to write peer avatar data";
+    }
 }
 
 bool NetworkManager::isConnected() const {

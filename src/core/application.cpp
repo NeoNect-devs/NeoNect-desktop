@@ -267,7 +267,7 @@ void Application::initializeServices() {
 
             domainMsg.timestamp = coreMsg.timestamp;
             domainMsg.text = coreMsg.plaintext;
-            domainMsg.type = "text";
+            domainMsg.type = coreMsg.type;
             domainMsg.status = NeoNect::Domain::MessageStatus::Sent;
 
             m_messageService->handleIncomingMessage(domainMsg);
@@ -347,6 +347,7 @@ void Application::initializeServices() {
             m_sessionManager->setStore(m_secureStore);
 
             m_messageService->setCurrentUserId(user);
+            m_messageService->setServerUrl(m_storageContext->serverUrl());
 
             auto idRes = m_secureStore.lock()->getIdentity();
             if (!idRes.success) {
@@ -416,6 +417,7 @@ void Application::initializeServices() {
 
         coreMsg.timestamp = msg.timestamp;
         coreMsg.plaintext = msg.text;
+        coreMsg.type = msg.type;
         coreMsg.state = Core::Messaging::MessageState::CREATED;
 
         m_coreMessageService->sendMessage(coreMsg);
@@ -574,6 +576,10 @@ void Application::registerQmlTypes() {
     m_engine->rootContext()->setContextProperty("ThemeData", ThemeData::instance());
     m_engine->rootContext()->setContextProperty("appProfile", m_profile);
 
+    QObject::connect(m_messageService.get(), &Services::MessageService::peerAvatarDataReceived, m_networkManager.get(), &NetworkManager::setPeerAvatarData);
+    QObject::connect(m_networkManager.get(), &NetworkManager::systemMessageRequested, m_messageService.get(), [this](const QString &convId, const QString &text, const QString &type) {
+        m_messageService->sendMessage(convId, text, type, QString());
+    });
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NetworkManager", m_networkManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "AudioManager", m_audioManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", m_notificationManager.get());

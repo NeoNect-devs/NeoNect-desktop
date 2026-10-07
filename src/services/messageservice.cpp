@@ -1,3 +1,4 @@
+#include "../storage/StoragePathResolver.h"
 #include "messageservice.h"
 #include <QUuid>
 #include <QDateTime>
@@ -11,6 +12,7 @@
 #include <QSet>
 #include <QImageReader>
 #include <QFile>
+#include <QDir>
 
 namespace NeoNect {
 namespace Services {
@@ -421,6 +423,19 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
         if (msg.type == "typing_start" || msg.type == "typing_stop") {
             bool isTyping = (msg.type == "typing_start");
             emit peerTypingStatusChanged(msg.conversationId, msg.senderId, isTyping);
+            continue;
+        }
+
+        if (msg.type == "avatar_update") {
+            QString avatarBase64 = msg.text.trimmed();
+            QString safeSender = msg.senderId.trimmed().toLower();
+            if (!avatarBase64.isEmpty() && !safeSender.isEmpty() && safeSender != "anonymous") {
+                QByteArray avBytes = QByteArray::fromBase64(avatarBase64.toLatin1());
+                if (!avBytes.isEmpty() && avBytes.size() <= 1024 * 1024) {
+                    emit peerAvatarDataReceived(safeSender, avBytes);
+                    qDebug() << "[MessageService] Forwarding incoming peer avatar data for:" << safeSender;
+                }
+            }
             continue;
         }
 

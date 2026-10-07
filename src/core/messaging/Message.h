@@ -21,7 +21,8 @@ struct Message {
     QString senderId;
     QString receiverId;
     qint64 timestamp = 0;
-    QString plaintext; // plaintext availability only at local application boundary
+    QString plaintext;
+    QString type = "text"; // plaintext availability only at local application boundary
     MessageState state = MessageState::CREATED;
 };
 

@@ -170,6 +170,7 @@ public:
      * @param avatarUrl Avatar URL string.
      */
     Q_INVOKABLE void setPeerAvatarUrl(const QString &username, const QString &avatarUrl);
+    void setPeerAvatarData(const QString &username, const QByteArray &data);
 
     /**
      * @brief Switches the active user profile namespace.
@@ -399,6 +400,7 @@ public:
     std::shared_ptr<NeoNect::Services::DeviceService> deviceService() const { return m_deviceService; }
 
 signals:
+    void systemMessageRequested(const QString &conversationId, const QString &text, const QString &type);
     /** @brief Emitted when server URL property changes. */
     void serverUrlChanged();
     /** @brief Emitted when authentication token changes. */

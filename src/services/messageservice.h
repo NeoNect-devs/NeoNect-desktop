@@ -157,6 +157,7 @@ public:
 
     // Temporary compatibility bridge for Phase 2 StorageContext
     void setStorage(std::weak_ptr<NeoNect::Core::Messaging::IMessageStorage> storage) { m_storage = std::move(storage); }
+    void setServerUrl(const QString &url) { m_serverUrl = url; }
 
     /**
      * @brief Checks if stealth/invisible mode is enabled.
@@ -191,6 +192,7 @@ public slots:
     void handleMessageDeliveryStatus(const QString &messageId, bool success, const QString &errorText);
 
 signals:
+    void peerAvatarDataReceived(const QString &username, const QByteArray &data);
     /** @brief Emitted when a conversation history load completes. */
     void conversationLoaded(const QString &conversationId, const QVariantList &messages);
     /** @brief Emitted when an older page of messages has been loaded. */
@@ -227,6 +229,7 @@ private:
     void getMessageByIdAsync(const QString &id, const QObject* context, std::function<void(const std::optional<Domain::Message>&)> callback);
     /** @brief Active authenticated username. */
     QString m_currentUserId;
+    QString m_serverUrl;
     /** @brief In-flight outgoing messages pending ACK. */
     QHash<QString, Domain::Message> m_outgoingMessages;
     /** @brief In-flight outbound media request proposals. */

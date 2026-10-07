@@ -338,8 +338,12 @@ QString SettingsRepository::peerAvatarUrl(const QString &username) const {
     if (cleanUser.isEmpty()) return QString();
     std::lock_guard<std::mutex> lock(m_mutex);
     auto settings = getIsolatedSettings();
-    if (!settings) return QString();
+    if (!settings) {
+        qDebug() << "peerAvatarUrl: getIsolatedSettings() returned null";
+        return QString();
+    }
     QString jsonStr = settings->value(Constants::KEY_PEER_AVATARS).toString();
+    qDebug() << "peerAvatarUrl read:" << jsonStr << "from" << settings->fileName();
     if (jsonStr.trimmed().isEmpty()) return QString();
     QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
     if (!doc.isObject()) return QString();
@@ -351,7 +355,10 @@ void SettingsRepository::setPeerAvatarUrl(const QString &username, const QString
     if (cleanUser.isEmpty()) return;
     std::lock_guard<std::mutex> lock(m_mutex);
     auto settings = getIsolatedSettings();
-    if (!settings) return;
+    if (!settings) {
+        qDebug() << "setPeerAvatarUrl: getIsolatedSettings() returned null";
+        return;
+    }
     QString jsonStr = settings->value(Constants::KEY_PEER_AVATARS).toString();
     QJsonObject mapObj;
     if (!jsonStr.trimmed().isEmpty()) {
@@ -363,7 +370,10 @@ void SettingsRepository::setPeerAvatarUrl(const QString &username, const QString
     } else {
         mapObj[cleanUser] = url.trimmed();
     }
-    settings->setValue(Constants::KEY_PEER_AVATARS, QString::fromUtf8(QJsonDocument(mapObj).toJson(QJsonDocument::Compact)));
+    QString outStr = QString::fromUtf8(QJsonDocument(mapObj).toJson(QJsonDocument::Compact));
+    qDebug() << "setPeerAvatarUrl saving:" << outStr << "to" << settings->fileName();
+    settings->setValue(Constants::KEY_PEER_AVATARS, outStr);
+    settings->sync();
 }
 
 QVariantList SettingsRepository::bookmarks() const {

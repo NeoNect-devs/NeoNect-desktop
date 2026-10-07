@@ -53,6 +53,7 @@ bool MessageService::sendMessage(Message& msg) {
     obj["receiverId"] = msg.receiverId;
     obj["timestamp"] = msg.timestamp;
     obj["plaintext"] = msg.plaintext;
+    obj["type"] = msg.type;
     QByteArray rawPlaintext = QJsonDocument(obj).toJson(QJsonDocument::Compact);
 
     QString msgId = msg.messageId;
@@ -166,6 +167,7 @@ void MessageService::receiveMessage(const QString& sessionId, const QByteArray& 
     msg.receiverId = obj["receiverId"].toString();
     msg.timestamp = obj["timestamp"].toVariant().toLongLong();
     msg.plaintext = obj["plaintext"].toString();
+    if (obj.contains("type")) msg.type = obj["type"].toString();
 
     if (msg.messageId.isEmpty() || msg.senderId.isEmpty()) {
         return; // reject missing mandatory fields

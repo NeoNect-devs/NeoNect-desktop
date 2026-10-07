@@ -8,6 +8,7 @@
 #include "mocks/mockhttptransport.h"
 #include "../src/transport/httptransport.h"
 #include "../src/storage/settingsrepository.h"
+#include "../src/storage/StoragePathResolver.h"
 #include "../src/crypto/cryptoservice.h"
 #include "../src/services/authservice.h"
 #include "../src/services/deviceservice.h"
@@ -1991,8 +1992,6 @@ void TestServices::testDisplayNameResolutionAndSync() {
 
 void TestServices::testAvatarProcessingAndPeerSync() {
     auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
-    sharedTransport->seedUser("alice", "password123");
-    sharedTransport->seedUser("bob", "password123");
 
     auto cryptoService = std::make_shared<NeoNect::Crypto::CryptoService>();
     cryptoService->setMasterKey(QByteArray(32, 1));
@@ -2000,11 +1999,16 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     // Client Alice
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_avatar");
     storageAlice->clearSession();
-    storageAlice->setUsername("alice");
+    
+    QDir(NeoNect::Storage::StoragePathResolver::accountRoot(storageAlice->serverUrl(), "alice_avatar")).removeRecursively();
+    QDir(NeoNect::Storage::StoragePathResolver::accountRoot(storageAlice->serverUrl(), "bob_avatar")).removeRecursively();
+
+    storageAlice->setUsername("alice_avatar");
     storageAlice->setAuthToken("mock-token-alice");
     storageAlice->setDeviceId("mock-dev-alice");
     storageAlice->setAvatarUrl("");
-    storageAlice->setPeerAvatarUrl("bob", "");
+    storageAlice->setPeerAvatarUrl("bob_avatar", "");
+    storageAlice->setFriends({"bob_avatar"});
     auto authAlice = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageAlice, nullptr);
     auto deviceAlice = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice, nullptr);
     auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr);
@@ -2014,11 +2018,12 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     // Client Bob
     auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_avatar");
     storageBob->clearSession();
-    storageBob->setUsername("bob");
+    storageBob->setUsername("bob_avatar");
     storageBob->setAuthToken("mock-token-bob");
     storageBob->setDeviceId("mock-dev-bob");
     storageBob->setAvatarUrl("");
-    storageBob->setPeerAvatarUrl("alice", "");
+    storageBob->setPeerAvatarUrl("alice_avatar", "");
+    storageBob->setFriends({"alice_avatar"});
     auto authBob = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageBob, nullptr);
     auto deviceBob = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageBob, nullptr);
     auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr);
@@ -2033,7 +2038,31 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     QString rawImgPath = tempDir.path() + "/raw_photo.png";
     QVERIFY(testImg.save(rawImgPath, "PNG"));
 
+    // Wire up Bob's messaging flow
+    auto msgRepoBob = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
+    NeoNect::Services::MessageService msgBob(msgRepoBob);
+    msgBob.setCurrentUserId("bob_avatar");
+    msgBob.setServerUrl(storageBob->serverUrl());
+    QObject::connect(&msgBob, &NeoNect::Services::MessageService::peerAvatarDataReceived,
+                     &netMgrBob, &NetworkManager::setPeerAvatarData);
+
+    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
+                     &msgBob, &NeoNect::Services::MessageService::handleIncomingMessages);
+
+    // Wire up Alice's broadcast to the established mock transport pattern
+    QObject::connect(&netMgrAlice, &NetworkManager::systemMessageRequested, relayAlice.get(), [relayAlice](const QString &convId, const QString &text, const QString &type) {
+        NeoNect::Domain::Message avMsg;
+        avMsg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        avMsg.conversationId = convId;
+        avMsg.senderId = "alice_avatar";
+        avMsg.type = type;
+        avMsg.text = text;
+        avMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
+        relayAlice->sendDomainMessage(avMsg);
+    });
+
     // 2. Set profile picture on Alice
+    sharedTransport->setAuthToken("mock-token-alice");
     bool setOk = netMgrAlice.setAvatar(rawImgPath);
     QVERIFY(setOk);
     QString aliceAvatarUrl = netMgrAlice.avatarUrl();
@@ -2051,24 +2080,13 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     QCOMPARE(processedImg.width(), processedImg.height()); // 1:1 Aspect ratio
     QVERIFY(processedImg.width() <= 512);
 
-    // 4. Alice sends a message to Bob -> includes avatarData
-    sharedTransport->setAuthToken("mock-token-alice");
-    NeoNect::Domain::Message msg;
-    msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    msg.conversationId = "dms:bob";
-    msg.type = "text";
-    msg.text = "Hey Bob, look at my new profile picture!";
-    msg.senderId = "alice";
-    relayAlice->sendDomainMessage(msg);
-    QTest::qWait(50);
-
-    // 5. Bob polls and receives the message & avatar packet
+    // 4. Bob should now have cached Alice's avatar via the transport flow
     sharedTransport->setAuthToken("mock-token-bob");
     relayBob->pollPendingMessages();
     QTest::qWait(100);
 
     // 6. Verify Bob has cached Alice's avatar
-    QString peerAvatarUrlForAlice = netMgrBob.getAvatarUrl("alice");
+    QString peerAvatarUrlForAlice = netMgrBob.getAvatarUrl("alice_avatar");
     QVERIFY(!peerAvatarUrlForAlice.isEmpty());
     QString bobLocalFile = peerAvatarUrlForAlice;
     if (bobLocalFile.startsWith("file:///")) bobLocalFile = QUrl(bobLocalFile).toLocalFile();
@@ -2347,3 +2365,127 @@ void TestServices::testPreKeyServiceUploadPayload() {
     QCOMPARE(spkReq["signature"].toString(), QString::fromLatin1(QByteArray(64, 'z').toBase64()));
 }
 
+
+void TestServices::testAvatarIsolation() {
+    auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(true);
+
+    auto storageAlice1 = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_1");
+    storageAlice1->clearSession();
+    storageAlice1->setUsername("alice_iso_1");
+    storageAlice1->setServerUrl("https://server1.com");
+    storageAlice1->setAuthToken("token_1");
+    
+    auto authAlice1 = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageAlice1, nullptr);
+    auto deviceAlice1 = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice1, nullptr);
+    auto relayAlice1 = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice1, nullptr);
+    auto friendAlice1 = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice1, nullptr);
+    NetworkManager netMgrAlice1(sharedTransport, storageAlice1, authAlice1, deviceAlice1, relayAlice1, friendAlice1);
+
+    auto storageAlice2 = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_2");
+    storageAlice2->clearSession();
+    storageAlice2->setUsername("alice_iso_2");
+    storageAlice2->setServerUrl("https://server2.com");
+    storageAlice2->setAuthToken("token_2");
+    
+    auto authAlice2 = std::make_shared<NeoNect::Services::AuthService>(sharedTransport, storageAlice2, nullptr);
+    auto deviceAlice2 = std::make_shared<NeoNect::Services::DeviceService>(sharedTransport, storageAlice2, nullptr);
+    auto relayAlice2 = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice2, nullptr);
+    auto friendAlice2 = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice2, nullptr);
+    NetworkManager netMgrAlice2(sharedTransport, storageAlice2, authAlice2, deviceAlice2, relayAlice2, friendAlice2);
+
+    QImage testImg(100, 100, QImage::Format_RGB32);
+    testImg.fill(QColor("#000000"));
+    QTemporaryDir tempDir;
+    QString rawImgPath = tempDir.path() + "/test.png";
+    testImg.save(rawImgPath, "PNG");
+
+    // Check Unauthenticated write failures
+    auto storageUnauth = std::make_shared<NeoNect::Storage::SettingsRepository>("client_unauth");
+    storageUnauth->clearSession(); // No username or server url
+    NetworkManager netMgrUnauth(sharedTransport, storageUnauth, nullptr, nullptr, nullptr, nullptr);
+    QVERIFY(!netMgrUnauth.setAvatar(rawImgPath));
+
+    // Set avatar on server 1
+    QVERIFY(netMgrAlice1.setAvatar(rawImgPath));
+    QString avatarUrl1 = netMgrAlice1.avatarUrl();
+    QVERIFY(!avatarUrl1.isEmpty());
+
+    // Server 2 should not see it
+    netMgrAlice2.clearAvatar();
+    QCOMPARE(netMgrAlice2.avatarUrl(), QString(""));
+
+    // Path traversal check
+    storageAlice2->setUsername("../evil");
+    QVERIFY(netMgrAlice2.setAvatar(rawImgPath));
+    QString evilUrl = netMgrAlice2.avatarUrl();
+    QVERIFY(!evilUrl.contains("../"));
+    
+    // Cleanup physical file check
+    storageAlice2->setUsername("alice_iso_2");
+    QVERIFY(netMgrAlice2.setAvatar(rawImgPath));
+    QString alice2Url = netMgrAlice2.avatarUrl();
+    if (alice2Url.startsWith("file:///")) alice2Url = QUrl(alice2Url).toLocalFile();
+    else if (alice2Url.startsWith("file://")) alice2Url = alice2Url.mid(7);
+    QVERIFY(QFile::exists(alice2Url));
+    
+    // Check Legacy URL rejection for own avatar
+    storageAlice1->setAvatarUrl("file:///tmp/legacy_avatar.jpg");
+    QVERIFY(netMgrAlice1.avatarUrl().isEmpty() || netMgrAlice1.avatarUrl() != "file:///tmp/legacy_avatar.jpg");
+    
+    // Check outside-root URL rejection
+    storageAlice1->setAvatarUrl("file:///var/log/syslog");
+    QVERIFY(netMgrAlice1.avatarUrl().isEmpty() || netMgrAlice1.avatarUrl() != "file:///var/log/syslog");
+
+    // Peer Avatar Persistence and Isolation
+    auto repoAlice1 = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
+    auto msgService = std::make_shared<NeoNect::Services::MessageService>(repoAlice1);
+    msgService->setCurrentUserId("alice_iso_1");
+    msgService->setServerUrl("https://server1.com");
+
+    QFile rawFile(rawImgPath);
+    QVERIFY(rawFile.open(QIODevice::ReadOnly));
+    QByteArray avBytes = rawFile.readAll();
+    rawFile.close();
+
+    NeoNect::Domain::Message domainMsg;
+    domainMsg.senderId = "bob";
+    domainMsg.text = QString::fromLatin1(avBytes.toBase64());
+    domainMsg.type = "avatar_update";
+
+    QSignalSpy spy(msgService.get(), SIGNAL(peerAvatarDataReceived(QString,QByteArray)));
+
+    std::vector<NeoNect::Domain::Message> msgs = {domainMsg};
+    msgService->handleIncomingMessages(msgs);
+
+    QVERIFY(spy.count() == 1);
+    QList<QVariant> args = spy.takeFirst();
+    QString safeSender = args.at(0).toString();
+    QByteArray peerData = args.at(1).toByteArray();
+
+    QCOMPARE(safeSender, QString("bob"));
+    netMgrAlice1.setPeerAvatarData(safeSender, peerData);
+    
+    QString peerUrl1 = netMgrAlice1.getAvatarUrl("bob");
+    QVERIFY(!peerUrl1.isEmpty());
+    QString cleanPeer1 = peerUrl1;
+    if (cleanPeer1.startsWith("file:///")) cleanPeer1 = QUrl(cleanPeer1).toLocalFile();
+    else if (cleanPeer1.startsWith("file://")) cleanPeer1 = cleanPeer1.mid(7);
+    QVERIFY(QFile::exists(cleanPeer1));
+    
+    // Server 2 should NOT see Server 1's peer avatar
+    QVERIFY(netMgrAlice2.getAvatarUrl("bob").isEmpty());
+    
+    // Legacy / outside URL rejection for peer
+    storageAlice1->setPeerAvatarUrl("bob", "file:///var/log/syslog");
+    QVERIFY(netMgrAlice1.getAvatarUrl("bob").isEmpty() || netMgrAlice1.getAvatarUrl("bob") != "file:///var/log/syslog");
+    
+    // Path traversal rejection for peer
+    // AccountKey hash prevents traversal automatically, but let's test isolation bounds directly
+    storageAlice1->setPeerAvatarUrl("bob", "file:///tmp/peer.jpg");
+    QVERIFY(netMgrAlice1.getAvatarUrl("bob").isEmpty() || netMgrAlice1.getAvatarUrl("bob") != "file:///tmp/peer.jpg");
+
+    
+    netMgrAlice2.clearAvatar();
+    QCOMPARE(netMgrAlice2.avatarUrl(), QString(""));
+    QVERIFY(!QFile::exists(alice2Url)); // physical cleanup
+}
