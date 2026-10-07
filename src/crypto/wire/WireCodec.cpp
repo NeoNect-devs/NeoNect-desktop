@@ -129,12 +129,10 @@ QByteArray WireCodec::encodeInitialEnvelope(const InitialEnvelope& env) {
     writer.writeBytes(env.tag.data);
     
     QByteArray res = writer.get();
-    if (static_cast<size_t>(res.size()) > MAX_ENVELOPE_SIZE) return QByteArray();
     return res;
 }
 
 std::optional<InitialEnvelope> WireCodec::decodeInitialEnvelope(const QByteArray& data) {
-    if (static_cast<size_t>(data.size()) > MAX_ENVELOPE_SIZE) return std::nullopt;
     
     BinaryReader reader(data);
     auto version = reader.readUint8();
@@ -205,12 +203,10 @@ QByteArray WireCodec::encodeRatchetEnvelope(const RatchetEnvelope& env) {
     writer.writeBytes(env.tag.data);
     
     QByteArray res = writer.get();
-    if (static_cast<size_t>(res.size()) > MAX_ENVELOPE_SIZE) return QByteArray();
     return res;
 }
 
 std::optional<RatchetEnvelope> WireCodec::decodeRatchetEnvelope(const QByteArray& data) {
-    if (static_cast<size_t>(data.size()) > MAX_ENVELOPE_SIZE) return std::nullopt;
     
     BinaryReader reader(data);
     auto version = reader.readUint8();

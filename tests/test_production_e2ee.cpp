@@ -1,4 +1,5 @@
 #include "../src/core/application.h"
+#include "../src/core/networkmanager.h"
 #include "../src/crypto/session/SecurePreKeyStoreAdapter.h"
 #include "../src/crypto/KeyEncoding.h"
 #include "../src/services/prekeyservice.h"
@@ -9,6 +10,7 @@
 #include "../src/crypto/session/SessionManager.h"
 #include "../src/services/messageservice.h"
 #include "../src/services/relayservice.h"
+#include "../src/storage/capabilitiesrepository.h"
 #include "../src/storage/e2ee/SecureE2EEStore.h"
 #include "../src/storage/e2ee/MasterKeyProvider.h"
 #include "../src/services/authservice.h"
@@ -143,7 +145,9 @@ void TestProductionE2EE::testOutgoingProductionPath() {
     auto messageStorage = std::make_shared<SqliteMessageStorage>("test_prod_e2ee.db");
     auto messageQueue = std::make_shared<MessageQueue>("test_prod_e2ee.db");
 
-    std::shared_ptr<Services::RelayService> relayService = std::make_shared<Services::RelayService>(mockTransport, settingsStore, nullptr);
+    auto caps = std::make_shared<Storage::CapabilitiesRepository>();
+    caps->replace(std::nullopt, 4 * 1024 * 1024, std::nullopt, Storage::CapabilityState::VALID);
+    std::shared_ptr<Services::RelayService> relayService = std::make_shared<Services::RelayService>(mockTransport, settingsStore, caps, nullptr);
 
     auto offlineQueueService = std::make_shared<OfflineQueueService>(messageQueue,
         [relayService](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) {
@@ -289,7 +293,9 @@ void TestProductionE2EE::testFirstMessageProductionPath() {
 
     // 4. Initialize Core Messaging
     auto settingsStore = std::make_shared<Storage::SettingsRepository>("test");
-    auto relayService = std::make_shared<Services::RelayService>(mockTransport, settingsStore, nullptr, nullptr);
+    auto caps = std::make_shared<Storage::CapabilitiesRepository>();
+    caps->replace(std::nullopt, 4 * 1024 * 1024, std::nullopt, Storage::CapabilityState::VALID);
+    auto relayService = std::make_shared<Services::RelayService>(mockTransport, settingsStore, caps, nullptr);
     auto messageStorage = std::make_shared<SqliteMessageStorage>("test_prod_alice_e2ee.db");
     auto messageQueue = std::make_shared<MessageQueue>("test_prod_alice_e2ee.db");
 
@@ -440,7 +446,9 @@ void TestProductionE2EE::testFirstMessageFailures() {
     auto proxyMessageQueue = std::make_shared<ProxyMessageQueue>(messageQueue);
 
     auto settingsStore = std::make_shared<Storage::SettingsRepository>("test");
-    auto relayService = std::make_shared<Services::RelayService>(mockTransport, settingsStore, nullptr, nullptr);
+    auto caps = std::make_shared<Storage::CapabilitiesRepository>();
+    caps->replace(std::nullopt, 4 * 1024 * 1024, std::nullopt, Storage::CapabilityState::VALID);
+    auto relayService = std::make_shared<Services::RelayService>(mockTransport, settingsStore, caps, nullptr);
 
 
     auto offlineQueueService = std::make_shared<OfflineQueueService>(proxyMessageQueue,
@@ -566,6 +574,10 @@ void TestProductionE2EE::testApplicationIntegrationFirstMessage() {
     auto mockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(app.m_transport);
     QVERIFY(mockTransport);
 
+    QSignalSpy spyCaps(app.m_networkManager.get(), &NetworkManager::verificationResult);
+    app.m_networkManager->verifyServer("http://localhost");
+    QVERIFY(spyCaps.count() > 0 || spyCaps.wait(2000));
+
     // Create Bob's Identity
     auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
     auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
@@ -648,9 +660,13 @@ void TestProductionE2EE::testApplicationIntegrationIncomingPath() {
     auto bobMockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(bobApp.m_transport);
     QVERIFY(bobMockTransport);
 
+    QSignalSpy spyCapsBob(bobApp.m_networkManager.get(), &NetworkManager::verificationResult);
+    bobApp.m_networkManager->verifyServer("http://localhost");
+    QVERIFY(spyCapsBob.count() > 0 || spyCapsBob.wait(2000));
+
     auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
     auto xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
-    
+
     auto bobIdRes = bobApp.m_secureStore.lock()->getIdentity();
     QVERIFY(bobIdRes.success);
     NeoNect::Crypto::IdentityKeyPair bobIk;
@@ -772,6 +788,10 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     auto aliceMockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(aliceApp.m_transport);
     QVERIFY(aliceMockTransport);
 
+    QSignalSpy spyCapsAlice(aliceApp.m_networkManager.get(), &NetworkManager::verificationResult);
+    aliceApp.m_networkManager->verifyServer("http://localhost");
+    QVERIFY(spyCapsAlice.count() > 0 || spyCapsAlice.wait(2000));
+
     // 3. Start Bob Application
         QSettings testSettings_bobApp("NeoNect", "DesktopClient_bidi_bob");
         testSettings_bobApp.setValue("auth_token", "fake_token");
@@ -782,6 +802,10 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     NeoNect::Application bobApp(argcBob, const_cast<char**>(argvBob));
     auto bobMockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(bobApp.m_transport);
     QVERIFY(bobMockTransport);
+
+    QSignalSpy spyCapsBob(bobApp.m_networkManager.get(), &NetworkManager::verificationResult);
+    bobApp.m_networkManager->verifyServer("http://localhost");
+    QVERIFY(spyCapsBob.count() > 0 || spyCapsBob.wait(2000));
 
     aliceApp.m_storage->setAuthToken("fake_token");
     aliceApp.m_storage->setDeviceId("default_device");
@@ -838,7 +862,7 @@ void TestProductionE2EE::testBidirectionalEstablishedSession() {
     aliceMockTransport->setSimulatedResponse("/api/v1/keys/claim", QJsonDocument(bundleJson).toJson(), 200);
     aliceMockTransport->setSimulatedResponse("/api/v1/relay/send", "{\"status\":\"success\"}", 200);
     bobMockTransport->setSimulatedResponse("/api/v1/relay/send", "{\"status\":\"success\"}", 200);
-    
+
     QJsonObject devicesJson;
     QJsonArray devicesArr;
     QJsonObject dev;
@@ -1019,7 +1043,7 @@ void TestProductionE2EE::testIdentityRestart() {
     QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
 
     QByteArray alicePub, alicePriv;
-    
+
     {
         QSettings testSettings_app("NeoNect", "DesktopClient_id_restart");
         testSettings_app.setValue("auth_token", "fake_token");
@@ -1028,13 +1052,13 @@ void TestProductionE2EE::testIdentityRestart() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=id_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
-        
+
         auto idRes = app.m_secureStore.lock()->getIdentity();
         QVERIFY(idRes.success);
         alicePub = idRes.data.value().public_key;
         alicePriv = idRes.data.value().private_key;
     }
-    
+
     {
         QSettings testSettings_app2("NeoNect", "DesktopClient_id_restart");
         testSettings_app2.setValue("auth_token", "fake_token");
@@ -1043,7 +1067,7 @@ void TestProductionE2EE::testIdentityRestart() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=id_restart"};
         NeoNect::Application app2(argc, const_cast<char**>(argv));
-        
+
         auto idRes2 = app2.m_secureStore.lock()->getIdentity();
         QVERIFY(idRes2.success);
         QCOMPARE(idRes2.data.value().public_key, alicePub);
@@ -1102,12 +1126,16 @@ void TestProductionE2EE::testSessionRestart() {
         NeoNect::Application aliceApp(argc, const_cast<char**>(argv));
         aliceApp.m_storage->setAuthToken("fake_token");
         aliceApp.m_storage->setDeviceId("default_device");
-        
+
+        QSignalSpy spyCapsAlice(aliceApp.m_networkManager.get(), &NetworkManager::verificationResult);
+        aliceApp.m_networkManager->verifyServer("http://localhost");
+        QVERIFY(spyCapsAlice.count() > 0 || spyCapsAlice.wait(2000));
+
         auto res = aliceApp.m_sessionManager->createSession("sess_restart_bob", "default_device", bobBundle, QUuid::createUuid().toString(QUuid::WithoutBraces), QByteArray("First Message"));
         QVERIFY2(res.success, res.message.toStdString().c_str());
         QVERIFY(aliceApp.m_sessionManager->hasSession(bobIdStr));
     }
-    
+
     // Alice restarts, should have session, sends another message
     {
         QSettings testSettings_aliceApp("NeoNect", "DesktopClient_sess_restart_alice");
@@ -1120,11 +1148,15 @@ void TestProductionE2EE::testSessionRestart() {
         aliceApp.m_storage->setAuthToken("fake_token");
         aliceApp.m_storage->setDeviceId("default_device");
 
+        QSignalSpy spyCapsAlice(aliceApp.m_networkManager.get(), &NetworkManager::verificationResult);
+        aliceApp.m_networkManager->verifyServer("http://localhost");
+        QVERIFY(spyCapsAlice.count() > 0 || spyCapsAlice.wait(2000));
+
         QVERIFY(aliceApp.m_secureStore.lock()->getSession(bobIdStr).success);
-        
+
         auto aliceMockTransport = std::dynamic_pointer_cast<NeoNect::Testing::MockHttpTransport>(aliceApp.m_transport);
         QSignalSpy spyReq(aliceMockTransport.get(), &NeoNect::Testing::MockHttpTransport::requestHandled);
-        
+
         QJsonObject devicesJson;
         QJsonArray devicesArr;
         QJsonObject dev;
@@ -1152,7 +1184,7 @@ void TestProductionE2EE::testPreKeyRestart() {
     QStandardPaths::setTestModeEnabled(true);
     QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir(baseDir).removeRecursively(); QDir().mkpath(baseDir);
-    
+
     QByteArray spkPub;
 
     {
@@ -1163,7 +1195,7 @@ void TestProductionE2EE::testPreKeyRestart() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=pk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
-        
+
         auto spkRes = app.m_secureStore.lock()->getAllSignedPreKeys();
         QVERIFY(spkRes.success && !spkRes.data.value().empty());
         spkPub = spkRes.data.value().front().public_key;
@@ -1177,7 +1209,7 @@ void TestProductionE2EE::testPreKeyRestart() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=pk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
-        
+
         auto spkRes = app.m_secureStore.lock()->getAllSignedPreKeys();
         QVERIFY(spkRes.success);
         QVERIFY(!spkRes.data.value().empty());
@@ -1186,7 +1218,7 @@ void TestProductionE2EE::testPreKeyRestart() {
         auto opkRes = app.m_secureStore.lock()->getAvailableOneTimePreKeys();
         QVERIFY(opkRes.success);
         QCOMPARE(opkRes.data.value().size(), 100);
-        
+
         QVERIFY(app.m_secureStore.lock()->consumeOneTimePreKeyAtomically(1).success);
     }
 
@@ -1198,16 +1230,16 @@ void TestProductionE2EE::testPreKeyRestart() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=pk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
-        
+
         auto opkRes = app.m_secureStore.lock()->getAvailableOneTimePreKeys();
         QVERIFY(opkRes.success);
-        QCOMPARE(opkRes.data.value().size(), 99); 
-        
+        QCOMPARE(opkRes.data.value().size(), 99);
+
         bool found = false;
         for (const auto& k : opkRes.data.value()) {
             if (k.key_id == 1) found = true;
         }
-        QVERIFY(!found); 
+        QVERIFY(!found);
     }
 }
 
@@ -1224,7 +1256,7 @@ void TestProductionE2EE::testSkippedKeyRestart() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=sk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
-        
+
         NeoNect::Storage::SessionUpdateTx tx;
         tx.session.session_id = "test_session";
         tx.session.remote_identity_key = QByteArray(32, 'a');
@@ -1234,14 +1266,14 @@ void TestProductionE2EE::testSkippedKeyRestart() {
         tx.session.DHr = QByteArray(32, 'e');
         tx.session.CKs = QByteArray(32, 'c');
         tx.session.CKr = QByteArray(32, 'k');
-        
+
         NeoNect::Storage::E2EESkippedKey sk;
         sk.session_id = "test_session";
         sk.remote_ratchet_public_key = QByteArray(32, 'd');
         sk.message_number = 42;
         sk.message_key = QByteArray(32, 'm');
         sk.created_at = QDateTime::currentMSecsSinceEpoch();
-        
+
         tx.new_skipped_keys.push_back(sk);
         auto upRes = app.m_secureStore.lock()->updateSessionState(tx);
         QVERIFY2(upRes.success, upRes.message.toStdString().c_str());
@@ -1255,7 +1287,7 @@ void TestProductionE2EE::testSkippedKeyRestart() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=sk_restart"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
-        
+
         auto skRes = app.m_secureStore.lock()->getSkippedKey("test_session", QByteArray(32, 'd'), 42);
         QVERIFY(skRes.success);
         QCOMPARE(skRes.data.value().message_key, QByteArray(32, 'm'));
@@ -1277,7 +1309,7 @@ void TestProductionE2EE::testLogoutReloginIntegration() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=logout"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
-        
+
         auto backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
         NeoNect::Storage::E2EEIdentity aliceId;
         aliceId.identity_id = 1;
@@ -1291,9 +1323,9 @@ void TestProductionE2EE::testLogoutReloginIntegration() {
         authSvc->setBeforeTeardownCallback([secureStorePtr = app.m_secureStore](const QString&) {
             if (auto ptr = secureStorePtr.lock()) ptr->close();
         });
-        
-        authSvc->logoutUser(); 
-        
+
+        authSvc->logoutUser();
+
     }
 
     {
@@ -1304,7 +1336,7 @@ void TestProductionE2EE::testLogoutReloginIntegration() {
         int argc = 3;
         const char* argv[] = {"NeoNectTests", "--mock", "--profile=logout"};
         NeoNect::Application app(argc, const_cast<char**>(argv));
-        
+
         auto idRes = app.m_secureStore.lock()->getIdentity();
         QVERIFY(idRes.success);
         QCOMPARE(idRes.data.value().public_key, pubKey);

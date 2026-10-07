@@ -325,6 +325,25 @@ void TestTransport::testMessageTooLarge() {
     QVERIFY(errorSpy.wait(5000));
 }
 
+void TestTransport::testDynamicMaxMessageSize() {
+    WebSocketClient client;
+    client.setMaxMessageSize(5 * 1024 * 1024); // 5 MiB
+    startClient(&client);
+
+    QSignalSpy spy(&client, &WebSocketClient::textMessageReceived);
+    QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
+
+    constexpr quint64 newLimit = 5 * 1024 * 1024;
+    QByteArray data;
+    data.fill('X', static_cast<int>(newLimit));
+
+    m_serverConnection->write(makeFrame(0x01, data, true));
+
+    QVERIFY(spy.wait(5000));
+    QCOMPARE(spy.first().first().toString().size(), static_cast<int>(newLimit));
+    QCOMPARE(errorSpy.count(), 0);
+}
+
 void TestTransport::testFragmentedMessageTooLarge() {
     WebSocketClient client;
     startClient(&client);

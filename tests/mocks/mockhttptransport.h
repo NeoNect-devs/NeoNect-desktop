@@ -66,6 +66,8 @@ private:
     void saveSharedState();
 
     void handleHealth(Transport::HttpResponseCallback callback);
+    void handleCapabilities(Transport::HttpResponseCallback callback);
+
     void handlePresence(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
     void handleSecurityVerify(Transport::HttpResponseCallback callback);
     void handleUsers(const QByteArray &data, Transport::HttpResponseCallback callback);

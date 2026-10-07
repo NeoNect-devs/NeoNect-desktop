@@ -28,6 +28,7 @@
 #include "../crypto/icryptoservice.h"
 #include "../domain/message.h"
 #include "../transport/IIncomingEnvelopeHandler.h"
+#include "../storage/icapabilitiesrepository.h"
 
 namespace NeoNect {
 namespace Services {
@@ -44,11 +45,13 @@ public:
      * @brief Constructs the relay gateway service.
      * @param transport Shared pointer to HTTP transport.
      * @param storage Shared pointer to persistent settings.
-     * @param cryptoService Shared pointer to cryptographic engine.
+     * @param capabilities Shared pointer to capabilities repository.
+     * @param envelopeHandler Shared pointer to incoming envelope handler.
      * @param parent Optional parent QObject for Qt tree ownership.
      */
     explicit RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
                           std::shared_ptr<Storage::ISettingsRepository> storage,
+                          std::shared_ptr<Storage::ICapabilitiesRepository> capabilities,
                           std::shared_ptr<Transport::IIncomingEnvelopeHandler> envelopeHandler,
                           QObject *parent = nullptr);
 
@@ -144,6 +147,8 @@ private:
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     /** @brief Settings repository. */
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
+    /** @brief Capabilities repository. */
+    std::shared_ptr<Storage::ICapabilitiesRepository> m_capabilities;
     /** @brief Cryptographic engine. */
     std::shared_ptr<Transport::IIncomingEnvelopeHandler> m_envelopeHandler;
     /** @brief Native WebSocket client. */

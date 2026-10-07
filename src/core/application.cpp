@@ -211,7 +211,7 @@ void Application::initializeServices() {
 
     auto authService = std::make_shared<Services::AuthService>(m_transport, m_storage, capabilitiesRepo);
     auto deviceService = std::make_shared<Services::DeviceService>(m_transport, m_storage);
-    m_relayService = std::make_shared<Services::RelayService>(m_transport, m_storage, nullptr);
+    m_relayService = std::make_shared<Services::RelayService>(m_transport, m_storage, capabilitiesRepo, nullptr);
     auto friendService = std::make_shared<Services::FriendService>(m_transport, m_storage);
 
     m_networkManager = std::make_unique<NetworkManager>(m_transport, m_storage, authService, deviceService, m_relayService, friendService);

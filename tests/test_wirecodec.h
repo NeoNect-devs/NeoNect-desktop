@@ -10,7 +10,6 @@ private slots:
     void testDeterministicEncoding();
     void testEmptyCiphertext();
     void testBinaryCiphertext();
-    void testMaxAcceptedPayload();
 
     // Key fields
     void testInvalidIdentityKeyLength();
@@ -27,7 +26,6 @@ private slots:
     void testTruncatedInputRejected();
     void testDeclaredCiphertextLengthLargerRejected();
     void testDeclaredCiphertextLengthOverflowRejected();
-    void testOversizedEnvelopeRejected();
     void testValidEnvelopeWithTrailingGarbageRejected();
 
     // Counter handling

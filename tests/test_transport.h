@@ -34,6 +34,7 @@ private slots:
     void testExact4MiBUnfragmented();
     void testExact4MiBFragmented();
     void testMessageTooLarge();
+    void testDynamicMaxMessageSize();
     void testFragmentedMessageTooLarge();
     void testMalformedFrame();
     void testTlsValidationFailure();

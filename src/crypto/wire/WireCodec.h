@@ -12,7 +12,6 @@ namespace Wire {
 class WireCodec {
 public:
     static constexpr uint8_t CURRENT_VERSION = 1;
-    static constexpr size_t MAX_ENVELOPE_SIZE = Constants::WS_MAX_MESSAGE_SIZE; // Use existing application limit
 
     // Encoders
     static QByteArray encodeInitialEnvelope(const InitialEnvelope& env);

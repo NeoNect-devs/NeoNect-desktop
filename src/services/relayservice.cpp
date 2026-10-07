@@ -36,11 +36,13 @@ static QString normalizeLocalFilePath(const QString &rawPath) {
 
 RelayService::RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
                            std::shared_ptr<Storage::ISettingsRepository> storage,
+                           std::shared_ptr<Storage::ICapabilitiesRepository> capabilities,
                            std::shared_ptr<Transport::IIncomingEnvelopeHandler> envelopeHandler,
                            QObject *parent)
     : QObject(parent),
       m_transport(std::move(transport)),
       m_storage(std::move(storage)),
+      m_capabilities(std::move(capabilities)),
       m_envelopeHandler(std::move(envelopeHandler)),
       m_wsClient(std::make_unique<Transport::WebSocketClient>(this)),
       m_pollTimer(new QTimer(this)) {
@@ -92,6 +94,15 @@ void RelayService::startPolling() {
         if (!devId.isEmpty() && !token.isEmpty()) {
             if (!m_wsClient->isConnected() || m_wsClient->deviceId() != devId || m_wsClient->token() != token) {
                 qDebug() << "[RelayService] Opening WebSocket connection for presence & delivery:" << devId;
+                if (m_capabilities) {
+                    auto cap = m_capabilities->maxEnvelopeBytes();
+                    if (cap.has_value()) {
+                        // Reconcile transport limit with payload: Base64 expansion is exactly 4/3 of the raw bytes.
+                        // We add a 512-byte margin for the JSON wrapper overhead (DeliveryMessage fields).
+                        quint64 requiredWsSize = ((static_cast<quint64>(cap.value()) + 2) / 3) * 4 + 512;
+                        m_wsClient->setMaxMessageSize(qMax(Constants::WS_MAX_MESSAGE_SIZE, requiredWsSize));
+                    }
+                }
                 m_wsClient->open(m_transport->baseUrl(), devId, token);
             }
         }
@@ -155,7 +166,7 @@ void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
                                          const QByteArray &envelopeBytes) {
     QString token = m_storage->authToken();
     QString deviceId = m_storage->deviceId().trimmed();
-    
+
     if (token.isEmpty() || recipientUsername.isEmpty()) {
         qDebug() << "[RelayService] sendEncryptedEnvelope failed: Missing token or recipient";
         emit secureMessageTransmitted(recipientUsername, false);
@@ -163,7 +174,22 @@ void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
         return;
     }
 
-    if (envelopeBytes.size() > Constants::WS_MAX_MESSAGE_SIZE) {
+    if (!m_capabilities) {
+        qDebug() << "[RelayService] sendEncryptedEnvelope failed: capabilities not initialized";
+        emit secureMessageTransmitted(recipientUsername, false);
+        emit messageTransmissionStatus(recipientUsername, messageId, false, "Internal error: Missing capabilities context");
+        return;
+    }
+
+    auto maxEnvelope = m_capabilities->maxEnvelopeBytes();
+    if (!maxEnvelope.has_value()) {
+        qDebug() << "[RelayService] sendEncryptedEnvelope failed: unknown max envelope capability";
+        emit secureMessageTransmitted(recipientUsername, false);
+        emit messageTransmissionStatus(recipientUsername, messageId, false, "Server capabilities unknown or unsupported");
+        return;
+    }
+
+    if (envelopeBytes.size() > maxEnvelope.value()) {
         qDebug() << "[RelayService] sendEncryptedEnvelope failed: envelope exceeds max size";
         emit secureMessageTransmitted(recipientUsername, false);
         emit messageTransmissionStatus(recipientUsername, messageId, false, "Envelope exceeds maximum payload size");
@@ -175,7 +201,7 @@ void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
     payload["protocol_version"] = 2;
     payload["ciphertext"] = QString::fromLatin1(envelopeBytes.toBase64());
     payload["timestamp"] = QDateTime::currentSecsSinceEpoch();
-    
+
     if (!messageId.isEmpty()) {
         payload["message_id"] = messageId;
     }
@@ -246,10 +272,10 @@ void RelayService::pollPendingMessages() {
 
         QJsonDocument doc = QJsonDocument::fromJson(data);
         if (doc.isNull() || !doc.isObject()) return;
-        
+
         QJsonObject root = doc.object();
         if (!root.contains("messages") || !root.value("messages").isArray()) return;
-        
+
         QJsonArray messages = root.value("messages").toArray();
         for (const QJsonValue &val : messages) {
             if (!val.isObject()) continue;
@@ -283,8 +309,21 @@ void RelayService::processIncomingRelayItem(const QJsonObject &msgObj) {
     }
 
     QByteArray envelopeBytes = QByteArray::fromBase64(base64Cipher.toLatin1());
-    
-    if (envelopeBytes.size() > Constants::WS_MAX_MESSAGE_SIZE) {
+
+    if (!m_capabilities) {
+        qDebug() << "[RelayService] Incoming envelope rejected: capabilities not initialized";
+        // Do NOT acknowledge, defer processing until capabilities are known
+        return;
+    }
+
+    auto maxEnvelope = m_capabilities->maxEnvelopeBytes();
+    if (!maxEnvelope.has_value()) {
+        qDebug() << "[RelayService] Incoming envelope rejected: unknown max envelope capability";
+        // Do NOT acknowledge, defer processing until capabilities are negotiated
+        return;
+    }
+
+    if (envelopeBytes.size() > maxEnvelope.value()) {
         qDebug() << "[RelayService] Incoming envelope exceeds maximum payload size limit.";
         acknowledgeMessage(msgId); // Discard oversized message
         return;

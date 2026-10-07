@@ -128,6 +128,17 @@ public:
     QString token() const { return m_token; }
 
     /**
+     * @brief Dynamically adjusts the maximum allowed fragmented message size.
+     * @param size The new maximum size in bytes.
+     */
+    void setMaxMessageSize(quint64 size) { m_maxMessageSize = size; }
+
+    /**
+     * @brief Retrieves the current maximum message size.
+     */
+    quint64 maxMessageSize() const { return m_maxMessageSize; }
+
+    /**
      * @brief Sends a text frame (opcode 0x1) masked according to RFC 6455.
      * @param text UTF-8 string payload.
      * @pre Client state must be `WebSocketState::Connected`.
@@ -228,6 +239,9 @@ private:
     
     /** @brief Flag indicating whether handshake negotiation succeeded. */
     bool m_handshakeComplete{false};
+
+    /** @brief Maximum allowed assembled message size. */
+    quint64 m_maxMessageSize{4 * 1024 * 1024}; // Defaults to 4 MiB
 };
 
 } // namespace Transport

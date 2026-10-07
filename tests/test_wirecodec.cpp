@@ -99,15 +99,6 @@ void TestWireCodec::testBinaryCiphertext() {
     QCOMPARE(dec->ciphertext, QByteArray::fromHex("00ff00ff00ff"));
 }
 
-void TestWireCodec::testMaxAcceptedPayload() {
-    RatchetEnvelope env;
-    env.header.dh = makeKey(7);
-    env.tag = makeTag();
-    env.ciphertext.fill('A', WireCodec::MAX_ENVELOPE_SIZE + 10);
-    
-    QByteArray enc = WireCodec::encodeRatchetEnvelope(env);
-    QVERIFY(enc.isEmpty());
-}
 
 void TestWireCodec::testInvalidIdentityKeyLength() {
     InitialEnvelope ienv;
@@ -218,11 +209,6 @@ void TestWireCodec::testDeclaredCiphertextLengthOverflowRejected() {
     QVERIFY(!WireCodec::decodeRatchetEnvelope(enc).has_value());
 }
 
-void TestWireCodec::testOversizedEnvelopeRejected() {
-    QByteArray huge(WireCodec::MAX_ENVELOPE_SIZE + 1, 'A');
-    QVERIFY(!WireCodec::decodeRatchetEnvelope(huge).has_value());
-    QVERIFY(!WireCodec::decodeInitialEnvelope(huge).has_value());
-}
 
 void TestWireCodec::testValidEnvelopeWithTrailingGarbageRejected() {
     RatchetEnvelope env;

@@ -6,6 +6,7 @@
 #include "../src/services/relayservice.h"
 #include "../src/transport/IIncomingEnvelopeHandler.h"
 #include "mocks/mockhttptransport.h"
+#include "../src/storage/capabilitiesrepository.h"
 #include "../src/storage/settingsrepository.h"
 
 namespace NeoNect {
@@ -35,6 +36,9 @@ private slots:
     // Send
     void testSendOpaqueEnvelope();
     void testSendOversizedEnvelopeRejected();
+    void testCapabilitiesValidation();
+    void testUnknownCapabilitiesRejection();
+    void testDynamicWebSocketIntegration();
     void testSendTransportFailureRetries();
 
     // Receive
@@ -52,6 +56,7 @@ private:
     std::shared_ptr<Testing::MockHttpTransport> m_transport;
     std::shared_ptr<Storage::SettingsRepository> m_storage;
     std::shared_ptr<MockEnvelopeHandler> m_handler;
+    std::shared_ptr<Storage::CapabilitiesRepository> m_capabilities;
     std::unique_ptr<Services::RelayService> m_relay;
 };
 

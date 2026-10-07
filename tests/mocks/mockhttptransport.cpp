@@ -240,6 +240,8 @@ QNetworkReply* MockHttpTransport::get(const QString &endpoint, const QMap<QStrin
 
     if (endpoint == Constants::EP_HEALTH) {
         handleHealth(callback);
+    } else if (endpoint == Constants::EP_CAPABILITIES) {
+        handleCapabilities(callback);
     } else if (endpoint == Constants::EP_PRESENCE) {
         handlePresence(queryParams, callback);
     } else if (endpoint == Constants::EP_SECURITY_VERIFY) {
@@ -322,6 +324,19 @@ void MockHttpTransport::handleHealth(Transport::HttpResponseCallback callback) {
     QJsonObject res;
     res["status"] = "success";
     res["node"] = "mock-neonect-embedded";
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleCapabilities(Transport::HttpResponseCallback callback) {
+    QJsonObject limits;
+    limits["max_http_body_bytes"] = 4194304;
+    limits["max_envelope_bytes"] = 1048576;
+    limits["max_devices_per_user"] = 10;
+
+    QJsonObject res;
+    res["version"] = 1;
+    res["limits"] = limits;
+
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 

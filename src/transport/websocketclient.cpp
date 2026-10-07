@@ -300,7 +300,7 @@ void WebSocketClient::processFrames() {
                 m_socket->disconnectFromHost();
                 return;
             }
-            if (static_cast<quint64>(m_fragmentBuffer.size()) + payload.size() > Constants::WS_MAX_MESSAGE_SIZE) {
+            if (static_cast<quint64>(m_fragmentBuffer.size()) + payload.size() > m_maxMessageSize) {
                 qWarning() << "[WebSocketClient] Message too large";
                 emit errorOccurred("Message too large");
                 m_socket->disconnectFromHost();
