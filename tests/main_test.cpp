@@ -276,6 +276,15 @@ int main(int argc, char *argv[]) {
 
         std::cout << "--> Testing testVoiceNoteIsolation..." << std::endl;
         int r_vn_iso = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testVoiceNoteIsolation" << "-o" << "vn_iso_log.txt,txt");
+        std::cout << "--> Testing testCapabilitiesValidation..." << std::endl;
+        int r_cap_val = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testCapabilitiesValidation");
+        std::cout << "    Result: " << (r_cap_val == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= r_cap_val;
+
+        std::cout << "--> Testing testCapabilitiesServerSwitch..." << std::endl;
+        int r_cap_sw = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testCapabilitiesServerSwitch");
+        std::cout << "    Result: " << (r_cap_sw == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= r_cap_sw;
         if (r_vn_iso != 0) {
             QFile f("vn_iso_log.txt");
             if (f.open(QIODevice::ReadOnly)) {

@@ -13,6 +13,7 @@
 #include "../themedata.h"
 #include "../storage/StorageContext.h"
 #include "../storage/settingsrepository.h"
+#include "../storage/capabilitiesrepository.h"
 #include "../../tests/mocks/mockhttptransport.h"
 #include "core/messaging/MessageStorage.h"
 #include "../transport/httptransport.h"
@@ -193,6 +194,7 @@ void Application::initializeServices() {
     qRegisterMetaType<NeoNect::Domain::Message>("NeoNect::Domain::Message");
     qRegisterMetaType<std::vector<NeoNect::Domain::Message>>("std::vector<NeoNect::Domain::Message>");
     m_storage = std::make_shared<Storage::SettingsRepository>(m_profile);
+    auto capabilitiesRepo = std::make_shared<Storage::CapabilitiesRepository>();
     m_cryptoService = std::make_shared<Crypto::CryptoService>();
 
     if (m_isMockMode) {
@@ -207,7 +209,7 @@ void Application::initializeServices() {
         m_transport = std::make_shared<Transport::HttpTransport>();
     }
 
-    auto authService = std::make_shared<Services::AuthService>(m_transport, m_storage);
+    auto authService = std::make_shared<Services::AuthService>(m_transport, m_storage, capabilitiesRepo);
     auto deviceService = std::make_shared<Services::DeviceService>(m_transport, m_storage);
     m_relayService = std::make_shared<Services::RelayService>(m_transport, m_storage, nullptr);
     auto friendService = std::make_shared<Services::FriendService>(m_transport, m_storage);

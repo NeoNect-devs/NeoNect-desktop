@@ -46,4 +46,6 @@ private slots:
     void testPreKeyStoreAdapter();
     void testPreKeyServiceDecoding();
     void testPreKeyServiceUploadPayload();
+    void testCapabilitiesValidation();
+    void testCapabilitiesServerSwitch();
 };

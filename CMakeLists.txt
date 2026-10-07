@@ -136,6 +136,7 @@ qt_add_executable(NeoNectApp
     src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
@@ -407,6 +408,7 @@ add_executable(NeoNectTests
     src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
@@ -506,6 +508,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp
@@ -590,6 +593,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
     src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
     src/storage/e2ee/PlatformSecretStore.h src/storage/e2ee/PlatformSecretStore.cpp

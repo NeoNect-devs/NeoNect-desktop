@@ -1287,7 +1287,7 @@ void TestProductionE2EE::testLogoutReloginIntegration() {
         app.m_secureStore.lock()->saveIdentity(aliceId);
         pubKey = aliceId.public_key;
 
-        auto authSvc = std::make_shared<NeoNect::Services::AuthService>(app.m_transport, app.m_storage);
+        auto authSvc = std::make_shared<NeoNect::Services::AuthService>(app.m_transport, app.m_storage, nullptr);
         authSvc->setBeforeTeardownCallback([secureStorePtr = app.m_secureStore](const QString&) {
             if (auto ptr = secureStorePtr.lock()) ptr->close();
         });

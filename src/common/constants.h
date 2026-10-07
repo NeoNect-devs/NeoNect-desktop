@@ -29,6 +29,7 @@ namespace Constants {
 
     /** @brief Health check and system liveness probe (`GET`). */
     inline constexpr const char* EP_HEALTH = "/api/v1/health";
+    inline constexpr const char* EP_CAPABILITIES = "/api/v1/capabilities";
 
     /** @brief Real-time presence query and beacon endpoint (`GET`). */
     inline constexpr const char* EP_PRESENCE = "/api/v1/presence";

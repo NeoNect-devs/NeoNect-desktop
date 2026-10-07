@@ -26,6 +26,8 @@
 
 #include "../transport/ihttptransport.h"
 #include "../storage/isettingsrepository.h"
+#include "../storage/icapabilitiesrepository.h"
+#include "../storage/capabilitiesrepository.h"
 #include "../crypto/icryptoservice.h"
 #include "../services/authservice.h"
 #include "../services/deviceservice.h"
@@ -486,6 +488,7 @@ private:
 
     std::shared_ptr<NeoNect::Transport::IHttpTransport> m_transport;
     std::shared_ptr<NeoNect::Storage::ISettingsRepository> m_storage;
+    std::shared_ptr<NeoNect::Storage::ICapabilitiesRepository> m_capabilities;
 
     std::shared_ptr<NeoNect::Services::AuthService> m_authService;
     std::shared_ptr<NeoNect::Services::DeviceService> m_deviceService;

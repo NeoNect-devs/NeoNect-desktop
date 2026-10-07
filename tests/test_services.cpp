@@ -8,6 +8,7 @@
 #include "mocks/mockhttptransport.h"
 #include "../src/transport/httptransport.h"
 #include "../src/storage/settingsrepository.h"
+#include "../src/storage/capabilitiesrepository.h"
 #include "../src/storage/StoragePathResolver.h"
 #include "../src/crypto/cryptoservice.h"
 #include "../src/services/authservice.h"
@@ -27,7 +28,7 @@ void TestServices::testAuthServiceFlow() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_auth");
     storage->clearSession();
     storage->setFriends({});
-    NeoNect::Services::AuthService authService(mockTransport, storage);
+    NeoNect::Services::AuthService authService(mockTransport, storage, nullptr);
 
     // 1. Test verifyServer
     QSignalSpy spyVerify(&authService, &NeoNect::Services::AuthService::verificationResult);
@@ -164,7 +165,7 @@ void TestServices::testNetworkManagerFacadeIntegration() {
     storage->setFriends({});
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>(); crypto->setMasterKey(QByteArray(32, 1));
 
-    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage, nullptr);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
@@ -595,7 +596,7 @@ void TestServices::testBookmarkConnectFlow() {
 
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>(); crypto->setMasterKey(QByteArray(32, 1));
 
-    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage, nullptr);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
@@ -835,7 +836,7 @@ void TestServices::testRequestCancellationOnServiceDestruction() {
 
     QPointer<QObject> servicePtr;
     {
-        auto authService = std::make_unique<NeoNect::Services::AuthService>(mockTransport, storage);
+        auto authService = std::make_unique<NeoNect::Services::AuthService>(mockTransport, storage, nullptr);
         servicePtr = authService.get();
         QCOMPARE(servicePtr.isNull(), false);
     }
@@ -849,7 +850,7 @@ void TestServices::testPhase10ABackendProtocolCompliance() {
     crypto->setMasterKey(QByteArray(32, 1));
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>();
 
-    NeoNect::Services::AuthService authService(mockTransport, storage);
+    NeoNect::Services::AuthService authService(mockTransport, storage, nullptr);
     NeoNect::Services::DeviceService deviceService(mockTransport, storage);
     NeoNect::Services::RelayService relayService(mockTransport, storage, nullptr);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
@@ -1232,7 +1233,7 @@ void TestServices::testConnectivityAndOnlinePresence() {
 
     // 6. Test NetworkManager isConnected reflecting server connectivity
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
-    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage, nullptr);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendServicePtr = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
@@ -1258,7 +1259,7 @@ void TestServices::testOpenConversationsActivityOrdering() {
 
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
-    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage, nullptr);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
@@ -1314,7 +1315,7 @@ void TestServices::testOpenConversationsUnreadCountBadge() {
 
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
-    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage, nullptr);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
@@ -1473,7 +1474,7 @@ void TestServices::testSelfDirectMessageAndSavedMessagesFlow() {
     storage->setDeviceId("dev_alice");
     storage->setOpenConversations({});
 
-    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage);
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage, nullptr);
     auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
     auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr);
     auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
@@ -2139,7 +2140,7 @@ void TestServices::testPhase3AuthSessionDeviceHarden() {
     QCOMPARE(storageB->deviceId(), "DEVICE_B");
 
     // Test 3: 401 Session Teardown
-    NeoNect::Services::AuthService authService(mockTransport, storageA);
+    NeoNect::Services::AuthService authService(mockTransport, storageA, nullptr);
     QSignalSpy spyExpired(&authService, &NeoNect::Services::AuthService::authSessionExpired);
     QSignalSpy spyProfile(&authService, &NeoNect::Services::AuthService::userProfileFetched);
 
@@ -2566,4 +2567,121 @@ void TestServices::testVoiceNoteIsolation() {
     amAlice1.cleanupLocalFile("file://" + testOut);
     QVERIFY(QFile::exists(testOut));
     QFile::remove(testOut);
+}
+
+void TestServices::testCapabilitiesValidation() {
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_cap_validation");
+    auto capRepo = std::make_shared<NeoNect::Storage::CapabilitiesRepository>();
+    NeoNect::Services::AuthService authService(mockTransport, storage, capRepo);
+
+    auto triggerFetch = [&]() {
+        mockTransport->setSimulatedResponse("/api/v1/health", R"({"status":"ok"})", 200);
+        authService.verifyServer("http://localhost:8080");
+        QCoreApplication::processEvents();
+    };
+
+    // Test 404 (Unsupported)
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", "", 404);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::UNSUPPORTED);
+    QVERIFY(!capRepo->maxHttpBodyBytes().has_value());
+
+    // Test 500 (Server Error -> Unavailable)
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", "", 500);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::UNAVAILABLE);
+
+    // Test 200 but Invalid JSON (Invalid)
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", "definitely-not-json", 200);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::INVALID);
+
+    // Test Invalid Version
+    QByteArray invalidVersionJson = R"({"version": 2, "limits": {"max_http_body_bytes": 1048576}})";
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", invalidVersionJson, 200);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::UNSUPPORTED);
+
+    // Test Valid (all fields)
+    QByteArray validJson = R"({"version": 1, "limits": {"max_http_body_bytes": 1048576, "max_envelope_bytes": 524288, "max_devices_per_user": 10}})";
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", validJson, 200);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::VALID);
+    QCOMPARE(capRepo->maxHttpBodyBytes().value(), 1048576LL);
+    QCOMPARE(capRepo->maxEnvelopeBytes().value(), 524288);
+    QCOMPARE(capRepo->maxDevicesPerUser().value(), 10);
+
+    // Test Negative values
+    QByteArray negativeJson = R"({"version": 1, "limits": {"max_http_body_bytes": -1, "max_envelope_bytes": -500, "max_devices_per_user": -10}})";
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", negativeJson, 200);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::VALID);
+    QVERIFY(!capRepo->maxHttpBodyBytes().has_value());
+    QVERIFY(!capRepo->maxEnvelopeBytes().has_value());
+    QVERIFY(!capRepo->maxDevicesPerUser().has_value());
+
+    // Test Zero values
+    QByteArray zeroJson = R"({"version": 1, "limits": {"max_http_body_bytes": 0, "max_envelope_bytes": 0, "max_devices_per_user": 0}})";
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", zeroJson, 200);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::VALID);
+    QVERIFY(!capRepo->maxHttpBodyBytes().has_value());
+    QVERIFY(!capRepo->maxEnvelopeBytes().has_value());
+    QVERIFY(!capRepo->maxDevicesPerUser().has_value());
+
+    // Test Oversized values (1GB max for Http/Envelope)
+    // maxDevices doesn't have an artificial upper limit now, but let's test the other two
+    QByteArray oversizedJson = R"({"version": 1, "limits": {"max_http_body_bytes": 2073741824, "max_envelope_bytes": 2073741824}})";
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", oversizedJson, 200);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::VALID);
+    QVERIFY(!capRepo->maxHttpBodyBytes().has_value());
+    QVERIFY(!capRepo->maxEnvelopeBytes().has_value());
+
+    // Partial validity test
+    // max_http_body_bytes = invalid oversized value
+    // max_envelope_bytes = valid value
+    // max_devices_per_user = valid value
+    QByteArray partialJson = R"({"version": 1, "limits": {"max_http_body_bytes": 2073741824, "max_envelope_bytes": 500000, "max_devices_per_user": 5}})";
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", partialJson, 200);
+    triggerFetch();
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::VALID);
+    QVERIFY(!capRepo->maxHttpBodyBytes().has_value());
+    QVERIFY(capRepo->maxEnvelopeBytes().has_value());
+    QCOMPARE(capRepo->maxEnvelopeBytes().value(), 500000);
+    QVERIFY(capRepo->maxDevicesPerUser().has_value());
+    QCOMPARE(capRepo->maxDevicesPerUser().value(), 5);
+}
+
+void TestServices::testCapabilitiesServerSwitch() {
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_cap_switch");
+    auto capRepo = std::make_shared<NeoNect::Storage::CapabilitiesRepository>();
+    NeoNect::Services::AuthService authService(mockTransport, storage, capRepo);
+
+    // 1. load valid capabilities for server A
+    QByteArray validJson = R"({"version": 1, "limits": {"max_http_body_bytes": 1048576}})";
+    mockTransport->setSimulatedResponse("/api/v1/health", R"({"status":"ok"})", 200);
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", validJson, 200);
+    authService.verifyServer("http://server-a.local");
+    QCoreApplication::processEvents();
+
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::VALID);
+    QVERIFY(capRepo->maxHttpBodyBytes().has_value());
+
+    // 2. switch/verify server B
+    // 3. make capabilities request fail
+    mockTransport->setSimulatedResponse("/api/v1/health", R"({"status":"ok"})", 200);
+    mockTransport->setSimulatedResponse("/api/v1/capabilities", "", 500);
+    authService.verifyServer("http://server-b.local");
+    QCoreApplication::processEvents();
+
+    // 4. assert state != VALID
+    QCOMPARE(capRepo->capabilityState(), NeoNect::Storage::CapabilityState::UNAVAILABLE);
+
+    // 5. assert every capability is nullopt
+    QVERIFY(!capRepo->maxHttpBodyBytes().has_value());
+    QVERIFY(!capRepo->maxEnvelopeBytes().has_value());
+    QVERIFY(!capRepo->maxDevicesPerUser().has_value());
 }

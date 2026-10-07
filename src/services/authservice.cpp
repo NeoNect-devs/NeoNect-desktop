@@ -10,8 +10,9 @@ namespace Services {
 
 AuthService::AuthService(std::shared_ptr<Transport::IHttpTransport> transport,
                          std::shared_ptr<Storage::ISettingsRepository> storage,
+                         std::shared_ptr<Storage::ICapabilitiesRepository> capabilities,
                          QObject *parent)
-    : QObject(parent), m_transport(std::move(transport)), m_storage(std::move(storage)) {
+    : QObject(parent), m_transport(std::move(transport)), m_storage(std::move(storage)), m_capabilities(std::move(capabilities)) {
 }
 
 void AuthService::verifyServer(const QString &address) {
@@ -35,6 +36,9 @@ void AuthService::verifyServer(const QString &address) {
     }
     m_transport->setBaseUrl(cleanUrl);
     m_storage->setServerUrl(cleanUrl);
+    if (m_capabilities) {
+        m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::UNKNOWN);
+    }
 
     m_transport->get(Constants::EP_HEALTH, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         if (error == QNetworkReply::NoError || statusCode == 200) {
@@ -42,11 +46,11 @@ void AuthService::verifyServer(const QString &address) {
             if (!doc.isNull() && (doc.object().value("status").toString() == "success" ||
                                  doc.object().value("status").toString() == "ok" ||
                                  doc.object().contains("status"))) {
-                emit verificationResult(true, "Connected to NeoNect Server");
+                fetchCapabilities();
                 return;
             }
             if (statusCode == 200) {
-                emit verificationResult(true, "Connected to NeoNect Server");
+                fetchCapabilities();
                 return;
             }
         }
@@ -207,6 +211,96 @@ void AuthService::fetchUserProfile() {
         }
         emit userProfileFetched(false, QString());
     });
+}
+
+void AuthService::fetchCapabilities() {
+    m_transport->get(Constants::EP_CAPABILITIES, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &) {
+        if (!m_capabilities) {
+            emit verificationResult(true, "Connected to NeoNect Server");
+            return;
+        }
+
+        if (statusCode == 404) {
+            m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::UNSUPPORTED);
+            emit verificationResult(true, "Connected to NeoNect Server");
+            return;
+        }
+
+        if (error != QNetworkReply::NoError) {
+            m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::UNAVAILABLE);
+            emit verificationResult(true, "Connected to NeoNect Server");
+            return;
+        }
+
+        if (statusCode != 200) {
+            m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::INVALID);
+            emit verificationResult(true, "Connected to NeoNect Server");
+            return;
+        }
+
+        parseCapabilities(data);
+        emit verificationResult(true, "Connected to NeoNect Server");
+    });
+}
+
+void AuthService::parseCapabilities(const QByteArray &data) {
+    if (!m_capabilities) return;
+
+    auto doc = QJsonDocument::fromJson(data);
+    if (doc.isNull() || !doc.isObject()) {
+        m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::INVALID);
+        return;
+    }
+
+    QJsonObject obj = doc.object();
+
+    // Contract version explicitly validated
+    if (!obj.contains("version")) {
+        m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::INVALID);
+        return;
+    }
+
+    if (obj.value("version").toInt() != 1) {
+        m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::UNSUPPORTED);
+        return;
+    }
+
+    if (!obj.contains("limits")) {
+        m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::INVALID);
+        return;
+    }
+
+    QJsonObject limits = obj.value("limits").toObject();
+
+    std::optional<qint64> maxHttpBody;
+    std::optional<int> maxEnvelope;
+    std::optional<int> maxDevices;
+    Storage::CapabilityState state = Storage::CapabilityState::VALID;
+
+    // Bounds checking based on server config constraints (1GB max for HTTP/Envelope)
+    if (limits.contains("max_http_body_bytes")) {
+        qint64 val = limits.value("max_http_body_bytes").toVariant().toLongLong();
+        if (val > 0 && val <= 1073741824) {
+            maxHttpBody = val;
+        }
+    }
+
+    if (limits.contains("max_envelope_bytes")) {
+        qint64 val = limits.value("max_envelope_bytes").toVariant().toLongLong();
+        if (val > 0 && val <= 1073741824) {
+            maxEnvelope = static_cast<int>(val);
+        }
+    }
+
+    if (limits.contains("max_devices_per_user")) {
+        int val = limits.value("max_devices_per_user").toInt();
+        // Server does not enforce a strict upper bound via GetStrictEnvInt, so only validate > 0
+        if (val > 0) {
+            maxDevices = val;
+        }
+    }
+
+    m_capabilities->replace(maxHttpBody, maxEnvelope, maxDevices, state);
 }
 
 } // namespace Services

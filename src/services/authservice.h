@@ -21,6 +21,7 @@
 #include <functional>
 #include "../transport/ihttptransport.h"
 #include "../storage/isettingsrepository.h"
+#include "../storage/icapabilitiesrepository.h"
 
 namespace NeoNect {
 namespace Services {
@@ -40,6 +41,7 @@ public:
      */
     explicit AuthService(std::shared_ptr<Transport::IHttpTransport> transport,
                          std::shared_ptr<Storage::ISettingsRepository> storage,
+                         std::shared_ptr<Storage::ICapabilitiesRepository> capabilities,
                          QObject *parent = nullptr);
 
     /**
@@ -130,11 +132,15 @@ signals:
 private:
     /** @brief Terminates the local session cleanly without server interaction. */
     void teardownLocalSession();
+    void fetchCapabilities();
+    void parseCapabilities(const QByteArray &data);
+
 
     /** @brief Injected HTTP transport layer. */
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     /** @brief Injected persistent settings repository. */
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
+    std::shared_ptr<Storage::ICapabilitiesRepository> m_capabilities;
     std::function<void(const QString&)> m_onBeforeTeardown;
 };
 
