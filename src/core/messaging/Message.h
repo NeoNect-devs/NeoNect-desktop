@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QByteArray>
 
 namespace NeoNect {
 namespace Core {
@@ -23,6 +24,13 @@ struct Message {
     qint64 timestamp = 0;
     QString plaintext;
     QString type = "text"; // plaintext availability only at local application boundary
+    QString mediaUrl;
+    QString fileName;
+    qint64 fileSize = 0;
+    int duration = 0;
+    QByteArray waveform;
+    int mediaWidth = 0;
+    int mediaHeight = 0;
     MessageState state = MessageState::CREATED;
 };
 

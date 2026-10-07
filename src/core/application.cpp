@@ -268,6 +268,13 @@ void Application::initializeServices() {
             domainMsg.timestamp = coreMsg.timestamp;
             domainMsg.text = coreMsg.plaintext;
             domainMsg.type = coreMsg.type;
+            domainMsg.mediaUrl = coreMsg.mediaUrl;
+            domainMsg.fileName = coreMsg.fileName;
+            domainMsg.fileSize = coreMsg.fileSize;
+            domainMsg.duration = coreMsg.duration;
+            domainMsg.waveform = coreMsg.waveform;
+            domainMsg.mediaWidth = coreMsg.mediaWidth;
+            domainMsg.mediaHeight = coreMsg.mediaHeight;
             domainMsg.status = NeoNect::Domain::MessageStatus::Sent;
 
             m_messageService->handleIncomingMessage(domainMsg);
@@ -422,6 +429,13 @@ void Application::initializeServices() {
         coreMsg.timestamp = msg.timestamp;
         coreMsg.plaintext = msg.text;
         coreMsg.type = msg.type;
+        coreMsg.mediaUrl = msg.mediaUrl;
+        coreMsg.fileName = msg.fileName;
+        coreMsg.fileSize = msg.fileSize;
+        coreMsg.duration = msg.duration;
+        coreMsg.waveform = msg.waveform;
+        coreMsg.mediaWidth = msg.mediaWidth;
+        coreMsg.mediaHeight = msg.mediaHeight;
         coreMsg.state = Core::Messaging::MessageState::CREATED;
 
         m_coreMessageService->sendMessage(coreMsg);

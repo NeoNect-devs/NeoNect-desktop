@@ -844,6 +844,14 @@ void MessageService::saveMessageAsync(const Domain::Message &msg, const QObject*
     coreMsg.senderId = msg.senderId;
     coreMsg.timestamp = msg.timestamp;
     coreMsg.plaintext = msg.text;
+    coreMsg.type = msg.type;
+    coreMsg.mediaUrl = msg.mediaUrl;
+    coreMsg.fileName = msg.fileName;
+    coreMsg.fileSize = msg.fileSize;
+    coreMsg.duration = msg.duration;
+    coreMsg.waveform = msg.waveform;
+    coreMsg.mediaWidth = msg.mediaWidth;
+    coreMsg.mediaHeight = msg.mediaHeight;
     coreMsg.state = mapStatus(msg.status);
     
     QPointer<MessageService> self(this);
@@ -873,6 +881,14 @@ void MessageService::saveMessagesAsync(const std::vector<Domain::Message> &msgs,
         coreMsg.senderId = msg.senderId;
         coreMsg.timestamp = msg.timestamp;
         coreMsg.plaintext = msg.text;
+        coreMsg.type = msg.type;
+        coreMsg.mediaUrl = msg.mediaUrl;
+        coreMsg.fileName = msg.fileName;
+        coreMsg.fileSize = msg.fileSize;
+        coreMsg.duration = msg.duration;
+        coreMsg.waveform = msg.waveform;
+        coreMsg.mediaWidth = msg.mediaWidth;
+        coreMsg.mediaHeight = msg.mediaHeight;
         coreMsg.state = mapStatus(msg.status);
         coreMsgs.push_back(coreMsg);
     }
@@ -965,6 +981,14 @@ void MessageService::getMessagesAsync(const QString &conversationId, int limit, 
             dm.senderId = cm.senderId;
             dm.timestamp = cm.timestamp;
             dm.text = cm.plaintext;
+            dm.type = cm.type;
+            dm.mediaUrl = cm.mediaUrl;
+            dm.fileName = cm.fileName;
+            dm.fileSize = cm.fileSize;
+            dm.duration = cm.duration;
+            dm.waveform = cm.waveform;
+            dm.mediaWidth = cm.mediaWidth;
+            dm.mediaHeight = cm.mediaHeight;
             dm.status = mapState(cm.state);
             messages.push_back(dm);
         }
@@ -996,6 +1020,14 @@ void MessageService::getMessageByIdAsync(const QString &id, const QObject* conte
             dm.senderId = cmOpt->senderId;
             dm.timestamp = cmOpt->timestamp;
             dm.text = cmOpt->plaintext;
+            dm.type = cmOpt->type;
+            dm.mediaUrl = cmOpt->mediaUrl;
+            dm.fileName = cmOpt->fileName;
+            dm.fileSize = cmOpt->fileSize;
+            dm.duration = cmOpt->duration;
+            dm.waveform = cmOpt->waveform;
+            dm.mediaWidth = cmOpt->mediaWidth;
+            dm.mediaHeight = cmOpt->mediaHeight;
             dm.status = mapState(cmOpt->state);
             optMsg = dm;
         }

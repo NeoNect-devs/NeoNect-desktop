@@ -348,3 +348,153 @@ void TestMessages::testMediaTransferProgressSenderSide() {
     QCOMPARE(model.data(idx, ChatMessageModel::TransferProgressRole).toReal(), 1.0);
     QCOMPARE(model.data(idx, ChatMessageModel::TransferBytesRole).toLongLong(), testSize);
 }
+
+void TestMessages::testCoreMessageMappingText() {
+    NeoNect::Domain::Message msg;
+    msg.id = "txt1";
+    msg.serverId = 100;
+    msg.conversationId = "dms:eve";
+    msg.senderId = "me";
+    msg.text = "hello text";
+    msg.timestamp = 12345;
+    msg.status = NeoNect::Domain::MessageStatus::Sent;
+
+    // Simulate outgoing mapping (Domain -> Core)
+    NeoNect::Core::Messaging::Message coreMsg;
+    coreMsg.messageId = msg.id;
+    coreMsg.serverId = msg.serverId;
+    coreMsg.conversationId = msg.conversationId;
+    coreMsg.senderId = msg.senderId;
+    coreMsg.timestamp = msg.timestamp;
+    coreMsg.plaintext = msg.text;
+    coreMsg.type = msg.type;
+    coreMsg.mediaUrl = msg.mediaUrl;
+    coreMsg.fileName = msg.fileName;
+    coreMsg.fileSize = msg.fileSize;
+    coreMsg.duration = msg.duration;
+    coreMsg.waveform = msg.waveform;
+    coreMsg.mediaWidth = msg.mediaWidth;
+    coreMsg.mediaHeight = msg.mediaHeight;
+    
+    // Validate core fields
+    QCOMPARE(coreMsg.type, QString("text"));
+    QCOMPARE(coreMsg.mediaUrl, QString(""));
+    QCOMPARE(coreMsg.fileSize, 0);
+
+    // Simulate incoming mapping (Core -> Domain)
+    NeoNect::Domain::Message dm;
+    dm.id = coreMsg.messageId;
+    dm.serverId = coreMsg.serverId;
+    dm.conversationId = coreMsg.conversationId;
+    dm.senderId = coreMsg.senderId;
+    dm.timestamp = coreMsg.timestamp;
+    dm.text = coreMsg.plaintext;
+    dm.type = coreMsg.type;
+    dm.mediaUrl = coreMsg.mediaUrl;
+    dm.fileName = coreMsg.fileName;
+    dm.fileSize = coreMsg.fileSize;
+    dm.duration = coreMsg.duration;
+    dm.waveform = coreMsg.waveform;
+    dm.mediaWidth = coreMsg.mediaWidth;
+    dm.mediaHeight = coreMsg.mediaHeight;
+    
+    QCOMPARE(dm.id, msg.id);
+    QCOMPARE(dm.text, msg.text);
+    QCOMPARE(dm.type, QString("text"));
+}
+
+void TestMessages::testCoreMessageMappingMedia() {
+    NeoNect::Domain::Message msg;
+    msg.id = "media1";
+    msg.conversationId = "dms:eve";
+    msg.senderId = "me";
+    msg.text = "";
+    msg.type = "voice_note";
+    msg.mediaUrl = "file:///tmp/voice.wav";
+    msg.fileName = "voice.wav";
+    msg.fileSize = 4096;
+    msg.duration = 15;
+    msg.waveform = QByteArray("\x01\x02\x03", 3);
+    msg.mediaWidth = 0;
+    msg.mediaHeight = 0;
+
+    // Simulate outgoing mapping (Domain -> Core)
+    NeoNect::Core::Messaging::Message coreMsg;
+    coreMsg.messageId = msg.id;
+    coreMsg.conversationId = msg.conversationId;
+    coreMsg.senderId = msg.senderId;
+    coreMsg.plaintext = msg.text;
+    coreMsg.type = msg.type;
+    coreMsg.mediaUrl = msg.mediaUrl;
+    coreMsg.fileName = msg.fileName;
+    coreMsg.fileSize = msg.fileSize;
+    coreMsg.duration = msg.duration;
+    coreMsg.waveform = msg.waveform;
+    coreMsg.mediaWidth = msg.mediaWidth;
+    coreMsg.mediaHeight = msg.mediaHeight;
+    
+    QCOMPARE(coreMsg.type, QString("voice_note"));
+    QCOMPARE(coreMsg.mediaUrl, QString("file:///tmp/voice.wav"));
+    QCOMPARE(coreMsg.fileSize, 4096);
+    QCOMPARE(coreMsg.duration, 15);
+    QCOMPARE(coreMsg.waveform.size(), 3);
+
+    // Simulate incoming mapping (Core -> Domain)
+    NeoNect::Domain::Message dm;
+    dm.id = coreMsg.messageId;
+    dm.conversationId = coreMsg.conversationId;
+    dm.senderId = coreMsg.senderId;
+    dm.text = coreMsg.plaintext;
+    dm.type = coreMsg.type;
+    dm.mediaUrl = coreMsg.mediaUrl;
+    dm.fileName = coreMsg.fileName;
+    dm.fileSize = coreMsg.fileSize;
+    dm.duration = coreMsg.duration;
+    dm.waveform = coreMsg.waveform;
+    dm.mediaWidth = coreMsg.mediaWidth;
+    dm.mediaHeight = coreMsg.mediaHeight;
+    
+    QCOMPARE(dm.id, msg.id);
+    QCOMPARE(dm.type, QString("voice_note"));
+    QCOMPARE(dm.mediaUrl, QString("file:///tmp/voice.wav"));
+    QCOMPARE(dm.fileName, QString("voice.wav"));
+    QCOMPARE(dm.fileSize, 4096);
+    QCOMPARE(dm.duration, 15);
+    QCOMPARE(dm.waveform.size(), 3);
+    QCOMPARE(dm.mediaWidth, 0);
+    
+    // Also test image mapping
+    NeoNect::Domain::Message imgMsg;
+    imgMsg.id = "img1";
+    imgMsg.type = "image";
+    imgMsg.mediaUrl = "file:///tmp/photo.jpg";
+    imgMsg.fileName = "photo.jpg";
+    imgMsg.fileSize = 100000;
+    imgMsg.mediaWidth = 1920;
+    imgMsg.mediaHeight = 1080;
+    
+    NeoNect::Core::Messaging::Message coreImg;
+    coreImg.messageId = imgMsg.id;
+    coreImg.type = imgMsg.type;
+    coreImg.mediaUrl = imgMsg.mediaUrl;
+    coreImg.fileName = imgMsg.fileName;
+    coreImg.fileSize = imgMsg.fileSize;
+    coreImg.mediaWidth = imgMsg.mediaWidth;
+    coreImg.mediaHeight = imgMsg.mediaHeight;
+    
+    NeoNect::Domain::Message dmImg;
+    dmImg.id = coreImg.messageId;
+    dmImg.type = coreImg.type;
+    dmImg.mediaUrl = coreImg.mediaUrl;
+    dmImg.fileName = coreImg.fileName;
+    dmImg.fileSize = coreImg.fileSize;
+    dmImg.mediaWidth = coreImg.mediaWidth;
+    dmImg.mediaHeight = coreImg.mediaHeight;
+    
+    QCOMPARE(dmImg.id, QString("img1"));
+    QCOMPARE(dmImg.type, QString("image"));
+    QCOMPARE(dmImg.mediaUrl, QString("file:///tmp/photo.jpg"));
+    QCOMPARE(dmImg.fileSize, 100000);
+    QCOMPARE(dmImg.mediaWidth, 1920);
+    QCOMPARE(dmImg.mediaHeight, 1080);
+}
