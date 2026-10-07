@@ -17,4 +17,15 @@ private slots:
     void testConversationOrdering();
     void testRestartPersistence();
     void testDatabaseFailureAtomicity();
+    void testLegacySchemaMigration();
+    void testMigrationIdempotency();
+    void testFreshSchemaColumns();
+    void testPartialSchemaMigration();
+    void testMigrationFailureHandling();
+
+    // Phase 3.5.2 tests
+    void testMediaMetadataRestartPersistence();
+    void testImageMetadataRestartPersistence();
+    void testLegacyRowCompatibility();
+    void testCrudIntegrity();
 };

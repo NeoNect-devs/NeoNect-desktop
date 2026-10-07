@@ -1,3 +1,4 @@
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
 #include "test_messaging_core.h"
@@ -245,3 +246,446 @@ void TestMessagingCore::testReceiveEncryptedMessage() {
 
 }
 
+
+void TestMessagingCore::testLegacySchemaMigration() {
+    QString dbPath = "test_messaging_core_legacy.db";
+    QFile::remove(dbPath);
+
+    {
+        // 1. Manually create the legacy schema without the new columns
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "legacy_setup");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec("CREATE TABLE messages ("
+                           "id TEXT PRIMARY KEY, "
+                           "server_id INTEGER, "
+                           "conversation_id TEXT, "
+                           "sender_id TEXT, "
+                           "receiver_id TEXT, "
+                           "plaintext TEXT, "
+                           "state INTEGER, "
+                           "created_at INTEGER, "
+                           "updated_at INTEGER)"));
+        QVERIFY(query.exec("INSERT INTO messages (id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, updated_at) "
+                           "VALUES ('legacymsg1', 1, 'conv1', 'alice', 'bob', 'legacy plaintext', 0, 1000, 1000)"));
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("legacy_setup");
+
+    {
+        // 2. Open via SqliteMessageStorage, which should trigger the migration
+        SqliteMessageStorage storage(dbPath);
+        
+        // 3. Verify the old message is still readable and retains its original data
+        auto msgOpt = storage.getMessage("legacymsg1");
+        QVERIFY(msgOpt.has_value());
+        QCOMPARE(msgOpt.value().plaintext, QString("legacy plaintext"));
+        QCOMPARE(msgOpt.value().conversationId, QString("conv1"));
+        
+        // 4. Verify that the new columns were actually created
+        // We'll peek into the table directly to check the schema
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "legacy_check");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+        QSqlQuery pragmaQuery(db);
+        QVERIFY(pragmaQuery.exec("PRAGMA table_info(messages)"));
+        
+        QStringList columns;
+        while (pragmaQuery.next()) {
+            columns << pragmaQuery.value(1).toString();
+        }
+        
+        QVERIFY(columns.contains("type"));
+        QVERIFY(columns.contains("media_url"));
+        QVERIFY(columns.contains("file_name"));
+        QVERIFY(columns.contains("file_size"));
+        QVERIFY(columns.contains("duration"));
+        QVERIFY(columns.contains("waveform"));
+        QVERIFY(columns.contains("media_width"));
+        QVERIFY(columns.contains("media_height"));
+        
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("legacy_check");
+    QFile::remove(dbPath);
+}
+
+void TestMessagingCore::testMigrationIdempotency() {
+    QString dbPath = "test_messaging_core_idempotent.db";
+    QFile::remove(dbPath);
+
+    // Run initialization once
+    {
+        SqliteMessageStorage storage(dbPath);
+        // Ensure migration/table creation has run by calling a method
+        storage.getMessage("dummy");
+    }
+
+    // Run initialization a second time
+    {
+        SqliteMessageStorage storage(dbPath);
+        storage.getMessage("dummy"); // Should not fail, crash, or duplicate columns
+        
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "idempotent_check");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+        QSqlQuery pragmaQuery(db);
+        QVERIFY(pragmaQuery.exec("PRAGMA table_info(messages)"));
+        
+        int typeCount = 0;
+        while (pragmaQuery.next()) {
+            if (pragmaQuery.value(1).toString() == "type") {
+                typeCount++;
+            }
+        }
+        QCOMPARE(typeCount, 1); // No duplicate columns
+        
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("idempotent_check");
+    QFile::remove(dbPath);
+}
+
+void TestMessagingCore::testFreshSchemaColumns() {
+    QString dbPath = "test_messaging_core_fresh.db";
+    QFile::remove(dbPath);
+
+    {
+        SqliteMessageStorage storage(dbPath);
+        storage.getMessage("dummy"); // Trigger initialization
+
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "fresh_check");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+        QSqlQuery pragmaQuery(db);
+        QVERIFY(pragmaQuery.exec("PRAGMA table_info(messages)"));
+        
+        QStringList columns;
+        while (pragmaQuery.next()) {
+            columns << pragmaQuery.value(1).toString();
+        }
+        
+        QVERIFY(columns.contains("type"));
+        QVERIFY(columns.contains("media_url"));
+        QVERIFY(columns.contains("file_name"));
+        QVERIFY(columns.contains("file_size"));
+        QVERIFY(columns.contains("duration"));
+        QVERIFY(columns.contains("waveform"));
+        QVERIFY(columns.contains("media_width"));
+        QVERIFY(columns.contains("media_height"));
+        
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("fresh_check");
+    QFile::remove(dbPath);
+}
+
+void TestMessagingCore::testPartialSchemaMigration() {
+    QString dbPath = "test_messaging_core_partial.db";
+    QFile::remove(dbPath);
+
+    {
+        // 1. Manually create the legacy schema with SOME of the new columns
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "partial_setup");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec("CREATE TABLE messages ("
+                           "id TEXT PRIMARY KEY, "
+                           "server_id INTEGER, "
+                           "conversation_id TEXT, "
+                           "sender_id TEXT, "
+                           "receiver_id TEXT, "
+                           "plaintext TEXT, "
+                           "state INTEGER, "
+                           "created_at INTEGER, "
+                           "updated_at INTEGER, "
+                           "type TEXT DEFAULT 'text')"));
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("partial_setup");
+
+    {
+        // 2. Open via SqliteMessageStorage
+        SqliteMessageStorage storage(dbPath);
+        storage.getMessage("dummy"); // Trigger initialization
+
+        // 3. Verify all columns are present now
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "partial_check");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+        QSqlQuery pragmaQuery(db);
+        QVERIFY(pragmaQuery.exec("PRAGMA table_info(messages)"));
+        
+        QStringList columns;
+        while (pragmaQuery.next()) {
+            columns << pragmaQuery.value(1).toString();
+        }
+        
+        QVERIFY(columns.contains("type"));
+        QVERIFY(columns.contains("media_url"));
+        QVERIFY(columns.contains("file_name"));
+        QVERIFY(columns.contains("file_size"));
+        QVERIFY(columns.contains("duration"));
+        QVERIFY(columns.contains("waveform"));
+        QVERIFY(columns.contains("media_width"));
+        QVERIFY(columns.contains("media_height"));
+        
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("partial_check");
+    QFile::remove(dbPath);
+}
+
+void TestMessagingCore::testMigrationFailureHandling() {
+    QString dbPath = "test_messaging_core_fail.db";
+    QFile::remove(dbPath);
+
+    {
+        // Setup a VIEW named messages so ALTER TABLE fails
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "fail_setup");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec("CREATE TABLE real_messages (id TEXT PRIMARY KEY)"));
+        QVERIFY(query.exec("CREATE VIEW messages AS SELECT id FROM real_messages"));
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("fail_setup");
+
+    {
+        // Attempt to initialize
+        SqliteMessageStorage storage(dbPath);
+        
+        // This should fail to initialize the DB and return nullopt
+        auto result = storage.getMessage("dummy");
+        QVERIFY(!result.has_value());
+        
+        // Let's verify we didn't leave a broken connection open
+        // getDatabase() is private, but we can verify it fails gracefully
+        // actually getDatabase() is public in MessageStorage, let's check
+        // wait, getDatabase() is NOT public in ISqliteMessageStorage? Let's assume it is or just use saveMessage
+        QVERIFY(!storage.saveMessage(NeoNect::Core::Messaging::Message()));
+    }
+    
+    QFile::remove(dbPath);
+}
+
+void TestMessagingCore::testMediaMetadataRestartPersistence() {
+    QString dbPath = "test_messaging_core_restart_persistence.db";
+    QFile::remove(dbPath);
+
+    Message originalMsg;
+    originalMsg.messageId = "msg_restart_1";
+    originalMsg.conversationId = "conv1";
+    originalMsg.senderId = "alice";
+    originalMsg.receiverId = "bob";
+    originalMsg.plaintext = "listen to this";
+    originalMsg.state = MessageState::SENT;
+    originalMsg.timestamp = 123456789;
+    
+    // Set media fields
+    originalMsg.type = "voice_note";
+    originalMsg.mediaUrl = "file:///path/to/voice_note_test.wav";
+    originalMsg.fileName = "voice_note_test.wav";
+    originalMsg.fileSize = 123456;
+    originalMsg.duration = 37;
+    originalMsg.waveform = QByteArray("dummy_waveform_data_123");
+    originalMsg.mediaWidth = 0;
+    originalMsg.mediaHeight = 0;
+
+    {
+        SqliteMessageStorage storage(dbPath);
+        QVERIFY(storage.saveMessage(originalMsg));
+    }
+
+    {
+        SqliteMessageStorage storage(dbPath);
+        auto retrievedMsgOpt = storage.getMessage("msg_restart_1");
+        QVERIFY(retrievedMsgOpt.has_value());
+        Message retrievedMsg = retrievedMsgOpt.value();
+
+        QCOMPARE(retrievedMsg.messageId, originalMsg.messageId);
+        QCOMPARE(retrievedMsg.conversationId, originalMsg.conversationId);
+        QCOMPARE(retrievedMsg.senderId, originalMsg.senderId);
+        QCOMPARE(retrievedMsg.receiverId, originalMsg.receiverId);
+        QCOMPARE(retrievedMsg.plaintext, originalMsg.plaintext);
+        QCOMPARE(retrievedMsg.state, originalMsg.state);
+        QCOMPARE(retrievedMsg.timestamp, originalMsg.timestamp);
+        
+        QCOMPARE(retrievedMsg.type, originalMsg.type);
+        QCOMPARE(retrievedMsg.mediaUrl, originalMsg.mediaUrl);
+        QCOMPARE(retrievedMsg.fileName, originalMsg.fileName);
+        QCOMPARE(retrievedMsg.fileSize, originalMsg.fileSize);
+        QCOMPARE(retrievedMsg.duration, originalMsg.duration);
+        QCOMPARE(retrievedMsg.waveform, originalMsg.waveform);
+        QCOMPARE(retrievedMsg.mediaWidth, originalMsg.mediaWidth);
+        QCOMPARE(retrievedMsg.mediaHeight, originalMsg.mediaHeight);
+    }
+
+    QFile::remove(dbPath);
+}
+
+void TestMessagingCore::testImageMetadataRestartPersistence() {
+    QString dbPath = "test_messaging_core_image_persistence.db";
+    QFile::remove(dbPath);
+
+    Message originalMsg;
+    originalMsg.messageId = "msg_img_1";
+    originalMsg.conversationId = "conv2";
+    originalMsg.senderId = "alice";
+    originalMsg.receiverId = "bob";
+    originalMsg.plaintext = "look at this";
+    originalMsg.state = MessageState::DELIVERED;
+    originalMsg.timestamp = 987654321;
+    
+    // Set media fields
+    originalMsg.type = "image";
+    originalMsg.mediaUrl = "file:///path/to/photo.jpg";
+    originalMsg.fileName = "photo.jpg";
+    originalMsg.fileSize = 987654;
+    originalMsg.duration = 0;
+    originalMsg.waveform = QByteArray();
+    originalMsg.mediaWidth = 1920;
+    originalMsg.mediaHeight = 1080;
+
+    {
+        SqliteMessageStorage storage(dbPath);
+        QVERIFY(storage.saveMessage(originalMsg));
+    }
+
+    {
+        SqliteMessageStorage storage(dbPath);
+        auto retrievedMsgOpt = storage.getMessage("msg_img_1");
+        QVERIFY(retrievedMsgOpt.has_value());
+        Message retrievedMsg = retrievedMsgOpt.value();
+
+        QCOMPARE(retrievedMsg.type, originalMsg.type);
+        QCOMPARE(retrievedMsg.mediaUrl, originalMsg.mediaUrl);
+        QCOMPARE(retrievedMsg.fileName, originalMsg.fileName);
+        QCOMPARE(retrievedMsg.fileSize, originalMsg.fileSize);
+        QCOMPARE(retrievedMsg.duration, originalMsg.duration);
+        QCOMPARE(retrievedMsg.waveform, originalMsg.waveform);
+        QCOMPARE(retrievedMsg.mediaWidth, originalMsg.mediaWidth);
+        QCOMPARE(retrievedMsg.mediaHeight, originalMsg.mediaHeight);
+    }
+
+    QFile::remove(dbPath);
+}
+
+void TestMessagingCore::testLegacyRowCompatibility() {
+    QString dbPath = "test_messaging_core_legacy_compat.db";
+    QFile::remove(dbPath);
+
+    {
+        // 1. Manually create the legacy schema without the new columns
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "legacy_compat_setup");
+        db.setDatabaseName(dbPath);
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        QVERIFY(query.exec("CREATE TABLE messages ("
+                           "id TEXT PRIMARY KEY, "
+                           "server_id INTEGER, "
+                           "conversation_id TEXT, "
+                           "sender_id TEXT, "
+                           "receiver_id TEXT, "
+                           "plaintext TEXT, "
+                           "state INTEGER, "
+                           "created_at INTEGER, "
+                           "updated_at INTEGER)"));
+        QVERIFY(query.exec("INSERT INTO messages (id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, updated_at) "
+                           "VALUES ('legacymsg_compat', 1, 'conv1', 'alice', 'bob', 'legacy plaintext', 0, 1000, 1000)"));
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("legacy_compat_setup");
+
+    {
+        // 2. Open via SqliteMessageStorage, which triggers migration, and read the legacy message
+        SqliteMessageStorage storage(dbPath);
+        auto msgOpt = storage.getMessage("legacymsg_compat");
+        QVERIFY(msgOpt.has_value());
+        
+        Message msg = msgOpt.value();
+        QCOMPARE(msg.plaintext, QString("legacy plaintext"));
+        QCOMPARE(msg.type, QString("text")); // Should default safely to "text"
+        QCOMPARE(msg.mediaUrl, QString("")); // Default empty
+        QCOMPARE(msg.fileName, QString("")); // Default empty
+        QCOMPARE(msg.fileSize, 0LL);         // Default 0
+        QCOMPARE(msg.duration, 0);           // Default 0
+        QCOMPARE(msg.waveform, QByteArray());// Default empty
+        QCOMPARE(msg.mediaWidth, 0);         // Default 0
+        QCOMPARE(msg.mediaHeight, 0);        // Default 0
+    }
+
+    QFile::remove(dbPath);
+}
+
+void TestMessagingCore::testCrudIntegrity() {
+    QString dbPath = "test_messaging_core_crud_integrity.db";
+    QFile::remove(dbPath);
+
+    SqliteMessageStorage storage(dbPath);
+    
+    // 1. Save -> Read
+    Message msg1;
+    msg1.messageId = "crud_msg1";
+    msg1.conversationId = "crud_conv";
+    msg1.type = "video";
+    msg1.mediaUrl = "file:///video.mp4";
+    QVERIFY(storage.saveMessage(msg1));
+    
+    auto retrieved1 = storage.getMessage("crud_msg1");
+    QVERIFY(retrieved1.has_value());
+    QCOMPARE(retrieved1->type, QString("video"));
+    
+    // 2. Save -> Read multiple messages (no cross-contamination)
+    Message msg2;
+    msg2.messageId = "crud_msg2";
+    msg2.conversationId = "crud_conv";
+    msg2.type = "text"; // Different metadata
+    QVERIFY(storage.saveMessage(msg2));
+    
+    auto allMsgs = storage.getConversationMessages("crud_conv");
+    QCOMPARE(allMsgs.size(), 2);
+    
+    // Verify specific properties didn't bleed
+    for(const auto& m : allMsgs) {
+        if (m.messageId == "crud_msg1") {
+            QCOMPARE(m.type, QString("video"));
+            QCOMPARE(m.mediaUrl, QString("file:///video.mp4"));
+        } else if (m.messageId == "crud_msg2") {
+            QCOMPARE(m.type, QString("text"));
+            QCOMPARE(m.mediaUrl, QString(""));
+        } else {
+            QFAIL("Unexpected message");
+        }
+    }
+    
+    // 3. Duplicate ID (existing semantics unchanged)
+    Message duplicateMsg1 = msg1;
+    duplicateMsg1.type = "image"; // Try to change type
+    QVERIFY(storage.saveMessage(duplicateMsg1)); // Should return true but NOT overwrite
+    
+    auto reRetrieved1 = storage.getMessage("crud_msg1");
+    QVERIFY(reRetrieved1.has_value());
+    QCOMPARE(reRetrieved1->type, QString("video")); // Remains video
+    
+    // 4. State update (does not erase media metadata)
+    QVERIFY(storage.updateMessageState("crud_msg1", MessageState::DELIVERED));
+    auto stateUpdated1 = storage.getMessage("crud_msg1");
+    QVERIFY(stateUpdated1.has_value());
+    QCOMPARE(stateUpdated1->state, MessageState::DELIVERED);
+    QCOMPARE(stateUpdated1->type, QString("video")); // Media metadata preserved
+    QCOMPARE(stateUpdated1->mediaUrl, QString("file:///video.mp4"));
+    
+    // 5. Delete
+    QVERIFY(storage.deleteMessage("crud_msg1"));
+    auto deletedMsg = storage.getMessage("crud_msg1");
+    QVERIFY(!deletedMsg.has_value());
+    
+    auto remainingMsg = storage.getMessage("crud_msg2");
+    QVERIFY(remainingMsg.has_value()); // msg2 is untouched
+    
+    QFile::remove(dbPath);
+}

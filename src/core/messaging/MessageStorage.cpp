@@ -29,28 +29,90 @@ QSqlDatabase SqliteMessageStorage::getDatabase() {
         QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);
         db.setDatabaseName(m_dbPath);
         if (db.open()) {
-            QSqlQuery pragmaQuery(db);
-            if (!pragmaQuery.exec("PRAGMA journal_mode = WAL;")) {
-                qWarning() << "Failed to set WAL mode for MessageStorage:" << pragmaQuery.lastError().text();
+            bool migrationFailed = false;
+            {
+                QSqlQuery pragmaQuery(db);
+                if (!pragmaQuery.exec("PRAGMA journal_mode = WAL;")) {
+                    qWarning() << "Failed to set WAL mode for MessageStorage:" << pragmaQuery.lastError().text();
+                }
+                if (!pragmaQuery.exec("PRAGMA synchronous = NORMAL;")) {
+                    qWarning() << "Failed to set synchronous mode for MessageStorage:" << pragmaQuery.lastError().text();
+                }
+                if (!pragmaQuery.exec("PRAGMA busy_timeout = 5000;")) {
+                    qWarning() << "Failed to set busy_timeout for MessageStorage:" << pragmaQuery.lastError().text();
+                }
+                QSqlQuery query(db);
+                query.exec("CREATE TABLE IF NOT EXISTS messages ("
+                           "id TEXT PRIMARY KEY, "
+                           "server_id INTEGER, "
+                           "conversation_id TEXT, "
+                           "sender_id TEXT, "
+                           "receiver_id TEXT, "
+                           "plaintext TEXT, "
+                           "state INTEGER, "
+                           "created_at INTEGER, "
+                           "updated_at INTEGER, "
+                           "type TEXT DEFAULT 'text', "
+                           "media_url TEXT DEFAULT '', "
+                           "file_name TEXT DEFAULT '', "
+                           "file_size INTEGER DEFAULT 0, "
+                           "duration INTEGER DEFAULT 0, "
+                           "waveform BLOB, "
+                           "media_width INTEGER DEFAULT 0, "
+                           "media_height INTEGER DEFAULT 0)");
+                query.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_server_id ON messages (server_id) WHERE server_id > 0");
+                
+                // Schema migration check
+                QSqlQuery pragmaCheck(db);
+                if (pragmaCheck.exec("PRAGMA table_info(messages)")) {
+                    QSet<QString> existingColumns;
+                    while (pragmaCheck.next()) {
+                        existingColumns.insert(pragmaCheck.value(1).toString());
+                    }
+                    
+                    struct ColumnDef {
+                        QString name;
+                        QString def;
+                    };
+                    QList<ColumnDef> targetColumns = {
+                        {"type", "type TEXT DEFAULT 'text'"},
+                        {"media_url", "media_url TEXT DEFAULT ''"},
+                        {"file_name", "file_name TEXT DEFAULT ''"},
+                        {"file_size", "file_size INTEGER DEFAULT 0"},
+                        {"duration", "duration INTEGER DEFAULT 0"},
+                        {"waveform", "waveform BLOB"},
+                        {"media_width", "media_width INTEGER DEFAULT 0"},
+                        {"media_height", "media_height INTEGER DEFAULT 0"}
+                    };
+                    
+                    for (const auto& col : targetColumns) {
+                        if (!existingColumns.contains(col.name)) {
+                            QSqlQuery alterQuery(db);
+                            QString alterSql = "ALTER TABLE messages ADD COLUMN " + col.def;
+                            if (!alterQuery.exec(alterSql)) {
+                                qWarning() << "Failed to migrate messages table:" << alterQuery.lastError().text();
+                                migrationFailed = true;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    qWarning() << "Failed to get table info for messages:" << pragmaCheck.lastError().text();
+                    migrationFailed = true;
+                }
             }
-            if (!pragmaQuery.exec("PRAGMA synchronous = NORMAL;")) {
-                qWarning() << "Failed to set synchronous mode for MessageStorage:" << pragmaQuery.lastError().text();
+            
+            if (migrationFailed) {
+                db.close();
+                db = QSqlDatabase();
+                QSqlDatabase::removeDatabase(name);
+                return QSqlDatabase();
             }
-            if (!pragmaQuery.exec("PRAGMA busy_timeout = 5000;")) {
-                qWarning() << "Failed to set busy_timeout for MessageStorage:" << pragmaQuery.lastError().text();
-            }
-            QSqlQuery query(db);
-            query.exec("CREATE TABLE IF NOT EXISTS messages ("
-                       "id TEXT PRIMARY KEY, "
-                       "server_id INTEGER, "
-                       "conversation_id TEXT, "
-                       "sender_id TEXT, "
-                       "receiver_id TEXT, "
-                       "plaintext TEXT, "
-                       "state INTEGER, "
-                       "created_at INTEGER, "
-                       "updated_at INTEGER)");
-            query.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_server_id ON messages (server_id) WHERE server_id > 0");
+        } else {
+            qWarning() << "Failed to open database:" << db.lastError().text();
+            db = QSqlDatabase();
+            QSqlDatabase::removeDatabase(name);
+            return QSqlDatabase();
         }
         m_connectionNames.insert(threadId, name);
         return db;
@@ -86,8 +148,8 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
     }
 
     QSqlQuery query(db);
-    query.prepare("INSERT OR REPLACE INTO messages (id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, updated_at) "
-                  "VALUES (:id, :srv, :cid, :sid, :rid, :txt, :state, :created_at, :updated_at)");
+    query.prepare("INSERT OR REPLACE INTO messages (id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, updated_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height) "
+                  "VALUES (:id, :srv, :cid, :sid, :rid, :txt, :state, :created_at, :updated_at, :type, :media_url, :file_name, :file_size, :duration, :waveform, :media_width, :media_height)");
     query.bindValue(":id", msg.messageId);
     query.bindValue(":srv", msg.serverId);
     query.bindValue(":cid", msg.conversationId);
@@ -97,6 +159,14 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
     query.bindValue(":state", static_cast<int>(msg.state));
     query.bindValue(":created_at", msg.timestamp);
     query.bindValue(":updated_at", msg.timestamp);
+    query.bindValue(":type", msg.type);
+    query.bindValue(":media_url", msg.mediaUrl);
+    query.bindValue(":file_name", msg.fileName);
+    query.bindValue(":file_size", static_cast<qint64>(msg.fileSize));
+    query.bindValue(":duration", msg.duration);
+    query.bindValue(":waveform", msg.waveform);
+    query.bindValue(":media_width", msg.mediaWidth);
+    query.bindValue(":media_height", msg.mediaHeight);
     
     if (query.exec()) {
         return db.commit();
@@ -111,7 +181,7 @@ std::optional<Message> SqliteMessageStorage::getMessage(const QString& messageId
     if (!db.isOpen() && !db.open()) return std::nullopt;
 
     QSqlQuery query(db);
-    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at FROM messages WHERE id = :id");
+    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height FROM messages WHERE id = :id");
     query.bindValue(":id", messageId);
     if (query.exec() && query.next()) {
         Message msg;
@@ -123,6 +193,15 @@ std::optional<Message> SqliteMessageStorage::getMessage(const QString& messageId
         msg.plaintext = query.value(5).toString();
         msg.state = static_cast<MessageState>(query.value(6).toInt());
         msg.timestamp = query.value(7).toLongLong();
+        msg.type = query.value(8).toString();
+        if (msg.type.isEmpty()) msg.type = "text";
+        msg.mediaUrl = query.value(9).toString();
+        msg.fileName = query.value(10).toString();
+        msg.fileSize = query.value(11).toLongLong();
+        msg.duration = query.value(12).toInt();
+        msg.waveform = query.value(13).toByteArray();
+        msg.mediaWidth = query.value(14).toInt();
+        msg.mediaHeight = query.value(15).toInt();
         return msg;
     }
     return std::nullopt;
@@ -148,7 +227,7 @@ std::vector<Message> SqliteMessageStorage::getConversationMessages(const QString
     std::vector<Message> results;
     QSqlQuery query(db);
     // ordered by timestamp, then messageId tie breaker
-    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at FROM messages "
+    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height FROM messages "
                   "WHERE conversation_id = :cid ORDER BY created_at ASC, id ASC");
     query.bindValue(":cid", conversationId);
     if (query.exec()) {
@@ -162,6 +241,15 @@ std::vector<Message> SqliteMessageStorage::getConversationMessages(const QString
             msg.plaintext = query.value(5).toString();
             msg.state = static_cast<MessageState>(query.value(6).toInt());
             msg.timestamp = query.value(7).toLongLong();
+            msg.type = query.value(8).toString();
+            if (msg.type.isEmpty()) msg.type = "text";
+            msg.mediaUrl = query.value(9).toString();
+            msg.fileName = query.value(10).toString();
+            msg.fileSize = query.value(11).toLongLong();
+            msg.duration = query.value(12).toInt();
+            msg.waveform = query.value(13).toByteArray();
+            msg.mediaWidth = query.value(14).toInt();
+            msg.mediaHeight = query.value(15).toInt();
             results.push_back(msg);
         }
     }
