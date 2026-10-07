@@ -208,6 +208,9 @@ signals:
     /** @brief Emitted when a peer starts or stops typing. */
     void peerTypingStatusChanged(const QString &conversationId, const QString &senderId, bool isTyping);
     
+    /** @brief Emitted when a local media message is deleted to allow cleanup. */
+    void localMediaAbandoned(const QString &mediaUrl);
+    
     /** @brief Emitted to RelayService to encrypt and transmit a domain message. */
     void transmitMessage(const NeoNect::Domain::Message &msg);
 

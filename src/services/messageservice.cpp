@@ -927,10 +927,23 @@ void MessageService::markMessagesSeenAsync(const QString &conversationId, const 
 
 void MessageService::deleteMessageAsync(const QString &id) {
     auto storage = m_storage;
-    QMetaObject::invokeMethod(m_workerContext, [storage, id]() {
+    QString mediaUrlToClean;
+    if (m_outgoingMessages.contains(id)) {
+        if (m_outgoingMessages[id].type == "voice_note" || m_outgoingMessages[id].type == "media_request") {
+            mediaUrlToClean = m_outgoingMessages[id].mediaUrl;
+        }
+    }
+    
+    QMetaObject::invokeMethod(m_workerContext, [storage, id, mediaUrlToClean, this]() {
         auto s = storage.lock();
         if (!s) return;
         s->deleteMessage(id);
+        
+        if (!mediaUrlToClean.isEmpty()) {
+            QMetaObject::invokeMethod(this, [this, mediaUrlToClean]() {
+                emit localMediaAbandoned(mediaUrlToClean);
+            });
+        }
     });
 }
 

@@ -12,6 +12,7 @@
 #include <QFileInfo>
 #include <QSettings>
 #include <cstring>
+#include "../storage/StoragePathResolver.h"
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -64,6 +65,41 @@ void AudioManager::playUiBeep(int freqHz, int durationMs) {
     Q_UNUSED(freqHz);
     Q_UNUSED(durationMs);
 #endif
+}
+
+void AudioManager::setStorageBoundary(const QString& serverUrl, const QString& username) {
+    std::lock_guard<std::mutex> lock(m_audioMutex);
+    m_serverUrl = serverUrl;
+    m_username = username;
+}
+
+void AudioManager::cleanupLocalFile(const QString& url) {
+    if (url.isEmpty()) return;
+    
+    QString sUrl, sUser;
+    {
+        std::lock_guard<std::mutex> lock(m_audioMutex);
+        sUrl = m_serverUrl;
+        sUser = m_username;
+    }
+
+    if (sUrl.isEmpty() || sUser.isEmpty()) return;
+
+    QString localPath = url;
+    if (localPath.startsWith("file:///")) {
+        localPath = QUrl(localPath).toLocalFile();
+    }
+
+    QString baseDir = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, sUser);
+    QString expectedRoot = QDir(baseDir + "/voice_notes").canonicalPath();
+
+    QFileInfo fi(localPath);
+    if (!fi.exists()) return;
+
+    QString canonPath = fi.canonicalFilePath();
+    if (!expectedRoot.isEmpty() && (canonPath.startsWith(expectedRoot + "/") || canonPath == expectedRoot)) {
+        QFile::remove(canonPath);
+    }
 }
 
 void AudioManager::openMediaFile(const QString &mediaUrl) {
@@ -512,6 +548,9 @@ QVariantMap AudioManager::stopRecording() {
         pcm = m_recordedPcmAudio;
     }
 
+    // Removed pcm.empty() block to allow empty wav files (44 bytes) to be generated
+    // on Linux where waveIn is not available, preserving original fallback behavior.
+
     if (amps.empty()) {
         for (int i = 0; i < targetBars; ++i) {
             sampledWaveform.append(0.2 + (i % 3) * 0.2);
@@ -530,10 +569,26 @@ QVariantMap AudioManager::stopRecording() {
         }
     }
 
-    QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (baseDir.isEmpty()) {
-        baseDir = QDir::currentPath() + "/cache";
+    QString sUrl, sUser;
+    {
+        std::lock_guard<std::mutex> lock(m_audioMutex);
+        sUrl = m_serverUrl;
+        sUser = m_username;
     }
+
+    if (sUrl.isEmpty() || sUser.isEmpty()) {
+        qWarning() << "[AudioManager] Cannot save voice note: No authenticated context.";
+        m_recordingDuration = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_recordMutex);
+            m_recordedAmplitudes.clear();
+            m_recordedPcmAudio.clear();
+        }
+        emit recordingDurationChanged();
+        return {};
+    }
+
+    QString baseDir = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, sUser);
     QDir().mkpath(baseDir + "/voice_notes");
 
     QString fileName = "voice_note_" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".wav";
@@ -735,7 +790,39 @@ void AudioManager::audioOutputWorker() {
 void AudioManager::playAudio(const QString &messageId, const QString &audioUrl, int durationSecs) {
     if (messageId.isEmpty()) return;
 
+    QString sUrl, sUser;
+    {
+        std::lock_guard<std::mutex> lock(m_audioMutex);
+        sUrl = m_serverUrl;
+        sUser = m_username;
+    }
+
+    if (sUrl.isEmpty() || sUser.isEmpty()) {
+        qWarning() << "[AudioManager] Cannot play audio: No authenticated context.";
+        return;
+    }
+
     if (m_currentPlayingId != messageId) {
+        QString localPath = audioUrl;
+        if (localPath.startsWith("file:///")) {
+            localPath = QUrl(localPath).toLocalFile();
+        }
+        
+        QString baseDir = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, sUser);
+        QString expectedRoot = QDir(baseDir + "/voice_notes").canonicalPath();
+
+        QFileInfo fi(localPath);
+        if (!fi.exists()) {
+            qWarning() << "[AudioManager] Audio file does not exist:" << localPath;
+            return;
+        }
+
+        QString canonPath = fi.canonicalFilePath();
+        if (expectedRoot.isEmpty() || (!canonPath.startsWith(expectedRoot + "/") && canonPath != expectedRoot)) {
+            qWarning() << "[AudioManager] Cannot play audio outside of authenticated voice-note directory.";
+            return;
+        }
+
         stopMci();
         stopAudioPlaybackThread();
 
@@ -745,11 +832,6 @@ void AudioManager::playAudio(const QString &messageId, const QString &audioUrl, 
         m_totalDuration = (durationSecs > 0 ? durationSecs : 10) * 1000;
         m_playbackProgress = 0.0;
         m_playbackFileSampleIndex = 0;
-
-        QString localPath = audioUrl;
-        if (localPath.startsWith("file:///")) {
-            localPath = QUrl(localPath).toLocalFile();
-        }
 
         if (QFile::exists(localPath)) {
             if (playViaMci(localPath)) {

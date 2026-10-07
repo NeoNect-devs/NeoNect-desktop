@@ -2489,3 +2489,81 @@ void TestServices::testAvatarIsolation() {
     QCOMPARE(netMgrAlice2.avatarUrl(), QString(""));
     QVERIFY(!QFile::exists(alice2Url)); // physical cleanup
 }
+
+void TestServices::testVoiceNoteIsolation() {
+    auto storageAlice1 = std::make_shared<NeoNect::Storage::SettingsRepository>("alice1");
+    storageAlice1->setServerUrl("https://server1.local");
+    storageAlice1->setUsername("alice");
+
+    auto storageAlice2 = std::make_shared<NeoNect::Storage::SettingsRepository>("alice2");
+    storageAlice2->setServerUrl("https://server2.local");
+    storageAlice2->setUsername("alice");
+
+    auto storageBob1 = std::make_shared<NeoNect::Storage::SettingsRepository>("bob1");
+    storageBob1->setServerUrl("https://server1.local");
+    storageBob1->setUsername("bob");
+
+    // 1. Authenticated recording uses isolated directory
+    AudioManager amAlice1;
+    amAlice1.setStorageBoundary(storageAlice1->serverUrl(), storageAlice1->username());
+    
+    // simulate recording
+    amAlice1.startRecording();
+    QTest::qWait(150); // wait for some PCM to generate
+    QVariantMap resAlice1 = amAlice1.stopRecording();
+    QString url1 = resAlice1["audioUrl"].toString();
+    QVERIFY(!url1.isEmpty());
+    
+    QString cleanUrl1 = url1;
+    if (cleanUrl1.startsWith("file:///")) cleanUrl1 = QUrl(cleanUrl1).toLocalFile();
+    QVERIFY(QFile::exists(cleanUrl1));
+
+    // 2. Unauthenticated recording fails
+    AudioManager amGuest;
+    amGuest.setStorageBoundary("", "");
+    amGuest.startRecording();
+    QTest::qWait(150);
+    QVariantMap resGuest = amGuest.stopRecording();
+    QVERIFY(resGuest.isEmpty());
+
+    // 3. Playback containment (success case)
+    QSignalSpy spyPlayback(&amAlice1, SIGNAL(playbackStateChanged()));
+    amAlice1.playAudio("msg1", url1, 1);
+    QTest::qWait(100);
+    QVERIFY(amAlice1.isPlaying());
+
+    // 4. Playback rejection: cross-server
+    AudioManager amAlice2;
+    amAlice2.setStorageBoundary(storageAlice2->serverUrl(), storageAlice2->username());
+    amAlice2.playAudio("msg2", url1, 1);
+    QTest::qWait(100);
+    QVERIFY(!amAlice2.isPlaying());
+
+    // 5. Playback rejection: cross-user
+    AudioManager amBob1;
+    amBob1.setStorageBoundary(storageBob1->serverUrl(), storageBob1->username());
+    amBob1.playAudio("msg3", url1, 1);
+    QTest::qWait(100);
+    QVERIFY(!amBob1.isPlaying());
+
+    // 6. Playback rejection: traversal / outside root
+    amAlice1.playAudio("msg4", "file:///tmp/some_other_audio.wav", 1);
+    QTest::qWait(100);
+    // Since playAudio ignores out-of-bounds, it shouldn't start playing the new track
+    // If it was playing url1, it might just keep playing, but we check if it accepted msg4
+    QVERIFY(amAlice1.currentPlayingId() != "msg4");
+
+    // 7. Cleanup success
+    amAlice1.cleanupLocalFile(url1);
+    QVERIFY(!QFile::exists(cleanUrl1));
+
+    // 8. Cleanup rejection out-of-bounds
+    QString testOut = QDir::temp().filePath("test_out.wav");
+    QFile outF(testOut);
+    outF.open(QIODevice::WriteOnly);
+    outF.write("dummy");
+    outF.close();
+    amAlice1.cleanupLocalFile("file://" + testOut);
+    QVERIFY(QFile::exists(testOut));
+    QFile::remove(testOut);
+}

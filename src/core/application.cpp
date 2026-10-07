@@ -333,6 +333,8 @@ void Application::initializeServices() {
             QString server = m_storage->serverUrl();
             if (user.isEmpty()) return; // Must have authenticated user
 
+            if (m_audioManager) m_audioManager->setStorageBoundary(server, user);
+
             m_storageContext = std::make_unique<Storage::StorageContext>(server, user, m_isMockMode, m_profile);
 
             m_messageStorage = m_storageContext->messageStorage();
@@ -367,6 +369,8 @@ void Application::initializeServices() {
             }
         } else {
             // Logout
+            if (m_audioManager) m_audioManager->setStorageBoundary("", "");
+
             m_storageContext.reset();
             m_messageStorage.reset();
             m_messageQueue.reset();
@@ -448,6 +452,13 @@ void Application::initializeServices() {
     QObject::connect(m_networkManager.get(), &NetworkManager::displayNameChanged, m_networkManager.get(), broadcastPresence);
 
     m_audioManager = std::make_unique<AudioManager>();
+    if (!m_storage->username().isEmpty() && !m_storage->serverUrl().isEmpty()) {
+        m_audioManager->setStorageBoundary(m_storage->serverUrl(), m_storage->username().trimmed().toLower());
+    }
+    
+    QObject::connect(m_messageService.get(), &Services::MessageService::localMediaAbandoned,
+                     m_audioManager.get(), &AudioManager::cleanupLocalFile);
+
     m_notificationManager = std::make_unique<Core::NotificationManager>();
     m_notificationManager->setupMessageServiceHook(m_messageService.get());
     m_versionInfo = std::make_unique<Core::VersionInfo>();

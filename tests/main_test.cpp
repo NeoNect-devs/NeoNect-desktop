@@ -274,7 +274,18 @@ int main(int argc, char *argv[]) {
         std::cout << "    Result: " << (r23_iso == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= r23_iso;
 
-        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20 | r21 | r22 | r23 | r23_iso);
+        std::cout << "--> Testing testVoiceNoteIsolation..." << std::endl;
+        int r_vn_iso = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testVoiceNoteIsolation" << "-o" << "vn_iso_log.txt,txt");
+        if (r_vn_iso != 0) {
+            QFile f("vn_iso_log.txt");
+            if (f.open(QIODevice::ReadOnly)) {
+                std::cout << f.readAll().toStdString() << std::endl;
+            }
+        }
+        std::cout << "    Result: " << (r_vn_iso == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= r_vn_iso;
+
+        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20 | r21 | r22 | r23 | r23_iso | r_vn_iso);
     }
 
     {

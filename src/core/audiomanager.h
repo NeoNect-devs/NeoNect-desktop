@@ -112,6 +112,10 @@ public:
     /** @brief Returns true if muted. */
     bool isMuted() const { return m_isMuted; }
 
+    void setStorageBoundary(const QString& serverUrl, const QString& username);
+
+    Q_INVOKABLE void cleanupLocalFile(const QString& url);
+
     /**
      * @brief Starts microphone capture on a background thread and begins recording.
      * @pre `isRecording() == false`.
@@ -249,6 +253,9 @@ private slots:
     void onPlaybackTimerTick();
 
 private:
+    QString m_serverUrl;
+    QString m_username;
+
     /** @brief Starts the background PCM playback thread. */
     void startAudioPlaybackThread();
     /** @brief Stops the background PCM playback thread. */
