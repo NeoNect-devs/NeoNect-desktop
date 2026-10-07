@@ -16,6 +16,29 @@ MessageService::MessageService(std::weak_ptr<IMessageStorage> storage,
 {
 }
 
+QByteArray MessageService::serializePayload(const Message& msg) {
+    QJsonObject obj;
+    obj["messageId"] = msg.messageId;
+    obj["conversationId"] = msg.conversationId;
+    obj["senderId"] = msg.senderId;
+    obj["receiverId"] = msg.receiverId;
+    obj["timestamp"] = msg.timestamp;
+    obj["plaintext"] = msg.plaintext;
+    obj["type"] = msg.type;
+    
+    if (!msg.fileName.isEmpty()) obj["fileName"] = msg.fileName;
+    if (msg.fileSize > 0) obj["fileSize"] = msg.fileSize;
+    if (msg.duration > 0) obj["duration"] = msg.duration;
+    if (msg.mediaWidth > 0) obj["mediaWidth"] = msg.mediaWidth;
+    if (msg.mediaHeight > 0) obj["mediaHeight"] = msg.mediaHeight;
+    if (!msg.waveform.isEmpty()) {
+        obj["waveform"] = QString::fromLatin1(msg.waveform.toBase64());
+    }
+
+    return QJsonDocument(obj).toJson(QJsonDocument::Compact);
+}
+
+
 bool MessageService::sendMessage(Message& msg) {
     auto storage = m_storage.lock();
     if (!storage) return false;
@@ -46,15 +69,7 @@ bool MessageService::sendMessage(Message& msg) {
         return false;
     }
 
-    QJsonObject obj;
-    obj["messageId"] = msg.messageId;
-    obj["conversationId"] = msg.conversationId;
-    obj["senderId"] = msg.senderId;
-    obj["receiverId"] = msg.receiverId;
-    obj["timestamp"] = msg.timestamp;
-    obj["plaintext"] = msg.plaintext;
-    obj["type"] = msg.type;
-    QByteArray rawPlaintext = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    QByteArray rawPlaintext = serializePayload(msg);
 
     QString msgId = msg.messageId;
     QString receiver = msg.receiverId;
@@ -168,6 +183,39 @@ void MessageService::receiveMessage(const QString& sessionId, const QByteArray& 
     msg.timestamp = obj["timestamp"].toVariant().toLongLong();
     msg.plaintext = obj["plaintext"].toString();
     if (obj.contains("type")) msg.type = obj["type"].toString();
+
+    if (obj.contains("fileName")) {
+        QString f = obj["fileName"].toString();
+        if (f.length() <= 1024) msg.fileName = f;
+    }
+    if (obj.contains("fileSize")) {
+        qint64 size = obj["fileSize"].toVariant().toLongLong();
+        if (size > 0) msg.fileSize = size;
+    }
+    if (obj.contains("duration")) {
+        qint64 duration = obj["duration"].toVariant().toLongLong();
+        if (duration > 0) msg.duration = duration;
+    }
+    if (obj.contains("mediaWidth")) {
+        int width = obj["mediaWidth"].toInt();
+        if (width > 0 && width <= 32768) msg.mediaWidth = width;
+    }
+    if (obj.contains("mediaHeight")) {
+        int height = obj["mediaHeight"].toInt();
+        if (height > 0 && height <= 32768) msg.mediaHeight = height;
+    }
+    if (obj.contains("waveform")) {
+        QString b64 = obj["waveform"].toString();
+        if (b64.length() <= 65536) {
+            auto options = QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors;
+            auto result = QByteArray::fromBase64Encoding(b64.toLatin1(), options);
+            if (result.decodingStatus == QByteArray::Base64DecodingStatus::Ok) {
+                if (!result.decoded.isEmpty()) {
+                    msg.waveform = result.decoded;
+                }
+            }
+        }
+    }
 
     if (msg.messageId.isEmpty() || msg.senderId.isEmpty()) {
         return; // reject missing mandatory fields

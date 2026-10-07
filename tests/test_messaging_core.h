@@ -28,4 +28,12 @@ private slots:
     void testImageMetadataRestartPersistence();
     void testLegacyRowCompatibility();
     void testCrudIntegrity();
+
+    // Phase 3.6 tests
+    void testMediaMetadataSerializationPrivacy();
+    void testMediaMetadataDecoding();
+    void testMediaMetadataRoundTripImage();
+    void testMediaMetadataRoundTripVoice();
+    void testMediaMetadataRoundTripOldPayload();
+    void testMediaMetadataDecodingBounds();
 };

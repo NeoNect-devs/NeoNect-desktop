@@ -42,6 +42,9 @@ public:
 
     void setOnMessageReceived(MessageReceivedCallback cb) { m_onMessageReceived = cb; }
 
+    // Exposed for testing
+    static QByteArray serializePayload(const Message& msg);
+
 private:
     std::weak_ptr<IMessageStorage> m_storage;
     std::shared_ptr<Crypto::Session::SessionManager> m_sessionManager;

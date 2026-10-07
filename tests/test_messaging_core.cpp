@@ -689,3 +689,250 @@ void TestMessagingCore::testCrudIntegrity() {
     
     QFile::remove(dbPath);
 }
+
+void TestMessagingCore::testMediaMetadataSerializationPrivacy() {
+    NeoNect::Core::Messaging::Message msg;
+    msg.messageId = "test_serialization_1";
+    msg.conversationId = "conv1";
+    msg.senderId = "alice";
+    msg.receiverId = "bob";
+    msg.timestamp = 123456789;
+    msg.plaintext = "audio description";
+    msg.type = "audio";
+    
+    // Add media metadata
+    msg.mediaUrl = "file:///home/user/private/audio.ogg"; // THIS MUST BE STRIPPED
+    msg.fileName = "audio.ogg";
+    msg.fileSize = 1048576;
+    msg.duration = 120;
+    msg.mediaWidth = 0;
+    msg.mediaHeight = 0;
+    QByteArray dummyWaveform;
+    dummyWaveform.fill('\xAA', 100);
+    msg.waveform = dummyWaveform;
+    
+    QByteArray payload = NeoNect::Core::Messaging::MessageService::serializePayload(msg);
+    QJsonDocument doc = QJsonDocument::fromJson(payload);
+    QVERIFY(doc.isObject());
+    QJsonObject obj = doc.object();
+    
+    // Verify core fields
+    QCOMPARE(obj["messageId"].toString(), QString("test_serialization_1"));
+    QCOMPARE(obj["type"].toString(), QString("audio"));
+    
+    // Verify media metadata
+    QCOMPARE(obj["fileName"].toString(), QString("audio.ogg"));
+    QCOMPARE(obj["fileSize"].toVariant().toLongLong(), 1048576LL);
+    QCOMPARE(obj["duration"].toVariant().toLongLong(), 120LL);
+    QCOMPARE(obj["waveform"].toString(), QString::fromLatin1(dummyWaveform.toBase64()));
+    
+    // Privacy check: mediaUrl MUST NOT be serialized
+    QVERIFY(!obj.contains("mediaUrl"));
+}
+
+void TestMessagingCore::testMediaMetadataDecoding() {
+    auto storage = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>("test_messaging_core.db");
+    NeoNect::Core::Messaging::MessageService service(storage, nullptr);
+    
+    QJsonObject obj;
+    obj["messageId"] = "recv_decode_1";
+    obj["conversationId"] = "conv5";
+    obj["senderId"] = "alice";
+    obj["receiverId"] = "bob";
+    obj["timestamp"] = 123456789;
+    obj["plaintext"] = "sent audio";
+    obj["type"] = "audio";
+    
+    // Explicitly add a malicious/fake mediaUrl to ensure receiver ignores it
+    obj["mediaUrl"] = "file:///etc/passwd";
+    obj["fileName"] = "voice.ogg";
+    obj["fileSize"] = 5000;
+    obj["duration"] = 15;
+    
+    QByteArray fakeWave;
+    fakeWave.fill('\xFF', 50);
+    obj["waveform"] = QString::fromLatin1(fakeWave.toBase64());
+    
+    // Bounds check test data
+    obj["mediaWidth"] = 50000; // Over max 32768, should be ignored
+    obj["mediaHeight"] = 1024;
+    
+    QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    service.receiveMessage("alice:device1", payload);
+    
+    auto retrieved = storage->getMessage("recv_decode_1");
+    QVERIFY(retrieved.has_value());
+    
+    // Core fields
+    QCOMPARE(retrieved->type, QString("audio"));
+    
+    // Extracted metadata
+    QCOMPARE(retrieved->fileName, QString("voice.ogg"));
+    QCOMPARE(retrieved->fileSize, 5000LL);
+    QCOMPARE(retrieved->duration, 15LL);
+    QCOMPARE(retrieved->waveform, fakeWave);
+    QCOMPARE(retrieved->mediaHeight, 1024);
+    
+    // Bounds check verification
+    QCOMPARE(retrieved->mediaWidth, 0); // Should be default 0 because 50000 > 32768
+    
+    // Privacy / security check
+    QVERIFY(retrieved->mediaUrl.isEmpty()); // Must be empty
+}
+
+void TestMessagingCore::testMediaMetadataRoundTripImage() {
+    auto storage = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>("test_messaging_core.db");
+    NeoNect::Core::Messaging::MessageService service(storage, nullptr);
+
+    NeoNect::Core::Messaging::Message msg;
+    msg.messageId = "test_image_rt";
+    msg.conversationId = "conv1";
+    msg.senderId = "alice";
+    msg.receiverId = "bob";
+    msg.timestamp = 123456789;
+    msg.plaintext = "Check this out";
+    msg.type = "image";
+    msg.fileName = "photo.jpg";
+    msg.fileSize = 987654;
+    msg.mediaWidth = 1920;
+    msg.mediaHeight = 1080;
+    msg.duration = 0;
+    msg.waveform = QByteArray();
+
+    QByteArray payload = NeoNect::Core::Messaging::MessageService::serializePayload(msg);
+    service.receiveMessage("alice:device1", payload);
+
+    auto retrieved = storage->getMessage("test_image_rt");
+    QVERIFY(retrieved.has_value());
+    QCOMPARE(retrieved->type, QString("image"));
+    QCOMPARE(retrieved->fileName, QString("photo.jpg"));
+    QCOMPARE(retrieved->fileSize, 987654LL);
+    QCOMPARE(retrieved->mediaWidth, 1920);
+    QCOMPARE(retrieved->mediaHeight, 1080);
+    QCOMPARE(retrieved->duration, 0LL);
+    QVERIFY(retrieved->waveform.isEmpty());
+}
+
+void TestMessagingCore::testMediaMetadataRoundTripVoice() {
+    auto storage = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>("test_messaging_core.db");
+    NeoNect::Core::Messaging::MessageService service(storage, nullptr);
+
+    NeoNect::Core::Messaging::Message msg;
+    msg.messageId = "test_voice_rt";
+    msg.conversationId = "conv1";
+    msg.senderId = "alice";
+    msg.receiverId = "bob";
+    msg.timestamp = 123456789;
+    msg.plaintext = "Voice message";
+    msg.type = "voice_note";
+    msg.fileName = "voice_note.wav";
+    msg.fileSize = 123456;
+    msg.duration = 37;
+    msg.mediaWidth = 0;
+    msg.mediaHeight = 0;
+
+    QByteArray knownWaveform;
+    knownWaveform.fill('\xBB', 100);
+    msg.waveform = knownWaveform;
+
+    QByteArray payload = NeoNect::Core::Messaging::MessageService::serializePayload(msg);
+    service.receiveMessage("alice:device1", payload);
+
+    auto retrieved = storage->getMessage("test_voice_rt");
+    QVERIFY(retrieved.has_value());
+    QCOMPARE(retrieved->type, QString("voice_note"));
+    QCOMPARE(retrieved->fileName, QString("voice_note.wav"));
+    QCOMPARE(retrieved->fileSize, 123456LL);
+    QCOMPARE(retrieved->duration, 37LL);
+    QCOMPARE(retrieved->waveform, knownWaveform);
+    QCOMPARE(retrieved->mediaWidth, 0);
+    QCOMPARE(retrieved->mediaHeight, 0);
+}
+
+void TestMessagingCore::testMediaMetadataRoundTripOldPayload() {
+    auto storage = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>("test_messaging_core.db");
+    NeoNect::Core::Messaging::MessageService service(storage, nullptr);
+
+    QJsonObject obj;
+    obj["messageId"] = "test_old_rt";
+    obj["conversationId"] = "conv1";
+    obj["senderId"] = "alice";
+    obj["receiverId"] = "bob";
+    obj["timestamp"] = 123456789;
+    obj["plaintext"] = "Plain old text";
+    obj["type"] = "text";
+    
+    QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    service.receiveMessage("alice:device1", payload);
+
+    auto retrieved = storage->getMessage("test_old_rt");
+    QVERIFY(retrieved.has_value());
+    QCOMPARE(retrieved->type, QString("text"));
+    
+    // Check safe defaults
+    QVERIFY(retrieved->fileName.isEmpty());
+    QCOMPARE(retrieved->fileSize, 0LL);
+    QCOMPARE(retrieved->duration, 0LL);
+    QCOMPARE(retrieved->mediaWidth, 0);
+    QCOMPARE(retrieved->mediaHeight, 0);
+    QVERIFY(retrieved->waveform.isEmpty());
+}
+
+void TestMessagingCore::testMediaMetadataDecodingBounds() {
+    auto storage = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>("test_messaging_core.db");
+    NeoNect::Core::Messaging::MessageService service(storage, nullptr);
+
+    QJsonObject obj;
+    obj["messageId"] = "test_bounds_1";
+    obj["conversationId"] = "conv1";
+    obj["senderId"] = "alice";
+    obj["receiverId"] = "bob";
+    obj["timestamp"] = 123456789;
+    obj["plaintext"] = "Bounds checking";
+    obj["type"] = "audio";
+
+    // Negative file size
+    obj["fileSize"] = -100;
+    
+    // Negative duration
+    obj["duration"] = -5;
+
+    // Invalid dimensions
+    obj["mediaWidth"] = -100;
+    obj["mediaHeight"] = 999999; // oversized
+
+    // Invalid base64 waveform
+    obj["waveform"] = "invalid_base64_!@#$";
+
+    QByteArray payload = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+    service.receiveMessage("alice:device1", payload);
+
+    auto retrieved = storage->getMessage("test_bounds_1");
+    QVERIFY(retrieved.has_value());
+
+    // Verified rejected or defaulted
+    QCOMPARE(retrieved->fileSize, 0LL);
+    QCOMPARE(retrieved->duration, 0LL);
+    QCOMPARE(retrieved->mediaWidth, 0);
+    QCOMPARE(retrieved->mediaHeight, 0);
+    QVERIFY(retrieved->waveform.isEmpty());
+    
+    // Oversized waveform test
+    QJsonObject obj2;
+    obj2["messageId"] = "test_bounds_2";
+    obj2["conversationId"] = "conv1";
+    obj2["senderId"] = "alice";
+    obj2["receiverId"] = "bob";
+    obj2["timestamp"] = 123456789;
+    
+    QString largeWaveform;
+    largeWaveform.fill('A', 100000); // Exceeds 65536
+    obj2["waveform"] = largeWaveform;
+    
+    QByteArray payload2 = QJsonDocument(obj2).toJson(QJsonDocument::Compact);
+    service.receiveMessage("alice:device1", payload2);
+    
+    auto retrieved2 = storage->getMessage("test_bounds_2");
+    QVERIFY(retrieved2.has_value());
+    QVERIFY(retrieved2->waveform.isEmpty());
+}
