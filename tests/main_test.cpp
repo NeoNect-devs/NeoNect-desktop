@@ -23,6 +23,7 @@
 #include "test_offline_queue.h"
 #include "test_settings_migration.h"
 #include "test_production_e2ee.h"
+#include "test_filetransfer.h"
 
 int main(int argc, char *argv[]) {
     // Disable stdout buffering
@@ -367,6 +368,12 @@ int main(int argc, char *argv[]) {
         TestSettingsMigration tsm;
         int res = QTest::qExec(&tsm);
         std::cout << "[TestSettingsMigration Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestFileTransfer tft;
+        int res = QTest::qExec(&tft);
+        std::cout << "[TestFileTransfer Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     std::cout << "\n==========================================" << std::endl;

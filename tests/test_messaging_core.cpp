@@ -25,6 +25,13 @@ public:
     NeoNect::ServiceResult<std::monostate> saveSession(const NeoNect::Storage::E2EESession&) override { return NeoNect::ServiceResult<std::monostate>::fail(""); }
     NeoNect::ServiceResult<NeoNect::Storage::E2EESession> getSession(const QString&) override { return NeoNect::ServiceResult<NeoNect::Storage::E2EESession>::fail("mocked fail"); }
     NeoNect::ServiceResult<std::monostate> updateSessionState(const NeoNect::Storage::SessionUpdateTx&) override { return NeoNect::ServiceResult<std::monostate>::fail(""); }
+    
+    NeoNect::ServiceResult<std::monostate> saveFileTransfer(const NeoNect::Storage::E2EEFileTransfer&) override { return NeoNect::ServiceResult<std::monostate>::ok({}); }
+    NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer> getFileTransfer(const QString&, const QString&) override { return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::fail(""); }
+    NeoNect::ServiceResult<std::vector<NeoNect::Storage::E2EEFileTransfer>> getActiveFileTransfers() override { return NeoNect::ServiceResult<std::vector<NeoNect::Storage::E2EEFileTransfer>>::ok({}); }
+    NeoNect::ServiceResult<std::monostate> updateFileTransferBitset(const QString&, const QString&, const QByteArray&) override { return NeoNect::ServiceResult<std::monostate>::ok({}); }
+    NeoNect::ServiceResult<std::monostate> updateFileTransferStatus(const QString&, const QString&, const QString&) override { return NeoNect::ServiceResult<std::monostate>::ok({}); }
+
     NeoNect::ServiceResult<NeoNect::Storage::E2EESkippedKey> getSkippedKey(const QString&, const QByteArray&, qint64) override { return NeoNect::ServiceResult<NeoNect::Storage::E2EESkippedKey>::fail(""); }
 };
 

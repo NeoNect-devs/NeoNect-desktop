@@ -8,6 +8,7 @@ namespace Transport {
 
 struct TransportMetadata {
     qint64 messageId{0};
+    QString senderUserId;
     QString senderDeviceId;
     QString recipientDeviceId;
 };

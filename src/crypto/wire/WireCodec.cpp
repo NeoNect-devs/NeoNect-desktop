@@ -249,6 +249,64 @@ std::optional<RatchetEnvelope> WireCodec::decodeRatchetEnvelope(const QByteArray
     return env;
 }
 
+
+QByteArray WireCodec::encodeFileChunkEnvelope(const FileChunkEnvelope& env) {
+    if (env.version != CURRENT_VERSION) return QByteArray();
+    if (env.transferId.size() != 16) return QByteArray();
+    if (env.tag.data.size() != 16) return QByteArray();
+
+    BinaryWriter writer;
+    writer.writeUint8(env.version);
+    writer.writeUint8(static_cast<uint8_t>(EnvelopeType::FILE_CHUNK));
+    writer.writeBytes(env.transferId);
+    writer.writeUint32(env.chunkIndex);
+    
+    uint32_t ctLen = static_cast<uint32_t>(env.ciphertext.size());
+    writer.writeUint32(ctLen);
+    writer.writeBytes(env.ciphertext);
+    writer.writeBytes(env.tag.data);
+    
+    return writer.get();
+}
+
+std::optional<FileChunkEnvelope> WireCodec::decodeFileChunkEnvelope(const QByteArray& data) {
+    BinaryReader reader(data);
+    auto version = reader.readUint8();
+    if (!version || version.value() != CURRENT_VERSION) return std::nullopt;
+    
+    auto type = reader.readUint8();
+    if (!type || type.value() != static_cast<uint8_t>(EnvelopeType::FILE_CHUNK)) return std::nullopt;
+    
+    auto tId = reader.readBytes(16);
+    if (!tId) return std::nullopt;
+    
+    auto cIdx = reader.readUint32();
+    if (!cIdx) return std::nullopt;
+    
+    auto ctLen = reader.readUint32();
+    if (!ctLen) return std::nullopt;
+    
+    if (reader.remaining() < 16) return std::nullopt;
+    size_t allowedCt = reader.remaining() - 16;
+    if (ctLen.value() != allowedCt) return std::nullopt;
+    
+    auto ct = reader.readBytes(ctLen.value());
+    if (!ct) return std::nullopt;
+    
+    auto tagBytes = reader.readBytes(16);
+    if (!tagBytes) return std::nullopt;
+    
+    if (!reader.isEmpty()) return std::nullopt;
+    
+    FileChunkEnvelope env;
+    env.version = version.value();
+    env.transferId = tId.value();
+    env.chunkIndex = cIdx.value();
+    env.ciphertext = ct.value();
+    env.tag.data = tagBytes.value();
+    return env;
+}
+
 } // namespace Wire
 } // namespace Crypto
 } // namespace NeoNect

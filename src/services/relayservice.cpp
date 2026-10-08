@@ -333,6 +333,7 @@ void RelayService::processIncomingRelayItem(const QJsonObject &msgObj) {
         Transport::TransportMetadata metadata;
         metadata.messageId = msgId;
         // The server might send these fields; fallback to empty if missing
+        metadata.senderUserId = msgObj.value("sender_id").toString();
         metadata.senderDeviceId = msgObj.value("sender_device_id").toString();
         metadata.recipientDeviceId = msgObj.value("recipient_device_id").toString();
 

@@ -155,6 +155,7 @@ qt_add_executable(NeoNectApp
     src/services/authservice.h src/services/authservice.cpp
     src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
+    src/services/FileTransferManager.cpp
     src/services/friendservice.h src/services/friendservice.cpp
 
     # Core & Facade
@@ -358,6 +359,7 @@ add_executable(NeoNectTests
     tests/test_storage.h tests/test_storage.cpp
     tests/test_secure_storage.h tests/test_secure_storage.cpp
     tests/test_models.h tests/test_models.cpp
+    tests/test_filetransfer.cpp
     tests/test_services.h tests/test_services.cpp
     tests/test_messages.h tests/test_messages.cpp
     tests/mocks/mockhttptransport.h tests/mocks/mockhttptransport.cpp
@@ -426,6 +428,7 @@ add_executable(NeoNectTests
     src/services/authservice.h src/services/authservice.cpp
     src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
+    src/services/FileTransferManager.cpp
     src/services/friendservice.h src/services/friendservice.cpp
 
     # Core & Facade
@@ -522,6 +525,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/services/authservice.h src/services/authservice.cpp
     src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
+    src/services/FileTransferManager.cpp
     src/services/friendservice.h src/services/friendservice.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
@@ -607,6 +611,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/services/authservice.h src/services/authservice.cpp
     src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
+    src/services/FileTransferManager.cpp
     src/services/friendservice.h src/services/friendservice.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp

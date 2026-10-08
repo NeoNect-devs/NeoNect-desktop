@@ -40,6 +40,24 @@ struct E2EEOneTimePreKey {
     qint64 consumed_at;
 };
 
+
+struct E2EEFileTransfer {
+    QString transfer_id;
+    QString peer_device_id;
+    int is_sender;
+    qint64 file_size;
+    qint32 chunk_size;
+    qint32 max_envelope_bytes;
+    qint32 max_http_body_bytes;
+    qint32 chunk_count;
+    QByteArray file_hash;
+    QString spool_path;
+    QByteArray root_file_key;
+    QByteArray received_bitset;
+    QString status;
+    qint64 created_at;
+};
+
 struct E2EESession {
     QString session_id;
     QByteArray remote_identity_key;
@@ -95,6 +113,13 @@ public:
     virtual ServiceResult<E2EESession> getSession(const QString& session_id) = 0;
     
     virtual ServiceResult<std::monostate> updateSessionState(const SessionUpdateTx& tx) = 0;
+
+    
+    virtual ServiceResult<std::monostate> saveFileTransfer(const E2EEFileTransfer& transfer) = 0;
+    virtual ServiceResult<E2EEFileTransfer> getFileTransfer(const QString& transfer_id, const QString& peer_device_id) = 0;
+    virtual ServiceResult<std::vector<E2EEFileTransfer>> getActiveFileTransfers() = 0;
+    virtual ServiceResult<std::monostate> updateFileTransferBitset(const QString& transfer_id, const QString& peer_device_id, const QByteArray& bitset) = 0;
+    virtual ServiceResult<std::monostate> updateFileTransferStatus(const QString& transfer_id, const QString& peer_device_id, const QString& status) = 0;
 
     virtual ServiceResult<E2EESkippedKey> getSkippedKey(const QString& session_id, const QByteArray& remote_ratchet_public_key, qint64 message_number) = 0;
 };

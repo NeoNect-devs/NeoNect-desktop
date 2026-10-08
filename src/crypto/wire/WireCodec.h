@@ -20,6 +20,8 @@ public:
     // Decoders
     static std::optional<InitialEnvelope> decodeInitialEnvelope(const QByteArray& data);
     static std::optional<RatchetEnvelope> decodeRatchetEnvelope(const QByteArray& data);
+    static QByteArray encodeFileChunkEnvelope(const FileChunkEnvelope& env);
+    static std::optional<FileChunkEnvelope> decodeFileChunkEnvelope(const QByteArray& data);
 
     // Canonical Ratchet Header
     static QByteArray encodeRatchetHeader(const RatchetHeader& header);
