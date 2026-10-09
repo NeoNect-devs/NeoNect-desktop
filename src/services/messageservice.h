@@ -19,6 +19,7 @@
 
 #pragma once
 #include <QObject>
+#include "FileTransferManager.h"
 #include <QHash>
 #include <memory>
 #include "../core/messaging/MessageStorage.h"
@@ -57,6 +58,33 @@ public:
      * @brief Destructor. Cleans up active file transfer timers.
      */
     ~MessageService() override;
+        void setFileTransferManager(std::shared_ptr<FileTransferManager> ftm) {
+        m_fileTransferManager = ftm;
+        if (ftm) {
+            connect(ftm.get(), &FileTransferManager::transferProgress, this, [this](const QString& tid, int pct) {
+                if (m_outgoingMessages.contains(tid)) {
+                    QString cid = m_outgoingMessages[tid].conversationId;
+                    emit mediaTransferProgress(cid, tid, pct / 100.0, 0, 100);
+                }
+            });
+            connect(ftm.get(), &FileTransferManager::transferCompleted, this, [this](const QString& tid, const QString& path) {
+                if (m_outgoingMessages.contains(tid)) {
+                    m_outgoingMessages[tid].status = Domain::MessageStatus::Sent;
+                    QString cid = m_outgoingMessages[tid].conversationId;
+                    this->updateMessageStatusAsync(tid, Domain::MessageStatus::Sent, "", this, nullptr);
+                    emit messageUpdated(cid, tid, "sent", "");
+                }
+            });
+            connect(ftm.get(), &FileTransferManager::transferFailed, this, [this](const QString& tid, const QString& err) {
+                if (m_outgoingMessages.contains(tid)) {
+                    m_outgoingMessages[tid].status = Domain::MessageStatus::Failed;
+                    QString cid = m_outgoingMessages[tid].conversationId;
+                    this->updateMessageStatusAsync(tid, Domain::MessageStatus::Failed, err, this, nullptr);
+                    emit messageUpdated(cid, tid, "failed", err);
+                }
+            });
+        }
+    }
 
     /**
      * @brief Dispatches an outbound message from the local user.
@@ -220,6 +248,7 @@ private:
 
     /** @brief Local SQLite message repository. */
     std::weak_ptr<NeoNect::Core::Messaging::IMessageStorage> m_storage;
+    std::shared_ptr<FileTransferManager> m_fileTransferManager;
     QThread* m_workerThread = nullptr;
     QObject* m_workerContext = nullptr;
 

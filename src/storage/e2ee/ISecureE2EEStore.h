@@ -117,6 +117,7 @@ public:
     
     virtual ServiceResult<std::monostate> saveFileTransfer(const E2EEFileTransfer& transfer) = 0;
     virtual ServiceResult<E2EEFileTransfer> getFileTransfer(const QString& transfer_id, const QString& peer_device_id) = 0;
+    virtual ServiceResult<E2EEFileTransfer> getFileTransferById(const QString& transfer_id) = 0;
     virtual ServiceResult<std::vector<E2EEFileTransfer>> getActiveFileTransfers() = 0;
     virtual ServiceResult<std::monostate> updateFileTransferBitset(const QString& transfer_id, const QString& peer_device_id, const QByteArray& bitset) = 0;
     virtual ServiceResult<std::monostate> updateFileTransferStatus(const QString& transfer_id, const QString& peer_device_id, const QString& status) = 0;

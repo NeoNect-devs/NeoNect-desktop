@@ -36,6 +36,8 @@
 class NetworkManager;
 class AudioManager;
 #include "services/messageservice.h"
+#include "services/FileTransferManager.h"
+#include "services/SecureImageProvider.h"
 
 class TestProductionE2EE;
 namespace NeoNect {
@@ -174,6 +176,8 @@ private:
     std::unique_ptr<Core::VersionInfo> m_versionInfo;
     /** @brief Messaging business service coordinator. */
     std::unique_ptr<Services::MessageService> m_messageService;
+    std::shared_ptr<Services::FileTransferManager> m_fileTransferManager;
+    Services::SecureImageProvider* m_secureImageProvider = nullptr;
     /** @brief Encrypted packet relay and WebSocket gateway. */
     std::shared_ptr<Services::RelayService> m_relayService;
     /** @brief Global event filter monitoring user activity for AFK/idle detection. */

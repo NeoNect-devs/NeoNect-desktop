@@ -29,4 +29,10 @@ private slots:
     void testReq19_EndToEndDuplicateChunk();
     void testReq20_EndToEndReconnectResume();
     void testReq21_RestartUsesPersistedSnapshotEvenIfCapabilitiesChange();
+    void testReq22_ImageTransferIncomplete();
+    void testReq23_ImageTransferSecureDecryption();
+    void testReq24_ImageTransferHashMismatch();
+    void testReq25_ImageTransferCorruptedCiphertext();
+    void testReq26_ImageTransferMissingChunkMetadata();
+    void testReq27_ImageTransferDecodingFailure();
 };

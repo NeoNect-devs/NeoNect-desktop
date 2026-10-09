@@ -76,7 +76,7 @@ static QString binaryToTransferId(const QByteArray& bin) {
     return QUuid::fromRfc4122(bin).toString(QUuid::WithoutBraces);
 }
 
-void FileTransferManager::startTransfer(const QString& recipientUser, const QString& recipientDevice, const QString& filePath) {
+void FileTransferManager::startTransfer(const QString& recipientUser, const QString& recipientDevice, const QString& filePath, const QString& overrideTransferId) {
     auto maxHttpOpt = m_capabilities->maxHttpBodyBytes();
     auto maxEnvOpt = m_capabilities->maxEnvelopeBytes();
     if (!maxHttpOpt || !maxEnvOpt) {
@@ -120,7 +120,12 @@ void FileTransferManager::startTransfer(const QString& recipientUser, const QStr
     qint32 chunkCount = (fileSize + chunkSize - 1) / chunkSize;
     if (fileSize == 0) chunkCount = 0; 
     
-    QUuid newUuid = QUuid::createUuid();
+    QUuid newUuid;
+    if (overrideTransferId.isEmpty()) {
+        newUuid = QUuid::createUuid();
+    } else {
+        newUuid = QUuid("{" + overrideTransferId + "}");
+    }
     QByteArray transferIdBin = newUuid.toRfc4122();
     QString transferIdStr = newUuid.toString(QUuid::WithoutBraces);
     QByteArray rootKey = m_crypto->RandomBytes(32);
@@ -534,6 +539,13 @@ NeoNect::VoidResult FileTransferManager::handleEnvelope(const QByteArray &envelo
 }
 
 void FileTransferManager::reconstructFile(const Storage::E2EEFileTransfer& tx) {
+    if (m_isImageTransferCb && m_isImageTransferCb(tx.transfer_id)) {
+        auto store = m_store.lock();
+        if (store) store->updateFileTransferStatus(tx.transfer_id, tx.peer_device_id, "completed");
+        emit transferCompleted(tx.transfer_id, tx.spool_path);
+        return;
+    }
+
     QString outPath = m_spoolDir + "/" + tx.transfer_id + ".final";
     QFile out(outPath);
     if (!out.open(QIODevice::WriteOnly)) return;

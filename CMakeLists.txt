@@ -135,7 +135,7 @@ qt_add_executable(NeoNectApp
     src/storage/StoragePathResolver.h src/storage/StoragePathResolver.cpp
     src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/StoragePathResolver.cpp src/crypto/session/SessionManager.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
     src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
@@ -156,6 +156,7 @@ qt_add_executable(NeoNectApp
     src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/FileTransferManager.cpp
+    src/services/SecureImageProvider.h src/services/SecureImageProvider.cpp
     src/services/friendservice.h src/services/friendservice.cpp
 
     # Core & Facade
@@ -409,7 +410,7 @@ add_executable(NeoNectTests
     src/storage/StoragePathResolver.h src/storage/StoragePathResolver.cpp
     src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/StoragePathResolver.cpp src/crypto/session/SessionManager.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
     src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
@@ -429,6 +430,7 @@ add_executable(NeoNectTests
     src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/FileTransferManager.cpp
+    src/services/SecureImageProvider.h src/services/SecureImageProvider.cpp
     src/services/friendservice.h src/services/friendservice.cpp
 
     # Core & Facade
@@ -510,7 +512,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/StoragePathResolver.cpp src/crypto/session/SessionManager.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
     src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
@@ -526,6 +528,7 @@ add_executable(NeoNectStressTests tests/stress/main_stress.cpp
     src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/FileTransferManager.cpp
+    src/services/SecureImageProvider.h src/services/SecureImageProvider.cpp
     src/services/friendservice.h src/services/friendservice.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
@@ -596,7 +599,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/crypto/wire/WireTypes.h src/crypto/wire/WireCodec.h src/crypto/wire/WireCodec.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/StoragePathResolver.cpp src/crypto/session/SessionManager.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
     src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
@@ -612,6 +615,7 @@ add_executable(NeoNectBenchmarks tests/benchmarks/main_benchmark.cpp
     src/services/deviceservice.h src/services/prekeyservice.h src/services/deviceservice.cpp src/services/prekeyservice.cpp
     src/services/relayservice.h src/services/relayservice.cpp
     src/services/FileTransferManager.cpp
+    src/services/SecureImageProvider.h src/services/SecureImageProvider.cpp
     src/services/friendservice.h src/services/friendservice.cpp
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
@@ -636,6 +640,7 @@ target_link_libraries(NeoNectBenchmarks PRIVATE
     OpenSSL::SSL
     OpenSSL::Crypto
     sqlcipher_static
+    xeddsa_static
 )
 if(LIBSECRET_FOUND)
     target_link_libraries(NeoNectBenchmarks PRIVATE PkgConfig::LIBSECRET)
@@ -741,8 +746,35 @@ set_target_properties(TestStoragePathResolver PROPERTIES AUTOMOC ON AUTOMOC_COMP
 
 
 # Phase 2 StorageContext Test Target
-add_executable(TestStorageContext tests/test_storagecontext.cpp src/storage/StorageContext.cpp src/storage/StoragePathResolver.cpp)
+add_executable(TestStorageContext
+    tests/test_storagecontext.cpp
+    src/storage/StorageContext.cpp
+    src/storage/StoragePathResolver.cpp
+    src/storage/e2ee/PlatformSecretStore.cpp
+    src/storage/e2ee/MasterKeyProvider.cpp
+    src/storage/e2ee/SecureE2EEStore.cpp
+    src/core/messaging/MessageStorage.cpp
+    src/core/messaging/OfflineQueue.cpp
+    src/crypto/cryptoservice.cpp
+    src/crypto/OpenSSLBackend.cpp
+    src/crypto/XEdDSAAdapter.cpp
+    src/crypto/KeyEncoding.cpp
+    src/crypto/KeyGenerationService.cpp
+    src/crypto/MemoryPreKeyStore.cpp
+    src/crypto/x3dh/X3DH.cpp
+    src/crypto/doubleratchet/DoubleRatchet.cpp
+    src/crypto/doubleratchet/AEAD.cpp
+    src/crypto/wire/WireCodec.cpp
+    src/crypto/session/SessionManager.cpp
+    src/crypto/session/SecurePreKeyStoreAdapter.cpp
+    src/storage/settingsrepository.cpp
+    src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/capabilitiesrepository.cpp
+)
 target_include_directories(TestStorageContext PRIVATE src tests)
-target_link_libraries(TestStorageContext PRIVATE Qt6::Core Qt6::Test NeoNectCore)
-target_compile_definitions(TestStorageContext PRIVATE HAS_LIBSECRET=0)
+target_link_libraries(TestStorageContext PRIVATE Qt6::Core Qt6::Test Qt6::Sql Qt6::Network Qt6::Concurrent Qt6::Qml Qt6::Quick OpenSSL::SSL OpenSSL::Crypto sqlcipher_static xeddsa_static)
+if(LIBSECRET_FOUND)
+    target_link_libraries(TestStorageContext PRIVATE PkgConfig::LIBSECRET)
+    target_compile_definitions(TestStorageContext PRIVATE HAS_LIBSECRET)
+endif()
 add_test(NAME TestStorageContext COMMAND TestStorageContext)

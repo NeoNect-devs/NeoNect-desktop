@@ -855,3 +855,50 @@ NeoNect::ServiceResult<std::monostate> NeoNect::Storage::SecureE2EEStore::update
     return NeoNect::ServiceResult<std::monostate>::ok({});
 }
 
+
+NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer> NeoNect::Storage::SecureE2EEStore::getFileTransferById(const QString& transfer_id) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::fail("Database not open");
+
+    sqlite3_stmt* stmt = nullptr;
+    const char* sql = "SELECT peer_device_id, is_sender, file_size, chunk_size, max_envelope_bytes, max_http_body_bytes, chunk_count, file_hash, spool_path, root_file_key, received_bitset, status, created_at FROM file_transfers WHERE transfer_id = ? LIMIT 1";
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::fail(sqlite3_errmsg(m_db));
+    }
+
+    sqlite3_bind_text(stmt, 1, transfer_id.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        NeoNect::Storage::E2EEFileTransfer transfer;
+        transfer.transfer_id = transfer_id;
+        transfer.peer_device_id = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+        transfer.is_sender = sqlite3_column_int(stmt, 1);
+        transfer.file_size = sqlite3_column_int64(stmt, 2);
+        transfer.chunk_size = sqlite3_column_int(stmt, 3);
+        transfer.max_envelope_bytes = sqlite3_column_int(stmt, 4);
+        transfer.max_http_body_bytes = sqlite3_column_int(stmt, 5);
+        transfer.chunk_count = sqlite3_column_int(stmt, 6);
+
+        const void* hash_ptr = sqlite3_column_blob(stmt, 7);
+        int hash_len = sqlite3_column_bytes(stmt, 7);
+        if (hash_ptr && hash_len > 0) transfer.file_hash = QByteArray(static_cast<const char*>(hash_ptr), hash_len);
+
+        transfer.spool_path = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 8)));
+
+        const void* key_ptr = sqlite3_column_blob(stmt, 9);
+        int key_len = sqlite3_column_bytes(stmt, 9);
+        if (key_ptr && key_len > 0) transfer.root_file_key = QByteArray(static_cast<const char*>(key_ptr), key_len);
+
+        const void* bitset_ptr = sqlite3_column_blob(stmt, 10);
+        int bitset_len = sqlite3_column_bytes(stmt, 10);
+        if (bitset_ptr && bitset_len > 0) transfer.received_bitset = QByteArray(static_cast<const char*>(bitset_ptr), bitset_len);
+
+        transfer.status = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 11)));
+        transfer.created_at = sqlite3_column_int64(stmt, 12);
+
+        sqlite3_finalize(stmt);
+        return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::ok(transfer);
+    }
+    sqlite3_finalize(stmt);
+    return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::fail("Transfer not found");
+}

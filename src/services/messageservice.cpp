@@ -191,6 +191,23 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
         timer->start();
     }
 
+    if (msg.type == "image" && m_fileTransferManager) {
+        QString receiver = msg.conversationId;
+        if (receiver.startsWith("dms:")) receiver = receiver.mid(4);
+
+        // Clean up media URL to get local path
+        QString cleanPath = msg.mediaUrl;
+        if (cleanPath.startsWith("file:///")) cleanPath = cleanPath.mid(8);
+        else if (cleanPath.startsWith("file://")) cleanPath = cleanPath.mid(7);
+#ifdef _WIN32
+        if (cleanPath.startsWith("/") && cleanPath.length() >= 3 && cleanPath.at(2) == ':') {
+            cleanPath = cleanPath.mid(1);
+        }
+#endif
+
+        m_fileTransferManager->startTransfer(receiver, "*", cleanPath, msg.id);
+    }
+
     this->saveMessageAsync(msg, this, [this, msg, isSavedMessages](bool success) {
         if (!success) {
             qWarning() << "[MessageService] Failed to save outgoing message locally.";

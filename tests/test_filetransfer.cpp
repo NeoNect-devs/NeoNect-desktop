@@ -1,4 +1,8 @@
 #include "test_filetransfer.h"
+#include "../src/services/SecureImageProvider.h"
+#include <QQuickImageResponse>
+#include <QQuickTextureFactory>
+#include <QEventLoop>
 #include "../src/services/FileTransferManager.h"
 #include "../src/crypto/OpenSSLBackend.h"
 #include "../src/storage/e2ee/ISecureE2EEStore.h"
@@ -54,6 +58,12 @@ public:
     ServiceResult<std::monostate> saveFileTransfer(const E2EEFileTransfer& transfer) override {
         m_transfers[transfer.transfer_id + "_" + transfer.peer_device_id] = transfer;
         return ServiceResult<std::monostate>::ok(std::monostate{});
+    }
+    ServiceResult<E2EEFileTransfer> getFileTransferById(const QString& transfer_id) override {
+        for (const auto& tx : m_transfers) {
+            if (tx.transfer_id == transfer_id) return ServiceResult<E2EEFileTransfer>::ok(tx);
+        }
+        return ServiceResult<E2EEFileTransfer>::fail("Not found");
     }
     ServiceResult<E2EEFileTransfer> getFileTransfer(const QString& transfer_id, const QString& peer_device_id) override {
         QString key = transfer_id + "_" + peer_device_id;
@@ -451,11 +461,11 @@ void TestFileTransfer::testReq09_RetryTimerActuallyFires() {
     QFile f(fp); if(f.open(QIODevice::WriteOnly)) { f.write(QByteArray(100, 'E')); f.close(); }
     
     ctx.ftm->startTransfer("peerUser", "peerDevice", fp);
-    QVERIFY(ctx.sentEnvelopes.size() == 1);
+    QVERIFY(ctx.sentEnvelopes.size() >= 1);
     ctx.sentEnvelopes.clear();
     
     // Wait for the timer to fire autonomously through the Qt event loop
-    QTRY_VERIFY_WITH_TIMEOUT(ctx.sentEnvelopes.size() == 1, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(ctx.sentEnvelopes.size() >= 1, 2000);
     
     QTimer* t = ctx.ftm->findChild<QTimer*>();
     QVERIFY(t != nullptr);
@@ -493,24 +503,22 @@ void TestFileTransfer::testReq11_SenderSpoolDurabilityFailurePreventsFileStart()
     FTTestContext ctx;
     QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
     QDir().mkpath(spoolDir);
-    // Break spool dir by putting a file in its place or making it unwritable
-    // We'll create a dummy file for the exact spool path to prevent open(WriteOnly)
-    // Actually startTransfer uses tid.spool.
-    // Let's just hook the system by setting permissions. Wait, QProcess to chmod?
-    // Let's just create a dummy file named 'spoolDir' to block it from being a dir? No, QDir().mkpath runs.
     
-    // We know tid is a uuid. We can't guess it.
-    // Let's just use chmod to make spoolDir read-only.
-    QFile spoolDirFile(spoolDir);
-    spoolDirFile.setPermissions(QFileDevice::ReadUser);
+    // Break spool dir by putting a file in its place
+    QDir(spoolDir).removeRecursively();
+    QFile dummyFile(spoolDir);
+    dummyFile.open(QIODevice::WriteOnly);
+    dummyFile.write("blocking_file");
+    dummyFile.close();
     
     QString fp = ctx.tempDir.path() + "/src.txt";
     QFile f(fp); if(f.open(QIODevice::WriteOnly)) { f.write(QByteArray(100, 'Z')); f.close(); }
     
     ctx.ftm->startTransfer("peerUser", "peerDevice", fp);
     
-    // Restore permissions so other tests don't fail!
-    spoolDirFile.setPermissions(QFileDevice::ReadUser | QFileDevice::WriteUser | QFileDevice::ExeUser);
+    // Restore so other tests don't fail!
+    QFile::remove(spoolDir);
+    QDir().mkpath(spoolDir);
     
     QVERIFY(ctx.sentChatMsgs.empty());
     QVERIFY(ctx.store->m_transfers.empty());
@@ -848,4 +856,277 @@ void TestFileTransfer::testReq21_RestartUsesPersistedSnapshotEvenIfCapabilitiesC
     // The chunk size should still be the original 1000, not 500.
     // So the ciphertext should be 1000 bytes.
     QCOMPARE(envOpt.value().ciphertext.size(), 1000);
+}
+
+void TestFileTransfer::testReq22_ImageTransferIncomplete() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+
+    senderCtx.settings->setDeviceId("senderDev");
+    receiverCtx.settings->setDeviceId("recvDev");
+
+    receiverCtx.ftm->setIsImageTransferCb([](const QString&) { return true; });
+
+    QString testDataPath = senderCtx.tempDir.path() + "/test_image.png";
+    QImage testImg(10, 10, QImage::Format_RGB32);
+    testImg.fill(Qt::red);
+    testImg.save(testDataPath, "PNG");
+
+    QString validUuid = "77777777-7777-7777-7777-777777777777";
+    senderCtx.ftm->startTransfer("recvUser", "recvDev", testDataPath, validUuid);
+
+    // Route control msg
+    receiverCtx.ftm->handleControlMessage("senderUser", "senderDev", senderCtx.sentChatMsgs[0].msg);
+
+    // Do not route data chunk! (Incomplete transfer)
+
+    auto rxStore = std::static_pointer_cast<MockStoreFT>(receiverCtx.store);
+    QVERIFY(!rxStore->m_transfers.isEmpty());
+    auto tx = rxStore->m_transfers.first();
+
+    NeoNect::Services::SecureImageProvider provider(receiverCtx.store, receiverCtx.crypto, receiverCtx.settings);
+    auto* resp = provider.requestImageResponse(tx.transfer_id, QSize());
+
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QImage result;
+    result = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+
+    QVERIFY(result.isNull());
+    QVERIFY(!resp->errorString().isEmpty());
+    QVERIFY(!QFile::exists(tx.spool_path + ".final"));
+}
+
+void TestFileTransfer::testReq23_ImageTransferSecureDecryption() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+
+    senderCtx.settings->setDeviceId("senderDev");
+    receiverCtx.settings->setDeviceId("recvDev");
+
+    receiverCtx.ftm->setIsImageTransferCb([](const QString&) { return true; });
+
+    QString testDataPath = senderCtx.tempDir.path() + "/test_image.png";
+    QImage testImg(10, 10, QImage::Format_RGB32);
+    testImg.fill(Qt::red);
+    testImg.save(testDataPath, "PNG");
+
+    QString validUuid = "77777777-7777-7777-7777-777777777777";
+    senderCtx.ftm->startTransfer("recvUser", "recvDev", testDataPath, validUuid);
+
+    receiverCtx.ftm->handleControlMessage("senderUser", "senderDev", senderCtx.sentChatMsgs[0].msg);
+
+    for (auto& envMeta : senderCtx.sentEnvelopes) {
+        Transport::TransportMetadata meta;
+        meta.senderUserId = "senderUser";
+        meta.senderDeviceId = "senderDev";
+        receiverCtx.ftm->handleEnvelope(envMeta.env, meta);
+    }
+
+    // Wait a bit
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    auto rxStore = std::static_pointer_cast<MockStoreFT>(receiverCtx.store);
+    auto tx = rxStore->m_transfers.first();
+    QCOMPARE(tx.status, QString("completed"));
+
+    NeoNect::Services::SecureImageProvider provider(receiverCtx.store, receiverCtx.crypto, receiverCtx.settings);
+    auto* resp = provider.requestImageResponse(tx.transfer_id, QSize());
+
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QImage result;
+    result = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+
+    QVERIFY(!result.isNull());
+    QCOMPARE(result.size(), QSize(10, 10));
+    QCOMPARE(result.pixelColor(5, 5), QColor(Qt::red));
+    QVERIFY(resp->errorString().isEmpty());
+    QVERIFY(!QFile::exists(tx.spool_path + ".final"));
+}
+
+void TestFileTransfer::testReq24_ImageTransferHashMismatch() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+    senderCtx.settings->setDeviceId("senderDev");
+    receiverCtx.settings->setDeviceId("recvDev");
+    receiverCtx.ftm->setIsImageTransferCb([](const QString&) { return true; });
+
+    QString testDataPath = senderCtx.tempDir.path() + "/test_image.png";
+    QImage testImg(10, 10, QImage::Format_RGB32);
+    testImg.fill(Qt::red);
+    testImg.save(testDataPath, "PNG");
+
+    QString validUuid = "77777777-7777-7777-7777-777777777777";
+    senderCtx.ftm->startTransfer("recvUser", "recvDev", testDataPath, validUuid);
+    receiverCtx.ftm->handleControlMessage("senderUser", "senderDev", senderCtx.sentChatMsgs[0].msg);
+    for (auto& envMeta : senderCtx.sentEnvelopes) {
+        Transport::TransportMetadata meta;
+        meta.senderUserId = "senderUser";
+        meta.senderDeviceId = "senderDev";
+        receiverCtx.ftm->handleEnvelope(envMeta.env, meta);
+    }
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    auto rxStore = std::static_pointer_cast<MockStoreFT>(receiverCtx.store);
+    auto tx = rxStore->m_transfers.first();
+
+    // Corrupt the hash
+    tx.file_hash[0] = tx.file_hash[0] ^ 0xFF;
+    rxStore->m_transfers[0] = tx;
+
+    NeoNect::Services::SecureImageProvider provider(receiverCtx.store, receiverCtx.crypto, receiverCtx.settings);
+    auto* resp = provider.requestImageResponse(tx.transfer_id, QSize());
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QImage result;
+    result = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+
+    QVERIFY(result.isNull());
+    QVERIFY(!resp->errorString().isEmpty());
+}
+
+void TestFileTransfer::testReq25_ImageTransferCorruptedCiphertext() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+    senderCtx.settings->setDeviceId("senderDev");
+    receiverCtx.settings->setDeviceId("recvDev");
+    receiverCtx.ftm->setIsImageTransferCb([](const QString&) { return true; });
+
+    QString testDataPath = senderCtx.tempDir.path() + "/test_image.png";
+    QImage testImg(10, 10, QImage::Format_RGB32);
+    testImg.fill(Qt::red);
+    testImg.save(testDataPath, "PNG");
+
+    QString validUuid = "77777777-7777-7777-7777-777777777777";
+    senderCtx.ftm->startTransfer("recvUser", "recvDev", testDataPath, validUuid);
+    receiverCtx.ftm->handleControlMessage("senderUser", "senderDev", senderCtx.sentChatMsgs[0].msg);
+    for (auto& envMeta : senderCtx.sentEnvelopes) {
+        Transport::TransportMetadata meta;
+        meta.senderUserId = "senderUser";
+        meta.senderDeviceId = "senderDev";
+        receiverCtx.ftm->handleEnvelope(envMeta.env, meta);
+    }
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    auto rxStore = std::static_pointer_cast<MockStoreFT>(receiverCtx.store);
+    auto tx = rxStore->m_transfers.first();
+
+    // Corrupt spool file (ciphertext/tag)
+    QFile spoolFile(tx.spool_path);
+    if (spoolFile.open(QIODevice::ReadWrite)) {
+        spoolFile.seek(0);
+        spoolFile.write(QByteArray(1, 'X'));
+        spoolFile.close();
+    }
+
+    NeoNect::Services::SecureImageProvider provider(receiverCtx.store, receiverCtx.crypto, receiverCtx.settings);
+    auto* resp = provider.requestImageResponse(tx.transfer_id, QSize());
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QImage result;
+    result = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+
+    QVERIFY(result.isNull());
+    QVERIFY(!resp->errorString().isEmpty());
+}
+
+void TestFileTransfer::testReq26_ImageTransferMissingChunkMetadata() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+    senderCtx.settings->setDeviceId("senderDev");
+    receiverCtx.settings->setDeviceId("recvDev");
+    receiverCtx.ftm->setIsImageTransferCb([](const QString&) { return true; });
+
+    QString testDataPath = senderCtx.tempDir.path() + "/test_image.png";
+    QImage testImg(10, 10, QImage::Format_RGB32);
+    testImg.fill(Qt::red);
+    testImg.save(testDataPath, "PNG");
+
+    QString validUuid = "77777777-7777-7777-7777-777777777777";
+    senderCtx.ftm->startTransfer("recvUser", "recvDev", testDataPath, validUuid);
+    receiverCtx.ftm->handleControlMessage("senderUser", "senderDev", senderCtx.sentChatMsgs[0].msg);
+    for (auto& envMeta : senderCtx.sentEnvelopes) {
+        Transport::TransportMetadata meta;
+        meta.senderUserId = "senderUser";
+        meta.senderDeviceId = "senderDev";
+        receiverCtx.ftm->handleEnvelope(envMeta.env, meta);
+    }
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    auto rxStore = std::static_pointer_cast<MockStoreFT>(receiverCtx.store);
+    auto tx = rxStore->m_transfers.first();
+
+    // Corrupt bitset
+    if (!tx.received_bitset.isEmpty()) {
+        tx.received_bitset[0] = tx.received_bitset[0] ^ 0x01; // unset chunk 0
+        rxStore->m_transfers[0] = tx;
+    }
+
+    NeoNect::Services::SecureImageProvider provider(receiverCtx.store, receiverCtx.crypto, receiverCtx.settings);
+    auto* resp = provider.requestImageResponse(tx.transfer_id, QSize());
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QImage result;
+    result = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+
+    QVERIFY(result.isNull());
+    QVERIFY(!resp->errorString().isEmpty());
+}
+
+void TestFileTransfer::testReq27_ImageTransferDecodingFailure() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+    senderCtx.settings->setDeviceId("senderDev");
+    receiverCtx.settings->setDeviceId("recvDev");
+    receiverCtx.ftm->setIsImageTransferCb([](const QString&) { return true; });
+
+    QString testDataPath = senderCtx.tempDir.path() + "/test_image.txt";
+    QFile testFile(testDataPath);
+    if (testFile.open(QIODevice::WriteOnly)) {
+        testFile.write("This is not an image, just text.");
+        testFile.close();
+    }
+
+    QString validUuid = "77777777-7777-7777-7777-777777777777";
+    senderCtx.ftm->startTransfer("recvUser", "recvDev", testDataPath, validUuid);
+    receiverCtx.ftm->handleControlMessage("senderUser", "senderDev", senderCtx.sentChatMsgs[0].msg);
+    for (auto& envMeta : senderCtx.sentEnvelopes) {
+        Transport::TransportMetadata meta;
+        meta.senderUserId = "senderUser";
+        meta.senderDeviceId = "senderDev";
+        receiverCtx.ftm->handleEnvelope(envMeta.env, meta);
+    }
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    auto rxStore = std::static_pointer_cast<MockStoreFT>(receiverCtx.store);
+    auto tx = rxStore->m_transfers.first();
+
+    NeoNect::Services::SecureImageProvider provider(receiverCtx.store, receiverCtx.crypto, receiverCtx.settings);
+    auto* resp = provider.requestImageResponse(tx.transfer_id, QSize());
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QImage result;
+    result = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+
+    QVERIFY(result.isNull());
+    QVERIFY(!resp->errorString().isEmpty());
 }

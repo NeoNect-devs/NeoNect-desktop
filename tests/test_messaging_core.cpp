@@ -28,6 +28,7 @@ public:
     
     NeoNect::ServiceResult<std::monostate> saveFileTransfer(const NeoNect::Storage::E2EEFileTransfer&) override { return NeoNect::ServiceResult<std::monostate>::ok({}); }
     NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer> getFileTransfer(const QString&, const QString&) override { return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::fail(""); }
+    NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer> getFileTransferById(const QString&) override { return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::fail(""); }
     NeoNect::ServiceResult<std::vector<NeoNect::Storage::E2EEFileTransfer>> getActiveFileTransfers() override { return NeoNect::ServiceResult<std::vector<NeoNect::Storage::E2EEFileTransfer>>::ok({}); }
     NeoNect::ServiceResult<std::monostate> updateFileTransferBitset(const QString&, const QString&, const QByteArray&) override { return NeoNect::ServiceResult<std::monostate>::ok({}); }
     NeoNect::ServiceResult<std::monostate> updateFileTransferStatus(const QString&, const QString&, const QString&) override { return NeoNect::ServiceResult<std::monostate>::ok({}); }

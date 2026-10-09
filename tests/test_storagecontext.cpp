@@ -14,9 +14,9 @@ void TestStorageContext::testCreationAndPaths() {
     
     auto ctx = std::make_unique<StorageContext>(server, user, true, "testprof");
     
-    QVERIFY(ctx->secureStore() != nullptr);
-    QVERIFY(ctx->messageStorage() != nullptr);
-    QVERIFY(ctx->messageQueue() != nullptr);
+    QVERIFY(ctx->secureStore().lock() != nullptr);
+    QVERIFY(ctx->messageStorage().lock() != nullptr);
+    QVERIFY(ctx->messageQueue().lock() != nullptr);
     QCOMPARE(ctx->serverUrl(), server);
     QCOMPARE(ctx->username(), user);
     
@@ -44,7 +44,7 @@ void TestStorageContext::testDeterministicRecreation() {
     }
     {
         StorageContext ctx2(server, user, true, "testprof");
-        QVERIFY(ctx2.secureStore() != nullptr);
+        QVERIFY(ctx2.secureStore().lock() != nullptr);
     }
 }
 

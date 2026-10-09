@@ -34,8 +34,12 @@ public:
         QObject* parent = nullptr);
 
     // API to start transfer
-    void startTransfer(const QString& recipientUser, const QString& recipientDevice, const QString& filePath);
+    void startTransfer(const QString& recipientUser, const QString& recipientDevice, const QString& filePath, const QString& overrideTransferId = "");
     void cancelTransfer(const QString& transferId, const QString& peerDevice, const QString& reason);
+    void setStore(std::weak_ptr<Storage::ISecureE2EEStore> store) { m_store = store; }
+
+    using IsImageTransferCb = std::function<bool(const QString& transferId)>;
+    void setIsImageTransferCb(IsImageTransferCb cb) { m_isImageTransferCb = std::move(cb); }
 
     void setRetryParamsForTesting(int timerIntervalMs, int inFlightTimeoutMs) {
         m_inFlightTimeoutMs = inFlightTimeoutMs;
@@ -81,6 +85,7 @@ private:
     SendChatMsgCb m_sendChatMsgCb;
     
     QString m_spoolDir;
+    IsImageTransferCb m_isImageTransferCb;
     QMap<QString, QMap<uint32_t, qint64>> m_inFlight;
     QMap<QString, QMap<uint32_t, int>> m_retryCounts;
     QMap<QString, QString> m_activeUsers;

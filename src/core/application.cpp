@@ -255,9 +255,50 @@ void Application::initializeServices() {
     );
     m_relayService->setEnvelopeHandler(m_sessionManager);
 
+
+    m_fileTransferManager = std::make_shared<Services::FileTransferManager>(
+        std::weak_ptr<Storage::ISecureE2EEStore>(),
+        backend,
+        capabilitiesRepo,
+        m_storage,
+        [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) {
+            if (m_relayService) {
+                m_relayService->sendEncryptedEnvelope(rUser, rDev, msgId, env);
+                return true;
+            }
+            return false;
+        },
+        [this](const QJsonObject& obj, const QString& ru, const QString& rd) {
+            Core::Messaging::Message coreMsg;
+            coreMsg.messageId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            coreMsg.conversationId = "dms:" + ru;
+            coreMsg.senderId = m_storage->username();
+            coreMsg.receiverId = ru;
+            coreMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
+            coreMsg.plaintext = QJsonDocument(obj).toJson(QJsonDocument::Compact);
+            coreMsg.type = "file_start";
+            coreMsg.state = Core::Messaging::MessageState::CREATED;
+            if (m_coreMessageService) m_coreMessageService->sendMessage(coreMsg);
+        }
+    );
+    m_messageService->setFileTransferManager(m_fileTransferManager);
+
+    m_secureImageProvider = new Services::SecureImageProvider(std::weak_ptr<Storage::ISecureE2EEStore>(), backend, m_storage);
+
     m_coreMessageService = std::make_shared<Core::Messaging::MessageService>(std::weak_ptr<Core::Messaging::IMessageStorage>(), m_sessionManager, std::weak_ptr<Core::Messaging::IMessageQueue>());
 
+
     m_coreMessageService->setOnMessageReceived([this](const Core::Messaging::Message& coreMsg) {
+        if (coreMsg.type == "file_start" || coreMsg.type == "file_ack" || coreMsg.type == "file_nack" || coreMsg.type == "file_cancel") {
+            if (m_fileTransferManager) {
+                QJsonParseError err;
+                QJsonDocument doc = QJsonDocument::fromJson(coreMsg.plaintext.toUtf8(), &err);
+                if (err.error == QJsonParseError::NoError && doc.isObject()) {
+                    m_fileTransferManager->handleControlMessage(coreMsg.senderId, "deviceA", doc.object());
+                }
+            }
+            return;
+        }
         if (m_messageService) {
             NeoNect::Domain::Message domainMsg;
             domainMsg.id = coreMsg.messageId;
@@ -356,6 +397,17 @@ void Application::initializeServices() {
             m_coreMessageService->setOfflineQueue(m_messageQueue);
             preKeyAdapter->setStore(m_secureStore);
             m_sessionManager->setStore(m_secureStore);
+            if (m_fileTransferManager) {
+                m_fileTransferManager->setStore(m_secureStore);
+                m_fileTransferManager->setIsImageTransferCb([this](const QString& transferId) -> bool {
+                    auto lockedStorage = m_messageStorage.lock();
+                    if (!lockedStorage) return false;
+                    auto msgOpt = lockedStorage->getMessage(transferId);
+                    if (msgOpt) return msgOpt->type == "image";
+                    return false;
+                });
+            }
+            if (m_secureImageProvider) m_secureImageProvider->setStore(m_secureStore);
 
             m_messageService->setCurrentUserId(user);
             m_messageService->setServerUrl(m_storageContext->serverUrl());
@@ -612,6 +664,9 @@ void Application::registerQmlTypes() {
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", m_notificationManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "MessageService", m_messageService.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "VersionInfo", m_versionInfo.get());
+    if (m_secureImageProvider) {
+        m_engine->addImageProvider("secure", m_secureImageProvider);
+    }
     qmlRegisterType<ChatMessageModel>("NeoNect.Core", 1, 0, "ChatMessageModel");
 }
 

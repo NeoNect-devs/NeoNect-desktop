@@ -38,6 +38,7 @@ public:
     
     ServiceResult<std::monostate> saveFileTransfer(const E2EEFileTransfer& transfer) override;
     ServiceResult<E2EEFileTransfer> getFileTransfer(const QString& transfer_id, const QString& peer_device_id) override;
+    ServiceResult<E2EEFileTransfer> getFileTransferById(const QString& transfer_id) override;
     ServiceResult<std::vector<E2EEFileTransfer>> getActiveFileTransfers() override;
     ServiceResult<std::monostate> updateFileTransferBitset(const QString& transfer_id, const QString& peer_device_id, const QByteArray& bitset) override;
     ServiceResult<std::monostate> updateFileTransferStatus(const QString& transfer_id, const QString& peer_device_id, const QString& status) override;

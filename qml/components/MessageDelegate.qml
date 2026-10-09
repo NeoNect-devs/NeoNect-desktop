@@ -382,7 +382,7 @@ import "UIHelpers.js" as UIHelpers
                                                         id: chatImg
                                                         visible: delegateRoot.isImage && !imgDelegateItem.isGif
                                                         anchors.fill: parent
-                                                        source: visible ? UIHelpers.formatMediaSource(model.mediaUrl) : ""
+                                                        source: visible ? (model.mediaUrl.indexOf("http") === 0 || model.mediaUrl.indexOf("file") === 0 ? UIHelpers.formatMediaSource(model.mediaUrl) : "image://secure/" + model.mediaUrl) : ""
                                                         fillMode: Image.PreserveAspectFit
                                                         sourceSize.width: 640
                                                         smooth: true
@@ -395,7 +395,7 @@ import "UIHelpers.js" as UIHelpers
                                                         id: chatGif
                                                         visible: delegateRoot.isImage && imgDelegateItem.isGif
                                                         anchors.fill: parent
-                                                        source: visible ? UIHelpers.formatMediaSource(model.mediaUrl) : ""
+                                                        source: visible ? (model.mediaUrl.indexOf("http") === 0 || model.mediaUrl.indexOf("file") === 0 ? UIHelpers.formatMediaSource(model.mediaUrl) : "image://secure/" + model.mediaUrl) : ""
                                                         fillMode: Image.PreserveAspectFit
                                                         sourceSize.width: 480
                                                         smooth: true
