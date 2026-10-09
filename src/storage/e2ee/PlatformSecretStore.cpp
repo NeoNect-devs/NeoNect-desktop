@@ -8,7 +8,9 @@
 #include <windows.h>
 #include <wincrypt.h>
 #elif defined(HAS_LIBSECRET)
+#undef signals
 #include <libsecret/secret.h>
+#define signals Q_SIGNALS
 
 static const SecretSchema* get_neonect_schema() {
     static const SecretSchema schema = {
