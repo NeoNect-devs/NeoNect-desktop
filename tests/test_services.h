@@ -48,4 +48,5 @@ private slots:
     void testPreKeyServiceUploadPayload();
     void testCapabilitiesValidation();
     void testCapabilitiesServerSwitch();
+    void testFriendRequestApiLifecycleAndEdgeCases();
 };

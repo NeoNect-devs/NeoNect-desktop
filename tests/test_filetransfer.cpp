@@ -119,6 +119,8 @@ public:
     void setFriends(const QStringList &) override {}
     QStringList pendingRequests() const override { return {}; }
     void setPendingRequests(const QStringList &) override {}
+    QStringList outgoingRequests() const override { return {}; }
+    void setOutgoingRequests(const QStringList &) override {}
     QVariantList bookmarks() const override { return {}; }
     void setBookmarks(const QVariantList &) override {}
     void addBookmark(const QVariantMap &) override {}

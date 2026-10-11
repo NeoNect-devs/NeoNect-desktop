@@ -207,6 +207,7 @@ void NetworkManager::setupServiceSignals() {
     });
 
     connect(m_relayService.get(), &NeoNect::Services::RelayService::sessionUnauthorized, this, [this](const QString &message) {
+        m_friendService->stopHeartbeat();
         m_sessionToken.clear();
         m_openConversations.clear();
         emit openConversationsChanged();
@@ -226,6 +227,9 @@ void NetworkManager::setupServiceSignals() {
     connect(m_relayService.get(), &NeoNect::Services::RelayService::serverConnected, this, [this]() {
         emit isConnectedChanged();
         emit effectiveStatusChanged();
+        if (!m_sessionToken.isEmpty()) {
+            m_friendService->loadFriends();
+        }
         m_friendService->checkFriendsStatus();
     });
 
@@ -244,10 +248,14 @@ void NetworkManager::setupServiceSignals() {
     connect(m_friendService.get(), &NeoNect::Services::FriendService::pendingRequestsChanged, this, [this](const QStringList&) {
         emit pendingRequestsChanged();
     });
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::outgoingRequestsChanged, this, [this](const QStringList&) {
+        emit outgoingRequestsChanged();
+    });
 
     connect(m_friendService.get(), &NeoNect::Services::FriendService::addFriendResult, this, &NetworkManager::addFriendResult);
     connect(m_friendService.get(), &NeoNect::Services::FriendService::acceptFriendResult, this, &NetworkManager::acceptFriendResult);
     connect(m_friendService.get(), &NeoNect::Services::FriendService::rejectFriendResult, this, &NetworkManager::rejectFriendResult);
+    connect(m_friendService.get(), &NeoNect::Services::FriendService::cancelFriendRequestResult, this, &NetworkManager::cancelFriendRequestResult);
     connect(m_friendService.get(), &NeoNect::Services::FriendService::removeFriendResult, this, &NetworkManager::removeFriendResult);
     connect(m_friendService.get(), &NeoNect::Services::FriendService::friendStatusUpdated, this, &NetworkManager::friendStatusUpdated);
 }
@@ -630,6 +638,10 @@ QStringList NetworkManager::pendingRequests() const {
     return m_friendService->pendingRequests();
 }
 
+QStringList NetworkManager::outgoingRequests() const {
+    return m_friendService->outgoingRequests();
+}
+
 QVariantList NetworkManager::bookmarks() const {
     return m_storage->bookmarks();
 }
@@ -793,6 +805,10 @@ void NetworkManager::acceptFriend(const QString &username) {
 
 void NetworkManager::rejectFriend(const QString &username) {
     m_friendService->rejectFriend(username);
+}
+
+void NetworkManager::cancelFriendRequest(const QString &username) {
+    m_friendService->cancelFriendRequest(username);
 }
 
 void NetworkManager::removeFriend(const QString &username) {

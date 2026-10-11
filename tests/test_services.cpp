@@ -6,6 +6,7 @@
 #include <QTcpServer>
 #include <QTcpSocket>
 #include "mocks/mockhttptransport.h"
+#include "../src/common/constants.h"
 #include "../src/transport/httptransport.h"
 #include "../src/storage/settingsrepository.h"
 #include "../src/storage/capabilitiesrepository.h"
@@ -268,11 +269,6 @@ void TestServices::testTwoClientFriendRequestFlow() {
     sharedTransport->seedUser("alice", "pass123");
     sharedTransport->seedUser("bob", "pass123");
 
-    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoAlice->setMasterKey(QByteArray(32, 1));
-    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoBob->setMasterKey(QByteArray(32, 1));
-
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_fr");
     storageAlice->clearSession();
     storageAlice->setUsername("alice");
@@ -280,6 +276,7 @@ void TestServices::testTwoClientFriendRequestFlow() {
     storageAlice->setDeviceId("mock-dev-alice");
     storageAlice->setFriends({});
     storageAlice->setPendingRequests({});
+    storageAlice->setOutgoingRequests({});
 
     auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_fr");
     storageBob->clearSession();
@@ -288,72 +285,58 @@ void TestServices::testTwoClientFriendRequestFlow() {
     storageBob->setAuthToken("mock-token-bob");
     storageBob->setFriends({});
     storageBob->setPendingRequests({});
-
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr, nullptr);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr, nullptr);
+    storageBob->setOutgoingRequests({});
 
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob);
 
-    // Wire Relay <-> Friend for Alice
-    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::incomingFriendPacket,
-                     friendAlice.get(), &NeoNect::Services::FriendService::handleIncomingFriendPacket);
-    QObject::connect(friendAlice.get(), &NeoNect::Services::FriendService::requestSendDomainMessage,
-                     relayAlice.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
-                     friendAlice.get(), &NeoNect::Services::FriendService::handleTransmissionStatus);
-
-    // Wire Relay <-> Friend for Bob
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingFriendPacket,
-                     friendBob.get(), &NeoNect::Services::FriendService::handleIncomingFriendPacket);
-    QObject::connect(friendBob.get(), &NeoNect::Services::FriendService::requestSendDomainMessage,
-                     relayBob.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
-                     friendBob.get(), &NeoNect::Services::FriendService::handleTransmissionStatus);
-
-    QSignalSpy spyAliceTx(relayAlice.get(), &NeoNect::Services::RelayService::messageTransmissionStatus);
+    QSignalSpy spyAliceAdd(friendAlice.get(), &NeoNect::Services::FriendService::addFriendResult);
     QSignalSpy spyBobReq(friendBob.get(), &NeoNect::Services::FriendService::friendRequestReceived);
     QSignalSpy spyBobPending(friendBob.get(), &NeoNect::Services::FriendService::pendingRequestsChanged);
     QSignalSpy spyAliceAccepted(friendAlice.get(), &NeoNect::Services::FriendService::friendAccepted);
 
-    // 1. Alice sends friend request to Bob
+    // 1. Alice sends friend request to Bob via POST /api/v1/friends
     sharedTransport->setAuthToken("mock-token-alice");
     friendAlice->addFriend("bob");
-    if (spyAliceTx.count() == 0) {
-        spyAliceTx.wait(200);
-    }
-    QCOMPARE(spyAliceTx.count(), 1);
-    QCOMPARE(spyAliceTx.at(0).at(2).toBool(), true); // success == true
+    QCOMPARE(spyAliceAdd.count(), 1);
+    QCOMPARE(spyAliceAdd.at(0).at(0).toBool(), true);
+    QVERIFY(friendAlice->outgoingRequests().contains("bob"));
+    QVERIFY(!friendAlice->friends().contains("bob"));
 
-    // 2. Bob polls and receives friend request packet
+    // 2. Bob syncs friend requests via GET /api/v1/friends/requests
     sharedTransport->setAuthToken("mock-token-bob");
-    relayBob->pollPendingMessages();
+    friendBob->loadFriends();
 
     QCOMPARE(spyBobReq.count(), 1);
     QCOMPARE(spyBobReq.at(0).at(0).toString(), QString("alice"));
-    QCOMPARE(spyBobPending.count(), 1);
+    QVERIFY(spyBobPending.count() >= 1);
     QVERIFY(friendBob->pendingRequests().contains("alice"));
     QVERIFY(!friendBob->friends().contains("alice"));
 
-    // 3. Bob accepts friend request from Alice
-    QSignalSpy spyBobTx(relayBob.get(), &NeoNect::Services::RelayService::messageTransmissionStatus);
+    // 3. Bob accepts friend request from Alice via POST /api/v1/friends/requests/accept
+    QSignalSpy spyBobAccept(friendBob.get(), &NeoNect::Services::FriendService::acceptFriendResult);
     friendBob->acceptFriend("alice");
-    if (spyBobTx.count() == 0) {
-        spyBobTx.wait(200);
-    }
-    QCOMPARE(spyBobTx.count(), 1);
+    QCOMPARE(spyBobAccept.count(), 1);
+    QCOMPARE(spyBobAccept.at(0).at(0).toBool(), true);
     QVERIFY(!friendBob->pendingRequests().contains("alice"));
     QVERIFY(friendBob->friends().contains("alice"));
 
-    // 4. Alice polls and receives friend accept packet
+    // 4. Alice syncs via GET /api/v1/friends + GET /api/v1/friends/requests and sees Bob accepted
     sharedTransport->setAuthToken("mock-token-alice");
-    relayAlice->pollPendingMessages();
+    friendAlice->loadFriends();
 
     QCOMPARE(spyAliceAccepted.count(), 1);
     QCOMPARE(spyAliceAccepted.at(0).at(0).toString(), QString("bob"));
     QVERIFY(friendAlice->friends().contains("bob"));
+    QVERIFY(!friendAlice->outgoingRequests().contains("bob"));
 
+    storageAlice->setFriends({});
+    storageAlice->setPendingRequests({});
+    storageAlice->setOutgoingRequests({});
     storageAlice->clearSession();
+    storageBob->setFriends({});
+    storageBob->setPendingRequests({});
+    storageBob->setOutgoingRequests({});
     storageBob->clearSession();
 }
 
@@ -362,11 +345,6 @@ void TestServices::testTwoClientFriendRequestRejectFlow() {
     sharedTransport->seedUser("alice", "pass123");
     sharedTransport->seedUser("bob", "pass123");
 
-    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoAlice->setMasterKey(QByteArray(32, 1));
-    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoBob->setMasterKey(QByteArray(32, 1));
-
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_fr_rej");
     storageAlice->clearSession();
     storageAlice->setUsername("alice");
@@ -374,6 +352,7 @@ void TestServices::testTwoClientFriendRequestRejectFlow() {
     storageAlice->setDeviceId("mock-dev-alice");
     storageAlice->setFriends({});
     storageAlice->setPendingRequests({});
+    storageAlice->setOutgoingRequests({});
 
     auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_fr_rej");
     storageBob->clearSession();
@@ -382,74 +361,59 @@ void TestServices::testTwoClientFriendRequestRejectFlow() {
     storageBob->setAuthToken("mock-token-bob");
     storageBob->setFriends({});
     storageBob->setPendingRequests({});
-
-    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr, nullptr);
-    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr, nullptr);
+    storageBob->setOutgoingRequests({});
 
     auto friendAlice = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageAlice);
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob);
 
-    // Wire Relay <-> Friend for Alice
-    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::incomingFriendPacket,
-                     friendAlice.get(), &NeoNect::Services::FriendService::handleIncomingFriendPacket);
-    QObject::connect(friendAlice.get(), &NeoNect::Services::FriendService::requestSendDomainMessage,
-                     relayAlice.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
-                     friendAlice.get(), &NeoNect::Services::FriendService::handleTransmissionStatus);
-
-    // Wire Relay <-> Friend for Bob
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingFriendPacket,
-                     friendBob.get(), &NeoNect::Services::FriendService::handleIncomingFriendPacket);
-    QObject::connect(friendBob.get(), &NeoNect::Services::FriendService::requestSendDomainMessage,
-                     relayBob.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
-                     friendBob.get(), &NeoNect::Services::FriendService::handleTransmissionStatus);
-
-    QSignalSpy spyAliceTx(relayAlice.get(), &NeoNect::Services::RelayService::messageTransmissionStatus);
+    QSignalSpy spyAliceAdd(friendAlice.get(), &NeoNect::Services::FriendService::addFriendResult);
     QSignalSpy spyBobReq(friendBob.get(), &NeoNect::Services::FriendService::friendRequestReceived);
     QSignalSpy spyBobPending(friendBob.get(), &NeoNect::Services::FriendService::pendingRequestsChanged);
     QSignalSpy spyAliceRejected(friendAlice.get(), &NeoNect::Services::FriendService::friendRejected);
 
-    // 1. Alice sends friend request to Bob
+    // 1. Alice sends friend request to Bob via POST /api/v1/friends
     sharedTransport->setAuthToken("mock-token-alice");
     friendAlice->addFriend("bob");
-    if (spyAliceTx.count() == 0) {
-        spyAliceTx.wait(200);
-    }
-    QCOMPARE(spyAliceTx.count(), 1);
-    QCOMPARE(spyAliceTx.at(0).at(2).toBool(), true);
+    QCOMPARE(spyAliceAdd.count(), 1);
+    QCOMPARE(spyAliceAdd.at(0).at(0).toBool(), true);
+    QVERIFY(friendAlice->outgoingRequests().contains("bob"));
+    QVERIFY(!friendAlice->friends().contains("bob"));
 
-    // 2. Bob polls and receives friend request packet
+    // 2. Bob syncs friend requests via GET /api/v1/friends/requests
     sharedTransport->setAuthToken("mock-token-bob");
-    relayBob->pollPendingMessages();
+    friendBob->loadFriends();
 
     QCOMPARE(spyBobReq.count(), 1);
     QCOMPARE(spyBobReq.at(0).at(0).toString(), QString("alice"));
-    QCOMPARE(spyBobPending.count(), 1);
+    QVERIFY(spyBobPending.count() >= 1);
     QVERIFY(friendBob->pendingRequests().contains("alice"));
     QVERIFY(!friendBob->friends().contains("alice"));
-    QVERIFY(friendAlice->friends().contains("bob"));
 
-    // 3. Bob REJECTS friend request from Alice
-    QSignalSpy spyBobTx(relayBob.get(), &NeoNect::Services::RelayService::messageTransmissionStatus);
+    // 3. Bob DECLINES friend request from Alice via POST /api/v1/friends/requests/decline
+    QSignalSpy spyBobReject(friendBob.get(), &NeoNect::Services::FriendService::rejectFriendResult);
     friendBob->rejectFriend("alice");
-    if (spyBobTx.count() == 0) {
-        spyBobTx.wait(200);
-    }
-    QCOMPARE(spyBobTx.count(), 1);
+    QCOMPARE(spyBobReject.count(), 1);
+    QCOMPARE(spyBobReject.at(0).at(0).toBool(), true);
     QVERIFY(!friendBob->pendingRequests().contains("alice"));
     QVERIFY(!friendBob->friends().contains("alice"));
 
-    // 4. Alice polls and receives friend reject packet
+    // 4. Alice syncs and sees her outgoing request to Bob was declined
     sharedTransport->setAuthToken("mock-token-alice");
-    relayAlice->pollPendingMessages();
+    friendAlice->loadFriends();
 
     QCOMPARE(spyAliceRejected.count(), 1);
     QCOMPARE(spyAliceRejected.at(0).at(0).toString(), QString("bob"));
     QVERIFY(!friendAlice->friends().contains("bob"));
     QVERIFY(!friendAlice->pendingRequests().contains("bob"));
+    QVERIFY(!friendAlice->outgoingRequests().contains("bob"));
 
+    storageAlice->setFriends({});
+    storageAlice->setPendingRequests({});
+    storageAlice->setOutgoingRequests({});
     storageAlice->clearSession();
+    storageBob->setFriends({});
+    storageBob->setPendingRequests({});
+    storageBob->setOutgoingRequests({});
     storageBob->clearSession();
 }
 
@@ -965,132 +929,202 @@ void TestServices::testAddFriendSendsRealRequest() {
     storage->setUsername("alice");
     storage->setFriends({});
     storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     mockTransport->seedUser("alice", "password123!");
     mockTransport->seedUser("bob", "password123!");
+    mockTransport->seedUser("charlie", "password123!");
     mockTransport->setAuthToken("mock-token-alice");
 
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
     QSignalSpy spyResult(&friendService, &NeoNect::Services::FriendService::addFriendResult);
-    QSignalSpy spySend(&friendService, &NeoNect::Services::FriendService::requestSendDomainMessage);
+    QSignalSpy spyOutgoing(&friendService, &NeoNect::Services::FriendService::outgoingRequestsChanged);
+    QSignalSpy spyHttp(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::requestHandled);
 
-    // 1. Success: Add bob
+    // 1. Success: Send friend request to bob via POST /api/v1/friends
     friendService.addFriend("bob");
 
     QCOMPARE(spyResult.count(), 1);
     QCOMPARE(spyResult.first().at(0).toBool(), true);
-    QCOMPARE(spySend.count(), 1);
-    auto msg = spySend.first().at(0).value<NeoNect::Domain::Message>();
-    QCOMPARE(msg.type, QString("friend_request"));
-    QCOMPARE(msg.conversationId, QString("dms:bob"));
+    QVERIFY(spyResult.first().at(1).toString().contains("Friend request sent", Qt::CaseInsensitive));
+    QVERIFY(spyOutgoing.count() >= 1);
+    QVERIFY(friendService.outgoingRequests().contains("bob"));
+    QVERIFY(!friendService.friends().contains("bob"));
+    bool sawPostFriends = false;
+    for (int i = 0; i < spyHttp.count(); ++i) {
+        if (spyHttp.at(i).at(0).toString() == "POST" && spyHttp.at(i).at(1).toString() == NeoNect::Constants::EP_FRIENDS) {
+            sawPostFriends = true;
+        }
+    }
+    QVERIFY(sawPostFriends);
 
-    // 2. Already friend: returns false without sending request
-    friendService.acceptFriend("charlie");
+    // 2. Duplicate outgoing request: returns 409 Conflict ("Friend request already sent to @bob.")
     spyResult.clear();
-    spySend.clear();
+    friendService.addFriend("bob");
+    QCOMPARE(spyResult.count(), 1);
+    QCOMPARE(spyResult.first().at(0).toBool(), false);
+    QVERIFY(spyResult.first().at(1).toString().contains("already sent", Qt::CaseInsensitive));
+
+    // 3. Incoming request already received from charlie: returns 409 Conflict ("already sent you a friend request")
+    mockTransport->seedFriendRequest("charlie", "alice");
+    spyResult.clear();
     friendService.addFriend("charlie");
     QCOMPARE(spyResult.count(), 1);
     QCOMPARE(spyResult.first().at(0).toBool(), false);
-    QVERIFY(spyResult.first().at(1).toString().contains("already your friend"));
-    QCOMPARE(spySend.count(), 0);
+    QVERIFY(spyResult.first().at(1).toString().contains("already sent you a friend request", Qt::CaseInsensitive));
 
-    // 3. User does not exist: returns 404 Not Found
+    // 4. Already friend: accept charlie first, then addFriend("charlie") returns 409 ("already your friend")
+    friendService.acceptFriend("charlie");
+    QVERIFY(friendService.friends().contains("charlie"));
+    spyResult.clear();
+    friendService.addFriend("charlie");
+    QCOMPARE(spyResult.count(), 1);
+    QCOMPARE(spyResult.first().at(0).toBool(), false);
+    QVERIFY(spyResult.first().at(1).toString().contains("already your friend", Qt::CaseInsensitive));
+
+    // 5. User does not exist: returns 404 Not Found
     spyResult.clear();
     friendService.addFriend("non_existent_user");
     QCOMPARE(spyResult.count(), 1);
     QCOMPARE(spyResult.first().at(0).toBool(), false);
-    QVERIFY(spyResult.first().at(1).toString().contains("does not exist"));
+    QVERIFY(spyResult.first().at(1).toString().contains("does not exist", Qt::CaseInsensitive));
 
-    // 4. Cannot add yourself: returns 400 Bad Request
+    // 6. Cannot add yourself: returns false
     spyResult.clear();
     friendService.addFriend("alice");
     QCOMPARE(spyResult.count(), 1);
     QCOMPARE(spyResult.first().at(0).toBool(), false);
     QVERIFY(spyResult.first().at(1).toString().contains("yourself", Qt::CaseInsensitive));
 
-    // 5. Unauthorized: returns 401
+    // 7. Unauthorized: returns 401
     spyResult.clear();
     mockTransport->setAuthToken("unauthorized");
     friendService.addFriend("eve");
     QCOMPARE(spyResult.count(), 1);
     QCOMPARE(spyResult.first().at(0).toBool(), false);
     QVERIFY(spyResult.first().at(1).toString().contains("Authentication required", Qt::CaseInsensitive));
+
+    storage->setFriends({});
+    storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
+    storage->clearSession();
 }
 
 void TestServices::testPendingFriendIsNotAccepted() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_pend");
     storage->clearSession();
     storage->setUsername("alice");
+    storage->setAuthToken("mock-token-alice");
     storage->setFriends({});
     storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    mockTransport->seedUser("alice", "password123!");
+    mockTransport->seedUser("charlie", "password123!");
+    mockTransport->seedFriendRequest("charlie", "alice");
+    mockTransport->setAuthToken("mock-token-alice");
+
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
     QSignalSpy spyReq(&friendService, &NeoNect::Services::FriendService::pendingRequestsChanged);
+    QSignalSpy spyReceived(&friendService, &NeoNect::Services::FriendService::friendRequestReceived);
 
-    NeoNect::Domain::Message msg;
-    msg.senderId = "charlie";
-    msg.type = "friend_request";
-    friendService.handleIncomingFriendPacket(msg);
+    friendService.loadFriendRequests();
 
     QCOMPARE(spyReq.count(), 1);
-    QCOMPARE(spyReq.first().at(0).toStringList().size(), 1);
+    QCOMPARE(spyReceived.count(), 1);
+    QCOMPARE(spyReceived.first().at(0).toString(), QString("charlie"));
     QCOMPARE(friendService.pendingRequests().size(), 1);
     QCOMPARE(friendService.pendingRequests()[0], QString("charlie"));
     QCOMPARE(friendService.friends().size(), 0);
+
+    storage->setFriends({});
+    storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
+    storage->clearSession();
 }
 
 void TestServices::testAcceptedFriendAppears() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_acc");
     storage->clearSession();
     storage->setUsername("alice");
+    storage->setAuthToken("mock-token-alice");
     storage->setFriends({});
     storage->setPendingRequests({"david"});
+    storage->setOutgoingRequests({});
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    mockTransport->seedFriendRequest("david", "alice");
+    mockTransport->setAuthToken("mock-token-alice");
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
-    QSignalSpy spySend(&friendService, &NeoNect::Services::FriendService::requestSendDomainMessage);
+    QSignalSpy spyAcceptResult(&friendService, &NeoNect::Services::FriendService::acceptFriendResult);
     QSignalSpy spyFriends(&friendService, &NeoNect::Services::FriendService::friendsListChanged);
+    QSignalSpy spyHttp(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::requestHandled);
 
     friendService.acceptFriend("david");
 
+    QCOMPARE(spyAcceptResult.count(), 1);
+    QCOMPARE(spyAcceptResult.first().at(0).toBool(), true);
     QCOMPARE(friendService.friends().size(), 1);
     QCOMPARE(friendService.friends()[0], QString("david"));
     QCOMPARE(friendService.pendingRequests().size(), 0);
-    QCOMPARE(spyFriends.count(), 1);
-    QCOMPARE(spySend.count(), 1);
-    auto msg = spySend.first().at(0).value<NeoNect::Domain::Message>();
-    QCOMPARE(msg.type, QString("friend_accept"));
+    QVERIFY(spyFriends.count() >= 1);
+    bool sawAcceptPost = false;
+    for (int i = 0; i < spyHttp.count(); ++i) {
+        if (spyHttp.at(i).at(0).toString() == "POST" &&
+            spyHttp.at(i).at(1).toString() == NeoNect::Constants::EP_FRIEND_REQUESTS_ACCEPT) {
+            sawAcceptPost = true;
+        }
+    }
+    QVERIFY(sawAcceptPost);
+
+    storage->setFriends({});
+    storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
+    storage->clearSession();
 }
 
 void TestServices::testRejectedFriendDoesNotAppear() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_rej");
     storage->clearSession();
     storage->setUsername("alice");
+    storage->setAuthToken("mock-token-alice");
     storage->setFriends({});
     storage->setPendingRequests({"eve"});
+    storage->setOutgoingRequests({});
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    mockTransport->seedFriendRequest("eve", "alice");
+    mockTransport->setAuthToken("mock-token-alice");
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
     QSignalSpy spyReq(&friendService, &NeoNect::Services::FriendService::pendingRequestsChanged);
-    QSignalSpy spySend(&friendService, &NeoNect::Services::FriendService::requestSendDomainMessage);
+    QSignalSpy spyRejectResult(&friendService, &NeoNect::Services::FriendService::rejectFriendResult);
+    QSignalSpy spyHttp(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::requestHandled);
 
     friendService.rejectFriend("eve");
 
+    QCOMPARE(spyRejectResult.count(), 1);
+    QCOMPARE(spyRejectResult.first().at(0).toBool(), true);
     QCOMPARE(friendService.friends().size(), 0);
     QCOMPARE(friendService.pendingRequests().size(), 0);
-    QCOMPARE(spyReq.count(), 1);
-    QCOMPARE(spySend.count(), 1);
-    auto msg = spySend.first().at(0).value<NeoNect::Domain::Message>();
-    QCOMPARE(msg.type, QString("friend_reject"));
+    QVERIFY(spyReq.count() >= 1);
+    bool sawDeclinePost = false;
+    for (int i = 0; i < spyHttp.count(); ++i) {
+        if (spyHttp.at(i).at(0).toString() == "POST" &&
+            spyHttp.at(i).at(1).toString() == NeoNect::Constants::EP_FRIEND_REQUESTS_DECLINE) {
+            sawDeclinePost = true;
+        }
+    }
+    QVERIFY(sawDeclinePost);
 
-    // Verify incoming friend_reject packet handling on sender
+    // Verify incoming friend_reject packet handling on sender (backward compatibility)
     auto storageSender = std::make_shared<NeoNect::Storage::SettingsRepository>("test_rej_sender");
     storageSender->clearSession();
+    storageSender->setUsername("eve");
     storageSender->setFriends({});
     storageSender->setPendingRequests({});
-    storageSender->setUsername("eve");
+    storageSender->setOutgoingRequests({"alice"});
     NeoNect::Services::FriendService friendSender(mockTransport, storageSender);
     QSignalSpy spyRejected(&friendSender, &NeoNect::Services::FriendService::friendRejected);
 
@@ -1103,35 +1137,68 @@ void TestServices::testRejectedFriendDoesNotAppear() {
     QCOMPARE(spyRejected.first().at(0).toString(), QString("alice"));
     QCOMPARE(friendSender.friends().size(), 0);
     QCOMPARE(friendSender.pendingRequests().size(), 0);
+    QCOMPARE(friendSender.outgoingRequests().size(), 0);
+
+    storage->setFriends({});
+    storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
+    storage->clearSession();
+    storageSender->setFriends({});
+    storageSender->setPendingRequests({});
+    storageSender->setOutgoingRequests({});
+    storageSender->clearSession();
 }
 
 void TestServices::testRemovedFriendDisappears() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_rem");
     storage->clearSession();
-    storage->setPendingRequests({});
-    storage->setFriends({"frank"});
     storage->setUsername("alice");
+    storage->setAuthToken("mock-token-alice");
+    storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
+    storage->setFriends({"frank"});
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    mockTransport->seedFriendship("alice", "frank");
+    mockTransport->setAuthToken("mock-token-alice");
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
     QSignalSpy spyFriends(&friendService, &NeoNect::Services::FriendService::friendsListChanged);
+    QSignalSpy spyRemoveResult(&friendService, &NeoNect::Services::FriendService::removeFriendResult);
+    QSignalSpy spyHttp(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::requestHandled);
 
     friendService.removeFriend("frank");
 
+    QCOMPARE(spyRemoveResult.count(), 1);
+    QCOMPARE(spyRemoveResult.first().at(0).toBool(), true);
     QCOMPARE(friendService.friends().size(), 0);
-    QCOMPARE(spyFriends.count(), 1);
+    QVERIFY(spyFriends.count() >= 1);
+    bool sawDeleteFriend = false;
+    for (int i = 0; i < spyHttp.count(); ++i) {
+        if (spyHttp.at(i).at(0).toString() == "DELETE" &&
+            spyHttp.at(i).at(1).toString() == NeoNect::Constants::EP_FRIENDS) {
+            sawDeleteFriend = true;
+        }
+    }
+    QVERIFY(sawDeleteFriend);
+
+    storage->setFriends({});
+    storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
+    storage->clearSession();
 }
 
 void TestServices::testNoHardcodedFriendFallback() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_nohard");
     storage->setFriends({});
     storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
     friendService.loadFriends();
     QCOMPARE(friendService.friends().size(), 0);
     QCOMPARE(friendService.pendingRequests().size(), 0);
+    QCOMPARE(friendService.outgoingRequests().size(), 0);
 }
 
 void TestServices::testConnectivityAndOnlinePresence() {
@@ -2684,4 +2751,382 @@ void TestServices::testCapabilitiesServerSwitch() {
     QVERIFY(!capRepo->maxHttpBodyBytes().has_value());
     QVERIFY(!capRepo->maxEnvelopeBytes().has_value());
     QVERIFY(!capRepo->maxDevicesPerUser().has_value());
+}
+
+namespace {
+class DeferredTestHttpTransport : public NeoNect::Transport::IHttpTransport {
+public:
+    QString m_baseUrl{"http://deferred.local"};
+    QString m_token{"token-alice"};
+    int m_getFriendsCalls{0};
+    int m_getRequestsCalls{0};
+    int m_postFriendsCalls{0};
+    int m_postAcceptCalls{0};
+    int m_postDeclineCalls{0};
+    int m_deleteFriendsCalls{0};
+    int m_deleteRequestsCalls{0};
+    NeoNect::Transport::HttpResponseCallback m_pendingGetFriendsCb;
+    NeoNect::Transport::HttpResponseCallback m_pendingGetRequestsCb;
+    NeoNect::Transport::HttpResponseCallback m_pendingPostFriendsCb;
+    NeoNect::Transport::HttpResponseCallback m_pendingPostAcceptCb;
+    NeoNect::Transport::HttpResponseCallback m_pendingPostDeclineCb;
+    NeoNect::Transport::HttpResponseCallback m_pendingDeleteFriendsCb;
+    NeoNect::Transport::HttpResponseCallback m_pendingDeleteRequestsCb;
+    std::vector<NeoNect::Transport::HttpResponseCallback> m_retiredCallbacks;
+
+    void setBaseUrl(const QString &url) override { m_baseUrl = url; }
+    QString baseUrl() const override { return m_baseUrl; }
+    void setAuthToken(const QString &token) override { m_token = token; }
+    QString authToken() const override { return m_token; }
+
+    QNetworkReply* get(const QString &endpoint, const QMap<QString, QString> &, const QObject*, NeoNect::Transport::HttpResponseCallback callback) override {
+        if (endpoint == NeoNect::Constants::EP_FRIENDS) {
+            ++m_getFriendsCalls;
+            if (m_pendingGetFriendsCb) {
+                m_retiredCallbacks.push_back(std::move(m_pendingGetFriendsCb));
+            }
+            m_pendingGetFriendsCb = std::move(callback);
+        } else if (endpoint == NeoNect::Constants::EP_FRIEND_REQUESTS) {
+            ++m_getRequestsCalls;
+            if (m_pendingGetRequestsCb) {
+                m_retiredCallbacks.push_back(std::move(m_pendingGetRequestsCb));
+            }
+            m_pendingGetRequestsCb = std::move(callback);
+        }
+        return nullptr;
+    }
+
+    QNetworkReply* post(const QString &endpoint, const QByteArray &, const QObject*, NeoNect::Transport::HttpResponseCallback callback) override {
+        if (endpoint == NeoNect::Constants::EP_FRIENDS) {
+            ++m_postFriendsCalls;
+            if (m_pendingPostFriendsCb) {
+                m_retiredCallbacks.push_back(std::move(m_pendingPostFriendsCb));
+            }
+            m_pendingPostFriendsCb = std::move(callback);
+        } else if (endpoint == NeoNect::Constants::EP_FRIEND_REQUESTS_ACCEPT) {
+            ++m_postAcceptCalls;
+            if (m_pendingPostAcceptCb) {
+                m_retiredCallbacks.push_back(std::move(m_pendingPostAcceptCb));
+            }
+            m_pendingPostAcceptCb = std::move(callback);
+        } else if (endpoint == NeoNect::Constants::EP_FRIEND_REQUESTS_DECLINE) {
+            ++m_postDeclineCalls;
+            if (m_pendingPostDeclineCb) {
+                m_retiredCallbacks.push_back(std::move(m_pendingPostDeclineCb));
+            }
+            m_pendingPostDeclineCb = std::move(callback);
+        }
+        return nullptr;
+    }
+
+    QNetworkReply* deleteResource(const QString &endpoint, const QObject*, NeoNect::Transport::HttpResponseCallback callback, const QByteArray &) override {
+        if (endpoint == NeoNect::Constants::EP_FRIENDS) {
+            ++m_deleteFriendsCalls;
+            if (m_pendingDeleteFriendsCb) {
+                m_retiredCallbacks.push_back(std::move(m_pendingDeleteFriendsCb));
+            }
+            m_pendingDeleteFriendsCb = std::move(callback);
+        } else if (endpoint == NeoNect::Constants::EP_FRIEND_REQUESTS) {
+            ++m_deleteRequestsCalls;
+            if (m_pendingDeleteRequestsCb) {
+                m_retiredCallbacks.push_back(std::move(m_pendingDeleteRequestsCb));
+            }
+            m_pendingDeleteRequestsCb = std::move(callback);
+        }
+        return nullptr;
+    }
+};
+} // namespace
+
+void TestServices::testFriendRequestApiLifecycleAndEdgeCases() {
+    auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    mockTransport->seedUser("alice", "password123!");
+    mockTransport->seedUser("bob", "password123!");
+    mockTransport->seedUser("charlie", "password123!");
+
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_fr_edge_cases");
+    storage->clearSession();
+    storage->setUsername("alice");
+    storage->setAuthToken("mock-token-alice");
+    storage->setFriends({});
+    storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
+    mockTransport->setAuthToken("mock-token-alice");
+
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(mockTransport, storage, nullptr);
+    auto deviceService = std::make_shared<NeoNect::Services::DeviceService>(mockTransport, storage);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(mockTransport, storage, nullptr, nullptr);
+    auto friendService = std::make_shared<NeoNect::Services::FriendService>(mockTransport, storage);
+    NetworkManager nm(mockTransport, storage, authService, deviceService, relayService, friendService);
+
+    storage->setUsername("alice");
+    storage->setAuthToken("mock-token-alice");
+    mockTransport->setAuthToken("mock-token-alice");
+
+    QSignalSpy spyAdd(&nm, &NetworkManager::addFriendResult);
+    QSignalSpy spyAccept(&nm, &NetworkManager::acceptFriendResult);
+    QSignalSpy spyReject(&nm, &NetworkManager::rejectFriendResult);
+    QSignalSpy spyCancel(&nm, &NetworkManager::cancelFriendRequestResult);
+    QSignalSpy spyRemove(&nm, &NetworkManager::removeFriendResult);
+    QSignalSpy spyOutChanged(&nm, &NetworkManager::outgoingRequestsChanged);
+
+    // 1. Send outgoing request to bob, then test 403 Forbidden when sender tries to accept/decline own outgoing request
+    nm.addFriend("bob");
+    QCOMPARE(spyAdd.count(), 1);
+    QCOMPARE(spyAdd.takeFirst().at(0).toBool(), true);
+    QVERIFY(nm.outgoingRequests().contains("bob"));
+    QVERIFY(spyOutChanged.count() >= 1);
+
+    nm.acceptFriend("bob");
+    QCOMPARE(spyAccept.count(), 1);
+    auto acc403 = spyAccept.takeFirst();
+    QCOMPARE(acc403.at(0).toBool(), false);
+    QVERIFY(acc403.at(1).toString().contains("not authorized", Qt::CaseInsensitive));
+
+    nm.rejectFriend("bob");
+    QCOMPARE(spyReject.count(), 1);
+    auto rej403 = spyReject.takeFirst();
+    QCOMPARE(rej403.at(0).toBool(), false);
+    QVERIFY(rej403.at(1).toString().contains("not authorized", Qt::CaseInsensitive));
+
+    // 2. Cancel outgoing request to bob via DELETE /api/v1/friends/requests
+    nm.cancelFriendRequest("bob");
+    QCOMPARE(spyCancel.count(), 1);
+    auto cancelOk = spyCancel.takeFirst();
+    QCOMPARE(cancelOk.at(0).toBool(), true);
+    QVERIFY(!nm.outgoingRequests().contains("bob"));
+
+    // 3. Cancel non-existent outgoing request returns 404
+    nm.cancelFriendRequest("bob");
+    QCOMPARE(spyCancel.count(), 1);
+    auto cancel404 = spyCancel.takeFirst();
+    QCOMPARE(cancel404.at(0).toBool(), false);
+    QVERIFY(cancel404.at(1).toString().contains("not found", Qt::CaseInsensitive));
+
+    // 4. Recipient trying to cancel an incoming request returns 403 Forbidden
+    mockTransport->seedFriendRequest("charlie", "alice");
+    friendService->loadFriendRequests();
+    QVERIFY(nm.pendingRequests().contains("charlie"));
+
+    nm.cancelFriendRequest("charlie");
+    QCOMPARE(spyCancel.count(), 1);
+    auto cancel403 = spyCancel.takeFirst();
+    QCOMPARE(cancel403.at(0).toBool(), false);
+    QVERIFY(cancel403.at(1).toString().contains("not authorized", Qt::CaseInsensitive));
+
+    // 5. Accept/Reject non-existent request returns 404
+    nm.acceptFriend("bob");
+    QCOMPARE(spyAccept.count(), 1);
+    QCOMPARE(spyAccept.takeFirst().at(0).toBool(), false);
+
+    nm.rejectFriend("bob");
+    QCOMPARE(spyReject.count(), 1);
+    QCOMPARE(spyReject.takeFirst().at(0).toBool(), false);
+
+    // 6. Rate limiting (HTTP 429) on friend endpoints
+    mockTransport->setSimulateHttpError(429);
+    nm.addFriend("bob");
+    QCOMPARE(spyAdd.count(), 1);
+    auto add429 = spyAdd.takeFirst();
+    QCOMPARE(add429.at(0).toBool(), false);
+    QVERIFY(add429.at(1).toString().contains("Rate limit", Qt::CaseInsensitive));
+
+    nm.acceptFriend("charlie");
+    QCOMPARE(spyAccept.count(), 1);
+    QVERIFY(spyAccept.takeFirst().at(1).toString().contains("Rate limit", Qt::CaseInsensitive));
+
+    nm.rejectFriend("charlie");
+    QCOMPARE(spyReject.count(), 1);
+    QVERIFY(spyReject.takeFirst().at(1).toString().contains("Rate limit", Qt::CaseInsensitive));
+
+    nm.cancelFriendRequest("charlie");
+    QCOMPARE(spyCancel.count(), 1);
+    QVERIFY(spyCancel.takeFirst().at(1).toString().contains("Rate limit", Qt::CaseInsensitive));
+
+    nm.removeFriend("charlie");
+    QCOMPARE(spyRemove.count(), 1);
+    QVERIFY(spyRemove.takeFirst().at(1).toString().contains("Rate limit", Qt::CaseInsensitive));
+    mockTransport->setSimulateHttpError(0);
+
+    // 7. In-flight deduplication, conflicting accept/reject guard, out-of-order async sync, and stale session protection
+    auto deferredTransport = std::make_shared<DeferredTestHttpTransport>();
+    auto deferredStorage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_fr_deferred");
+    deferredStorage->clearSession();
+    deferredStorage->setUsername("alice");
+    deferredStorage->setAuthToken("token-alice");
+    deferredStorage->setFriends({});
+    deferredStorage->setPendingRequests({"charlie"});
+    deferredStorage->setOutgoingRequests({"bob"});
+
+    NeoNect::Services::FriendService deferredFs(deferredTransport, deferredStorage);
+    QSignalSpy spyDeferredAccepted(&deferredFs, &NeoNect::Services::FriendService::friendAccepted);
+    QSignalSpy spyDeferredRejected(&deferredFs, &NeoNect::Services::FriendService::friendRejected);
+    QSignalSpy spyDeferredRejectResult(&deferredFs, &NeoNect::Services::FriendService::rejectFriendResult);
+
+    // 7a. Conflicting accept + reject while accept is in flight emits immediate failure on reject without second HTTP POST
+    deferredFs.acceptFriend("charlie");
+    QCOMPARE(deferredTransport->m_postAcceptCalls, 1);
+    deferredFs.rejectFriend("charlie");
+    QCOMPARE(deferredTransport->m_postDeclineCalls, 0);
+    QCOMPARE(spyDeferredRejectResult.count(), 1);
+    QCOMPARE(spyDeferredRejectResult.takeFirst().at(0).toBool(), false);
+    if (deferredTransport->m_pendingPostAcceptCb) {
+        deferredTransport->m_pendingPostAcceptCb(200, R"({"status":"success"})", QNetworkReply::NoError, "");
+    }
+    // Reset get call counters triggered by acceptFriend's loadFriends()
+    if (deferredTransport->m_pendingGetRequestsCb) {
+        // Out-of-order async completion: GET /api/v1/friends/requests finishes FIRST (bob no longer in outgoing)
+        deferredTransport->m_pendingGetRequestsCb(200, R"({"status":"success","data":{"incoming":[],"outgoing":[]}})", QNetworkReply::NoError, "");
+    }
+    // Before GET /api/v1/friends returns, friendRejected must NOT be emitted
+    QCOMPARE(spyDeferredRejected.count(), 0);
+    if (deferredTransport->m_pendingGetFriendsCb) {
+        // Now GET /api/v1/friends finishes with bob in friends -> must emit friendAccepted("bob"), NOT friendRejected
+        deferredTransport->m_pendingGetFriendsCb(200, R"({"status":"success","friends":["charlie","bob"]})", QNetworkReply::NoError, "");
+    }
+    QCOMPARE(spyDeferredAccepted.count(), 1);
+    QCOMPARE(spyDeferredAccepted.takeFirst().at(0).toString(), QString("bob"));
+    QCOMPARE(spyDeferredRejected.count(), 0);
+
+    // 7b. Out-of-order async completion when outgoing request was declined
+    deferredTransport->m_getFriendsCalls = 0;
+    deferredTransport->m_getRequestsCalls = 0;
+    deferredFs.addFriend("dave");
+    if (deferredTransport->m_pendingPostFriendsCb) {
+        deferredTransport->m_pendingPostFriendsCb(201, R"({"status":"success"})", QNetworkReply::NoError, "");
+    }
+    if (deferredTransport->m_pendingGetRequestsCb) {
+        deferredTransport->m_pendingGetRequestsCb(200, R"({"status":"success","data":{"incoming":[],"outgoing":["dave"]}})", QNetworkReply::NoError, "");
+    }
+    // Start a new loadFriends() where GET /api/v1/friends/requests completes BEFORE GET /api/v1/friends
+    deferredTransport->m_getFriendsCalls = 0;
+    deferredTransport->m_getRequestsCalls = 0;
+    deferredFs.loadFriends();
+    deferredFs.loadFriends(); // Overlapping loadFriends() calls while in flight should not issue duplicate GETs
+    QCOMPARE(deferredTransport->m_getFriendsCalls, 1);
+    QCOMPARE(deferredTransport->m_getRequestsCalls, 1);
+
+    if (deferredTransport->m_pendingGetRequestsCb) {
+        deferredTransport->m_pendingGetRequestsCb(200, R"({"status":"success","data":{"incoming":[],"outgoing":[]}})", QNetworkReply::NoError, "");
+    }
+    QCOMPARE(spyDeferredRejected.count(), 0);
+    if (deferredTransport->m_pendingGetFriendsCb) {
+        deferredTransport->m_pendingGetFriendsCb(200, R"({"status":"success","friends":["charlie","bob"]})", QNetworkReply::NoError, "");
+    }
+    QCOMPARE(spyDeferredRejected.count(), 1);
+    QCOMPARE(spyDeferredRejected.takeFirst().at(0).toString(), QString("dave"));
+
+    // 7c. Regression test (F-01): GET starts -> mutation completes -> old GET completes
+    // Verify stale GET does not overwrite post-mutation cache or emit false friendRejected, and deferred refresh converges.
+    deferredTransport->m_getFriendsCalls = 0;
+    deferredTransport->m_getRequestsCalls = 0;
+    deferredFs.loadFriendRequests();
+    QCOMPARE(deferredTransport->m_getRequestsCalls, 1);
+
+    deferredFs.addFriend("frank");
+    if (deferredTransport->m_pendingPostFriendsCb) {
+        deferredTransport->m_pendingPostFriendsCb(201, R"({"status":"success"})", QNetworkReply::NoError, "");
+    }
+    QVERIFY(deferredFs.outgoingRequests().contains("frank"));
+    QCOMPARE(deferredTransport->m_getRequestsCalls, 1);
+
+    // Old pre-mutation GET completes without "frank": must NOT overwrite outgoingRequests or emit false friendRejected,
+    // and must immediately issue a deferred GET /api/v1/friends/requests.
+    if (deferredTransport->m_pendingGetRequestsCb) {
+        deferredTransport->m_pendingGetRequestsCb(200, R"({"status":"success","data":{"incoming":["grace"],"outgoing":[]}})", QNetworkReply::NoError, "");
+    }
+    QVERIFY(deferredFs.outgoingRequests().contains("frank"));
+    QCOMPARE(spyDeferredRejected.count(), 0);
+    QCOMPARE(deferredTransport->m_getRequestsCalls, 2);
+
+    // Deferred post-mutation GET completes with server's post-mutation state
+    if (deferredTransport->m_pendingGetRequestsCb) {
+        deferredTransport->m_pendingGetRequestsCb(200, R"({"status":"success","data":{"incoming":["grace"],"outgoing":["frank"]}})", QNetworkReply::NoError, "");
+    }
+    QVERIFY(deferredFs.outgoingRequests().contains("frank"));
+    QVERIFY(deferredFs.pendingRequests().contains("grace"));
+    QCOMPARE(spyDeferredRejected.count(), 0);
+    QCOMPARE(deferredTransport->m_getRequestsCalls, 2);
+
+    // Verify GET starts -> acceptFriend completes -> old GETs complete -> deferred GETs converge
+    QSignalSpy spyDeferredIncoming(&deferredFs, &NeoNect::Services::FriendService::friendRequestReceived);
+    deferredTransport->m_getFriendsCalls = 0;
+    deferredTransport->m_getRequestsCalls = 0;
+    deferredFs.loadFriends();
+    QCOMPARE(deferredTransport->m_getFriendsCalls, 1);
+    QCOMPARE(deferredTransport->m_getRequestsCalls, 1);
+
+    deferredFs.acceptFriend("grace");
+    if (deferredTransport->m_pendingPostAcceptCb) {
+        deferredTransport->m_pendingPostAcceptCb(200, R"({"status":"success"})", QNetworkReply::NoError, "");
+    }
+    QVERIFY(deferredFs.friends().contains("grace"));
+    QVERIFY(!deferredFs.pendingRequests().contains("grace"));
+
+    // Old GETs complete with pre-accept snapshot
+    if (deferredTransport->m_pendingGetFriendsCb) {
+        deferredTransport->m_pendingGetFriendsCb(200, R"({"status":"success","friends":["charlie","bob"]})", QNetworkReply::NoError, "");
+    }
+    if (deferredTransport->m_pendingGetRequestsCb) {
+        deferredTransport->m_pendingGetRequestsCb(200, R"({"status":"success","data":{"incoming":["grace"],"outgoing":["frank"]}})", QNetworkReply::NoError, "");
+    }
+    QVERIFY(deferredFs.friends().contains("grace"));
+    QVERIFY(!deferredFs.pendingRequests().contains("grace"));
+    QCOMPARE(spyDeferredIncoming.count(), 0);
+    QCOMPARE(deferredTransport->m_getFriendsCalls, 2);
+    QCOMPARE(deferredTransport->m_getRequestsCalls, 2);
+
+    // Deferred GETs complete with post-accept server snapshot
+    if (deferredTransport->m_pendingGetFriendsCb) {
+        deferredTransport->m_pendingGetFriendsCb(200, R"({"status":"success","friends":["charlie","bob","grace"]})", QNetworkReply::NoError, "");
+    }
+    if (deferredTransport->m_pendingGetRequestsCb) {
+        deferredTransport->m_pendingGetRequestsCb(200, R"({"status":"success","data":{"incoming":[],"outgoing":["frank"]}})", QNetworkReply::NoError, "");
+    }
+    QVERIFY(deferredFs.friends().contains("grace"));
+    QVERIFY(!deferredFs.pendingRequests().contains("grace"));
+    QVERIFY(deferredFs.outgoingRequests().contains("frank"));
+    QCOMPARE(spyDeferredIncoming.count(), 0);
+    QCOMPARE(spyDeferredRejected.count(), 0);
+
+    // 7d. Duplicate addFriend("eve") while in flight should be ignored, and stale session callbacks discarded
+    deferredTransport->m_postFriendsCalls = 0;
+    deferredFs.loadFriends();
+    deferredFs.addFriend("eve");
+    deferredFs.addFriend("eve");
+    QCOMPARE(deferredTransport->m_postFriendsCalls, 1);
+
+    // Switch account to "bob" before Alice's callbacks return
+    deferredStorage->setUsername("bob");
+    deferredStorage->setAuthToken("token-bob");
+    deferredStorage->setFriends({});
+    deferredStorage->setPendingRequests({});
+    deferredStorage->setOutgoingRequests({});
+    deferredFs.invalidateSession();
+    QVERIFY(deferredFs.friends().isEmpty());
+
+    // Fire Alice's stale callbacks — they must NOT pollute Bob's state
+    QSignalSpy spyDeferredFriends(&deferredFs, &NeoNect::Services::FriendService::friendsListChanged);
+    QSignalSpy spyDeferredAdd(&deferredFs, &NeoNect::Services::FriendService::addFriendResult);
+    if (deferredTransport->m_pendingGetFriendsCb) {
+        deferredTransport->m_pendingGetFriendsCb(200, R"({"status":"success","friends":["stale_friend"]})", QNetworkReply::NoError, "");
+    }
+    if (deferredTransport->m_pendingGetRequestsCb) {
+        deferredTransport->m_pendingGetRequestsCb(200, R"({"status":"success","data":{"incoming":["stale_inc"],"outgoing":["stale_out"]}})", QNetworkReply::NoError, "");
+    }
+    if (deferredTransport->m_pendingPostFriendsCb) {
+        deferredTransport->m_pendingPostFriendsCb(201, R"({"status":"success"})", QNetworkReply::NoError, "");
+    }
+
+    QCOMPARE(spyDeferredFriends.count(), 0);
+    QCOMPARE(spyDeferredAdd.count(), 0);
+    QVERIFY(!deferredFs.friends().contains("stale_friend"));
+    QVERIFY(!deferredFs.pendingRequests().contains("stale_inc"));
+    QVERIFY(!deferredFs.outgoingRequests().contains("stale_out"));
+
+    storage->setFriends({});
+    storage->setPendingRequests({});
+    storage->setOutgoingRequests({});
+    storage->clearSession();
+    deferredStorage->clearSession();
 }

@@ -78,6 +78,15 @@ namespace Constants {
     /** @brief Authoritative mutual friendship management (`GET`, `POST`, `DELETE`). */
     inline constexpr const char* EP_FRIENDS = "/api/v1/friends";
 
+    /** @brief Pending friend requests lookup and outgoing cancellation (`GET`, `DELETE`). */
+    inline constexpr const char* EP_FRIEND_REQUESTS = "/api/v1/friends/requests";
+
+    /** @brief Accept an incoming pending friend request (`POST`). */
+    inline constexpr const char* EP_FRIEND_REQUESTS_ACCEPT = "/api/v1/friends/requests/accept";
+
+    /** @brief Decline an incoming pending friend request (`POST`). */
+    inline constexpr const char* EP_FRIEND_REQUESTS_DECLINE = "/api/v1/friends/requests/decline";
+
     // =========================================================================
     // NeoNect Validation & Policy Constraints
     // =========================================================================
@@ -128,6 +137,9 @@ namespace Constants {
     /** @brief Polling frequency in milliseconds for the HTTP relay polling fallback. */
     inline constexpr int RELAY_POLL_INTERVAL_MS = 2500;
 
+    /** @brief Periodic synchronization interval in milliseconds for friend list and requests. */
+    inline constexpr int FRIEND_SYNC_INTERVAL_MS = 15000;
+
     /** @brief Threshold in seconds after which an unresponsive peer is flagged offline. */
     inline constexpr qint64 PRESENCE_TIMEOUT_SECS = 30;
 
@@ -161,6 +173,9 @@ namespace Constants {
 
     /** @brief Base storage key for pending friend request usernames. */
     inline constexpr const char* KEY_PENDING_REQUESTS = "pending_requests";
+
+    /** @brief Base storage key for outgoing friend request usernames. */
+    inline constexpr const char* KEY_OUTGOING_REQUESTS = "outgoing_requests";
 
     /** @brief Storage key for user server bookmarks. */
     inline constexpr const char* KEY_BOOKMARKS = "bookmarks";

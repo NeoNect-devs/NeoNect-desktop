@@ -178,6 +178,16 @@ int main(int argc, char *argv[]) {
         std::cout << "    Result: " << (r6_2 == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= r6_2;
 
+        std::cout << "--> Testing testTwoClientFriendRequestRejectFlow..." << std::endl;
+        int r6_2b = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testTwoClientFriendRequestRejectFlow");
+        std::cout << "    Result: " << (r6_2b == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= r6_2b;
+
+        std::cout << "--> Testing testFriendRequestApiLifecycleAndEdgeCases..." << std::endl;
+        int r6_2c = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testFriendRequestApiLifecycleAndEdgeCases");
+        std::cout << "    Result: " << (r6_2c == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= r6_2c;
+
         std::cout << "--> Testing testTwoClientMediaRequestApprovalFlow..." << std::endl;
         int r6_3 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testTwoClientMediaRequestApprovalFlow");
         std::cout << "    Result: " << (r6_3 == 0 ? "PASSED" : "FAILED") << std::endl;

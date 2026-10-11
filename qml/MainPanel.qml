@@ -84,18 +84,48 @@ Item {
     property bool showAddFriendModal: false
     property string addFriendStatusMsg: ""
     property bool addFriendSuccess: false
+    property bool submittingAddFriend: false
+
+    onShowAddFriendModalChanged: {
+        root.submittingAddFriend = false;
+        root.addFriendStatusMsg = "";
+    }
 
     property bool isOtherTyping: false
     property string typingUser: ""
 
     Connections {
         target: NetworkManager
+        ignoreUnknownSignals: true
         function onAddFriendResult(success, message, username) {
+            root.submittingAddFriend = false;
             root.addFriendSuccess = success;
             root.addFriendStatusMsg = message;
             if (success && root.showAddFriendModal) {
                 root.showAddFriendModal = false;
-                root.navigateRequested("dms", username.toLowerCase());
+            }
+            if (toast && message) {
+                toast.show(message, success ? "success" : "error");
+            }
+        }
+        function onAcceptFriendResult(success, message, username) {
+            if (toast && message) {
+                toast.show(message, success ? "success" : "error");
+            }
+        }
+        function onRejectFriendResult(success, message, username) {
+            if (toast && message) {
+                toast.show(message, success ? "info" : "error");
+            }
+        }
+        function onCancelFriendRequestResult(success, message, username) {
+            if (toast && message) {
+                toast.show(message, success ? "info" : "error");
+            }
+        }
+        function onRemoveFriendResult(success, message, username) {
+            if (toast && message) {
+                toast.show(message, success ? "info" : "error");
             }
         }
     }
@@ -319,7 +349,7 @@ Item {
                             width: parent.width
 
                             Text {
-                                text: "Add Friend / Start Direct Chat"
+                                text: "Add Friend"
                                 color: ThemeData.textPrimary
                                 font.bold: true
                                 font.pixelSize: 16
@@ -339,7 +369,7 @@ Item {
                         }
 
                         Text {
-                            text: "Enter the username of a user on the NeoNect network to add them to your Direct Messages."
+                            text: "Enter the username of a user on the NeoNect network to send a friend request."
                             color: ThemeData.textSecondary
                             font.pixelSize: 12
                             wrapMode: Text.WordWrap
@@ -350,6 +380,13 @@ Item {
                             id: friendInput
                             width: parent.width
                             placeholderText: "Enter username (e.g. alex)"
+                            onAccepted: {
+                                if (friendInput.text.trim() !== "" && !root.submittingAddFriend) {
+                                    root.submittingAddFriend = true;
+                                    root.addFriendStatusMsg = "";
+                                    NetworkManager.addFriend(friendInput.text.trim());
+                                }
+                            }
                         }
 
                         Text {
@@ -368,17 +405,19 @@ Item {
                                 width: (parent.width - 12) / 2
                                 highlighted: false
                                 onClicked: {
+                                    root.submittingAddFriend = false;
                                     root.showAddFriendModal = false;
                                     root.addFriendStatusMsg = "";
                                 }
                             }
 
                             NeoNectButton {
-                                text: "Add Friend"
+                                text: root.submittingAddFriend ? "Sending..." : "Send Request"
                                 width: (parent.width - 12) / 2
-                                enabled: friendInput.text.trim() !== ""
+                                enabled: friendInput.text.trim() !== "" && !root.submittingAddFriend
                                 highlighted: true
                                 onClicked: {
+                                    root.submittingAddFriend = true;
                                     root.addFriendStatusMsg = "";
                                     NetworkManager.addFriend(friendInput.text.trim());
                                 }

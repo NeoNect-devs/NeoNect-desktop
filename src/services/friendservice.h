@@ -22,6 +22,8 @@
 #include <QStringList>
 #include <QDateTime>
 #include <QMap>
+#include <QSet>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include "../transport/ihttptransport.h"
@@ -54,14 +56,19 @@ public:
     ~FriendService() override = default;
 
     /**
-     * @brief Starts the periodic presence heartbeat timer.
+     * @brief Starts the periodic presence heartbeat and friend synchronization timers.
      */
     void startHeartbeat();
 
     /**
-     * @brief Stops the periodic presence heartbeat timer.
+     * @brief Stops the periodic presence heartbeat and friend synchronization timers and invalidates in-flight callbacks.
      */
     void stopHeartbeat();
+
+    /**
+     * @brief Invalidates any in-flight asynchronous callbacks for the current user session.
+     */
+    void invalidateSession();
 
     /**
      * @brief Retrieves the cached list of confirmed friend usernames.
@@ -69,35 +76,51 @@ public:
     QStringList friends() const;
 
     /**
-     * @brief Retrieves the cached list of pending friend request usernames.
+     * @brief Retrieves the cached list of pending incoming friend request usernames.
      */
     QStringList pendingRequests() const;
 
     /**
-     * @brief Loads friends and pending requests from the backend API.
+     * @brief Retrieves the cached list of pending outgoing friend request usernames.
+     */
+    QStringList outgoingRequests() const;
+
+    /**
+     * @brief Loads confirmed friends and pending friend requests from the backend API.
      */
     void loadFriends();
 
     /**
-     * @brief Sends a friend request to a target user via API and relays an E2EE notification packet.
+     * @brief Loads incoming and outgoing pending friend requests from GET /api/v1/friends/requests.
+     */
+    void loadFriendRequests();
+
+    /**
+     * @brief Sends a friend request to a target user via POST /api/v1/friends.
      * @param username Target username.
      */
     void addFriend(const QString &username);
 
     /**
-     * @brief Accepts an incoming friend request from a target user.
+     * @brief Accepts an incoming friend request from a target user via POST /api/v1/friends/requests/accept.
      * @param username Target username.
      */
     void acceptFriend(const QString &username);
 
     /**
-     * @brief Rejects an incoming friend request from a target user.
+     * @brief Declines an incoming friend request from a target user via POST /api/v1/friends/requests/decline.
      * @param username Target username.
      */
     void rejectFriend(const QString &username);
 
     /**
-     * @brief Removes a user from the friends list.
+     * @brief Cancels an outgoing friend request to a target user via DELETE /api/v1/friends/requests.
+     * @param username Target username.
+     */
+    void cancelFriendRequest(const QString &username);
+
+    /**
+     * @brief Removes an accepted friend via DELETE /api/v1/friends.
      * @param username Target username.
      */
     void removeFriend(const QString &username);
@@ -158,14 +181,18 @@ public slots:
 signals:
     /** @brief Emitted when the friends list changes. */
     void friendsListChanged(const QStringList &friends);
-    /** @brief Emitted when pending requests list changes. */
+    /** @brief Emitted when incoming pending requests list changes. */
     void pendingRequestsChanged(const QStringList &requests);
+    /** @brief Emitted when outgoing pending requests list changes. */
+    void outgoingRequestsChanged(const QStringList &requests);
     /** @brief Emitted with the result of an add friend operation. */
     void addFriendResult(bool success, const QString &message, const QString &username);
     /** @brief Emitted with the result of an accept friend operation. */
     void acceptFriendResult(bool success, const QString &message, const QString &username);
-    /** @brief Emitted with the result of a reject friend operation. */
+    /** @brief Emitted with the result of a reject/decline friend operation. */
     void rejectFriendResult(bool success, const QString &message, const QString &username);
+    /** @brief Emitted with the result of canceling an outgoing friend request. */
+    void cancelFriendRequestResult(bool success, const QString &message, const QString &username);
     /** @brief Emitted with the result of a remove friend operation. */
     void removeFriendResult(bool success, const QString &message, const QString &username);
     /** @brief Emitted when a peer's presence status changes. */
@@ -181,8 +208,17 @@ signals:
     void friendRejected(const QString &username);
 
 private:
+    bool ensureAuthToken();
+    void syncSessionContext();
+    void fetchFriends();
+    void requestFriendsRefresh();
+    void requestFriendRequestsRefresh();
+    bool hasInFlightMutationForUser(const QString &lowerUsername) const;
+
     /** @brief Timer triggering periodic presence refresh. */
     QTimer *m_heartbeatTimer = nullptr;
+    /** @brief Timer triggering periodic friend and request list synchronization. */
+    QTimer *m_syncTimer = nullptr;
     /** @brief HTTP transport layer. */
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     /** @brief Settings repository. */
@@ -190,10 +226,31 @@ private:
 
     /** @brief In-memory cache of confirmed friend usernames. */
     QStringList m_cachedFriends;
-    /** @brief In-memory cache of pending request usernames. */
+    /** @brief In-memory cache of incoming pending request usernames. */
     QStringList m_cachedPending;
-    /** @brief Pending friend requests mapped to message IDs. */
+    /** @brief In-memory cache of outgoing pending request usernames. */
+    QStringList m_cachedOutgoing;
+    /** @brief Tracked outgoing request targets in current session to detect acceptance upon sync. */
+    QSet<QString> m_knownOutgoing;
+    /** @brief Pending friend requests mapped to message IDs (legacy compatibility). */
     QMap<QString, QString> m_pendingFriendRequests;
+
+    /** @brief Monotonic session generation counter to discard stale async callbacks across user switches/logouts. */
+    uint64_t m_sessionGeneration = 0;
+    /** @brief Active session username associated with current generation. */
+    QString m_sessionUsername;
+    /** @brief Guard preventing overlapping GET /api/v1/friends requests. */
+    bool m_loadingFriends = false;
+    /** @brief Guard preventing overlapping GET /api/v1/friends/requests requests. */
+    bool m_loadingRequests = false;
+    /** @brief Indicates a mutation completed while GET /api/v1/friends was in flight and requires a fresh fetch. */
+    bool m_friendsRefreshPending = false;
+    /** @brief Indicates a mutation completed while GET /api/v1/friends/requests was in flight and requires a fresh fetch. */
+    bool m_requestsRefreshPending = false;
+    /** @brief Tracks whether the latest GET /api/v1/friends completed with valid data in the current session. */
+    bool m_lastFriendsFetchSucceeded = false;
+    /** @brief Set of operation-scoped keys (e.g. "add:bob") with an active in-flight mutation request. */
+    QSet<QString> m_inFlightMutations;
 
     /** @brief Mutex protecting peer presence maps. */
     mutable std::mutex m_presenceMutex;

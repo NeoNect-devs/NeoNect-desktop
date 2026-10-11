@@ -85,6 +85,12 @@ void MockHttpTransport::loadSharedState() {
     for (const auto &val : friendsArr) {
         m_friendships.insert(val.toString());
     }
+
+    m_friendRequests.clear();
+    auto reqArr = root.value("friend_requests").toArray();
+    for (const auto &val : reqArr) {
+        m_friendRequests.insert(val.toString());
+    }
 }
 
 void MockHttpTransport::saveSharedState() {
@@ -128,6 +134,12 @@ void MockHttpTransport::saveSharedState() {
         friendsArr.append(pair);
     }
     root["friendships"] = friendsArr;
+
+    QJsonArray reqArr;
+    for (const auto &req : m_friendRequests) {
+        reqArr.append(req);
+    }
+    root["friend_requests"] = reqArr;
 
     QSaveFile saveFile(sharedStateFilePath());
     if (saveFile.open(QIODevice::WriteOnly)) {
@@ -182,6 +194,39 @@ void MockHttpTransport::seedUser(const QString &username, const QString &passwor
         user.devices["mock-dev-" + cleanUser] = "MOCK_BASE64_PUBLIC_KEY_" + cleanUser.toUpper();
         m_users[cleanUser] = user;
         m_tokenToUser[user.sessionToken] = cleanUser;
+        m_tokenToUser["mock-token-" + cleanUser] = cleanUser;
+    }
+    if (!m_activeToken.isEmpty() && m_activeToken.contains(cleanUser, Qt::CaseInsensitive)) {
+        m_tokenToUser[m_activeToken] = cleanUser;
+    }
+}
+
+void MockHttpTransport::seedFriendRequest(const QString &sender, const QString &recipient) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    QString s = sender.trimmed().toLower();
+    QString r = recipient.trimmed().toLower();
+    if (s.isEmpty() || r.isEmpty() || s == r) return;
+    seedUser(s, "password123");
+    seedUser(r, "password123");
+    m_friendRequests.insert(s + "->" + r);
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+}
+
+void MockHttpTransport::seedFriendship(const QString &user1, const QString &user2) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    QString u1 = user1.trimmed().toLower();
+    QString u2 = user2.trimmed().toLower();
+    if (u1.isEmpty() || u2.isEmpty() || u1 == u2) return;
+    seedUser(u1, "password123");
+    seedUser(u2, "password123");
+    m_friendRequests.remove(u1 + "->" + u2);
+    m_friendRequests.remove(u2 + "->" + u1);
+    QString pairKey = (u1 < u2) ? (u1 + ":" + u2) : (u2 + ":" + u1);
+    m_friendships.insert(pairKey);
+    if (m_enableSharedStorage) {
+        saveSharedState();
     }
 }
 
@@ -216,6 +261,7 @@ void MockHttpTransport::clearAllQueues() {
 }
 
 QNetworkReply* MockHttpTransport::get(const QString &endpoint, const QMap<QString, QString> &queryParams, const QObject* context, Transport::HttpResponseCallback callback) {
+    Q_UNUSED(context);
     emit requestHandled("GET", endpoint);
 
     {
@@ -258,6 +304,8 @@ QNetworkReply* MockHttpTransport::get(const QString &endpoint, const QMap<QStrin
         handleRelayPoll(queryParams, callback);
     } else if (endpoint == Constants::EP_FRIENDS) {
         handleFriendsGet(callback);
+    } else if (endpoint == Constants::EP_FRIEND_REQUESTS) {
+        handleFriendRequestsGet(callback);
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
@@ -265,6 +313,7 @@ QNetworkReply* MockHttpTransport::get(const QString &endpoint, const QMap<QStrin
 }
 
 QNetworkReply* MockHttpTransport::post(const QString &endpoint, const QByteArray &jsonData, const QObject* context, Transport::HttpResponseCallback callback) {
+    Q_UNUSED(context);
     emit requestHandled("POST", endpoint);
     emit rawRequestData(jsonData);
 
@@ -300,6 +349,10 @@ QNetworkReply* MockHttpTransport::post(const QString &endpoint, const QByteArray
         handleRelayAck(jsonData, callback);
     } else if (endpoint == Constants::EP_FRIENDS) {
         handleFriends(jsonData, callback);
+    } else if (endpoint == Constants::EP_FRIEND_REQUESTS_ACCEPT) {
+        handleFriendRequestsAccept(jsonData, callback);
+    } else if (endpoint == Constants::EP_FRIEND_REQUESTS_DECLINE) {
+        handleFriendRequestsDecline(jsonData, callback);
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
@@ -307,13 +360,38 @@ QNetworkReply* MockHttpTransport::post(const QString &endpoint, const QByteArray
 }
 
 QNetworkReply* MockHttpTransport::deleteResource(const QString &endpoint, const QObject* context, Transport::HttpResponseCallback callback, const QByteArray &jsonData) {
+    Q_UNUSED(context);
     emit requestHandled("DELETE", endpoint);
+    emit rawRequestData(jsonData);
+
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_mutex);
+        if (m_enableSharedStorage) {
+            loadSharedState();
+        }
+        if (m_simulateNetworkError) {
+            callback(0, QByteArray(), QNetworkReply::ConnectionRefusedError, "Simulated network failure");
+            return nullptr;
+        }
+        if (m_simulateHttpError > 0) {
+            callback(m_simulateHttpError, QByteArray("{\"error\":\"Simulated HTTP Error\"}"), QNetworkReply::InternalServerError, "Simulated HTTP error");
+            return nullptr;
+        }
+        if (m_simulatedResponses.contains(endpoint)) {
+            auto pair = m_simulatedResponses.value(endpoint);
+            callback(pair.second, pair.first, pair.second >= 400 ? QNetworkReply::UnknownServerError : QNetworkReply::NoError, "");
+            return nullptr;
+        }
+    }
+
     if (endpoint == Constants::EP_AUTH) {
         handleAuthDelete(callback);
     } else if (endpoint == Constants::EP_DEVICE) {
         handleDeviceDelete(jsonData, callback);
     } else if (endpoint == Constants::EP_FRIENDS) {
         handleFriendsDelete(jsonData, callback);
+    } else if (endpoint == Constants::EP_FRIEND_REQUESTS) {
+        handleFriendRequestsDelete(jsonData, callback);
     } else {
         callback(404, QByteArray("{\"error\":\"Not Found\"}"), QNetworkReply::ContentNotFoundError, "Not Found");
     }
@@ -700,28 +778,38 @@ void MockHttpTransport::handleRelayAck(const QByteArray &data, Transport::HttpRe
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 
+QString MockHttpTransport::resolveCurrentUsername() const {
+    if (!m_activeToken.isEmpty() && m_tokenToUser.contains(m_activeToken)) {
+        return m_tokenToUser[m_activeToken].trimmed().toLower();
+    }
+    if (!m_activeToken.isEmpty()) {
+        for (auto it = m_users.constBegin(); it != m_users.constEnd(); ++it) {
+            if (m_activeToken.contains(it.key(), Qt::CaseInsensitive)) {
+                return it.key();
+            }
+        }
+        return m_activeToken.trimmed().toLower();
+    }
+    return QString();
+}
+
 void MockHttpTransport::handleFriends(const QByteArray &data, Transport::HttpResponseCallback callback) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
-    if (m_activeToken == "unauthorized") {
+    if (m_activeToken.isEmpty() || m_activeToken == "unauthorized") {
         QJsonObject err;
         err["error"] = "unauthorized";
         callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
         return;
     }
 
-    QString currentUsername;
-    if (!m_activeToken.isEmpty() && m_tokenToUser.contains(m_activeToken)) {
-        currentUsername = m_tokenToUser[m_activeToken].trimmed().toLower();
-    } else if (!m_activeToken.isEmpty()) {
-        currentUsername = m_activeToken.trimmed().toLower();
-    }
+    QString currentUsername = resolveCurrentUsername();
 
     auto doc = QJsonDocument::fromJson(data);
     QString targetUsername = doc.object().value("username").toString().trimmed().toLower();
 
     if (targetUsername.isEmpty()) {
         QJsonObject err;
-        err["error"] = "username is required";
+        err["error"] = "bad request";
         callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
         return;
     }
@@ -732,14 +820,14 @@ void MockHttpTransport::handleFriends(const QByteArray &data, Transport::HttpRes
 
     if (targetUsername == currentUsername) {
         QJsonObject err;
-        err["error"] = "cannot add yourself as a friend";
+        err["error"] = "cannot add yourself";
         callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
         return;
     }
 
     if (!m_users.isEmpty() && !m_users.contains(targetUsername)) {
         QJsonObject err;
-        err["error"] = "Not Found";
+        err["error"] = "resource not found";
         callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
         return;
     }
@@ -755,7 +843,22 @@ void MockHttpTransport::handleFriends(const QByteArray &data, Transport::HttpRes
         return;
     }
 
-    m_friendships.insert(pairKey);
+    QString outKey = currentUsername + "->" + targetUsername;
+    QString inKey = targetUsername + "->" + currentUsername;
+    if (m_friendRequests.contains(outKey)) {
+        QJsonObject err;
+        err["error"] = "friend request already sent";
+        callback(409, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentConflictError, "Conflict");
+        return;
+    }
+    if (m_friendRequests.contains(inKey)) {
+        QJsonObject err;
+        err["error"] = "friend request already received";
+        callback(409, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentConflictError, "Conflict");
+        return;
+    }
+
+    m_friendRequests.insert(outKey);
     if (m_enableSharedStorage) {
         saveSharedState();
     }
@@ -767,19 +870,14 @@ void MockHttpTransport::handleFriends(const QByteArray &data, Transport::HttpRes
 
 void MockHttpTransport::handleFriendsGet(Transport::HttpResponseCallback callback) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
-    if (m_activeToken == "unauthorized") {
+    if (m_activeToken.isEmpty() || m_activeToken == "unauthorized") {
         QJsonObject err;
         err["error"] = "unauthorized";
         callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
         return;
     }
 
-    QString currentUsername;
-    if (!m_activeToken.isEmpty() && m_tokenToUser.contains(m_activeToken)) {
-        currentUsername = m_tokenToUser[m_activeToken].trimmed().toLower();
-    } else if (!m_activeToken.isEmpty()) {
-        currentUsername = m_activeToken.trimmed().toLower();
-    }
+    QString currentUsername = resolveCurrentUsername();
 
     QJsonArray friendsArr;
     for (const QString &pair : m_friendships) {
@@ -794,34 +892,226 @@ void MockHttpTransport::handleFriendsGet(Transport::HttpResponseCallback callbac
     }
 
     QJsonObject res;
+    res["status"] = "success";
     res["friends"] = friendsArr;
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 
 void MockHttpTransport::handleFriendsDelete(const QByteArray &data, Transport::HttpResponseCallback callback) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
-    if (m_activeToken == "unauthorized") {
+    if (m_activeToken.isEmpty() || m_activeToken == "unauthorized") {
         QJsonObject err;
         err["error"] = "unauthorized";
         callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
         return;
     }
 
-    QString currentUsername;
-    if (!m_activeToken.isEmpty() && m_tokenToUser.contains(m_activeToken)) {
-        currentUsername = m_tokenToUser[m_activeToken].trimmed().toLower();
-    } else if (!m_activeToken.isEmpty()) {
-        currentUsername = m_activeToken.trimmed().toLower();
-    }
+    QString currentUsername = resolveCurrentUsername();
 
     auto doc = QJsonDocument::fromJson(data);
     QString targetUsername = doc.object().value("username").toString().trimmed().toLower();
+
+    if (targetUsername.isEmpty() || targetUsername == currentUsername) {
+        QJsonObject err;
+        err["error"] = "bad request";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    if (!m_users.isEmpty() && !m_users.contains(targetUsername)) {
+        QJsonObject err;
+        err["error"] = "resource not found";
+        callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+        return;
+    }
 
     QString pairKey = (currentUsername < targetUsername)
         ? (currentUsername + ":" + targetUsername)
         : (targetUsername + ":" + currentUsername);
 
     m_friendships.remove(pairKey);
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
+    QJsonObject res;
+    res["status"] = "success";
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleFriendRequestsGet(Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken.isEmpty() || m_activeToken == "unauthorized") {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    QString currentUsername = resolveCurrentUsername();
+
+    QJsonArray incomingArr;
+    QJsonArray outgoingArr;
+    for (const QString &req : m_friendRequests) {
+        QStringList parts = req.split("->");
+        if (parts.size() == 2) {
+            if (parts[1].compare(currentUsername, Qt::CaseInsensitive) == 0) {
+                incomingArr.append(parts[0]);
+            } else if (parts[0].compare(currentUsername, Qt::CaseInsensitive) == 0) {
+                outgoingArr.append(parts[1]);
+            }
+        }
+    }
+
+    QJsonObject dataObj;
+    dataObj["incoming"] = incomingArr;
+    dataObj["outgoing"] = outgoingArr;
+
+    QJsonObject res;
+    res["status"] = "success";
+    res["data"] = dataObj;
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleFriendRequestsAccept(const QByteArray &data, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken.isEmpty() || m_activeToken == "unauthorized") {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    QString currentUsername = resolveCurrentUsername();
+    auto doc = QJsonDocument::fromJson(data);
+    QString targetUsername = doc.object().value("username").toString().trimmed().toLower();
+
+    if (targetUsername.isEmpty() || targetUsername == currentUsername) {
+        QJsonObject err;
+        err["error"] = "bad request";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    QString outKey = currentUsername + "->" + targetUsername;
+    QString inKey = targetUsername + "->" + currentUsername;
+
+    if (m_friendRequests.contains(outKey)) {
+        QJsonObject err;
+        err["error"] = "unauthorized action on friend request";
+        callback(403, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentOperationNotPermittedError, "Forbidden");
+        return;
+    }
+
+    if (!m_friendRequests.contains(inKey)) {
+        QJsonObject err;
+        err["error"] = "resource not found";
+        callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+        return;
+    }
+
+    m_friendRequests.remove(inKey);
+    QString pairKey = (currentUsername < targetUsername)
+        ? (currentUsername + ":" + targetUsername)
+        : (targetUsername + ":" + currentUsername);
+    m_friendships.insert(pairKey);
+
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
+    QJsonObject res;
+    res["status"] = "success";
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleFriendRequestsDecline(const QByteArray &data, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken.isEmpty() || m_activeToken == "unauthorized") {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    QString currentUsername = resolveCurrentUsername();
+    auto doc = QJsonDocument::fromJson(data);
+    QString targetUsername = doc.object().value("username").toString().trimmed().toLower();
+
+    if (targetUsername.isEmpty() || targetUsername == currentUsername) {
+        QJsonObject err;
+        err["error"] = "bad request";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    QString outKey = currentUsername + "->" + targetUsername;
+    QString inKey = targetUsername + "->" + currentUsername;
+
+    if (m_friendRequests.contains(outKey)) {
+        QJsonObject err;
+        err["error"] = "unauthorized action on friend request";
+        callback(403, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentOperationNotPermittedError, "Forbidden");
+        return;
+    }
+
+    if (!m_friendRequests.contains(inKey)) {
+        QJsonObject err;
+        err["error"] = "resource not found";
+        callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+        return;
+    }
+
+    m_friendRequests.remove(inKey);
+
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
+    QJsonObject res;
+    res["status"] = "success";
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handleFriendRequestsDelete(const QByteArray &data, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken.isEmpty() || m_activeToken == "unauthorized") {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    QString currentUsername = resolveCurrentUsername();
+    auto doc = QJsonDocument::fromJson(data);
+    QString targetUsername = doc.object().value("username").toString().trimmed().toLower();
+
+    if (targetUsername.isEmpty() || targetUsername == currentUsername) {
+        QJsonObject err;
+        err["error"] = "bad request";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    QString outKey = currentUsername + "->" + targetUsername;
+    QString inKey = targetUsername + "->" + currentUsername;
+
+    if (m_friendRequests.contains(inKey)) {
+        QJsonObject err;
+        err["error"] = "unauthorized action on friend request";
+        callback(403, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentOperationNotPermittedError, "Forbidden");
+        return;
+    }
+
+    if (!m_friendRequests.contains(outKey)) {
+        QJsonObject err;
+        err["error"] = "resource not found";
+        callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+        return;
+    }
+
+    m_friendRequests.remove(outKey);
+
     if (m_enableSharedStorage) {
         saveSharedState();
     }

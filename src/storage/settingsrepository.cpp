@@ -243,6 +243,20 @@ void SettingsRepository::setPendingRequests(const QStringList &requests) {
     settings->setValue(Constants::KEY_PENDING_REQUESTS, requests);
 }
 
+QStringList SettingsRepository::outgoingRequests() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto settings = getIsolatedSettings();
+    if (!settings) return QStringList();
+    return settings->value(Constants::KEY_OUTGOING_REQUESTS).toStringList();
+}
+
+void SettingsRepository::setOutgoingRequests(const QStringList &requests) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto settings = getIsolatedSettings();
+    if (!settings) return;
+    settings->setValue(Constants::KEY_OUTGOING_REQUESTS, requests);
+}
+
 void SettingsRepository::clearSession() {
     std::lock_guard<std::mutex> lock(m_mutex);
     m_cachedAuthToken.clear();

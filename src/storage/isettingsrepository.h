@@ -173,6 +173,20 @@ public:
     virtual void setPendingRequests(const QStringList &requests) = 0;
 
     /**
+     * @brief Retrieves the pending outgoing friend request usernames.
+     * @return List of usernames to whom friend requests have been sent.
+     */
+    virtual QStringList outgoingRequests() const = 0;
+
+    /**
+     * @brief Persists the pending outgoing friend requests.
+     * @param requests List of usernames.
+     * @pre Total count must not exceed 5,000 entries.
+     * @post Outgoing requests list is committed.
+     */
+    virtual void setOutgoingRequests(const QStringList &requests) = 0;
+
+    /**
      * @brief Retrieves the saved TeamSpeak-style server bookmarks.
      * @return List of bookmark property maps.
      */

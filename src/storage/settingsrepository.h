@@ -169,6 +169,20 @@ public:
     void setPendingRequests(const QStringList &requests) override;
 
     /**
+     * @brief Retrieves the pending outgoing friend request usernames.
+     * @return List of outgoing request usernames.
+     */
+    QStringList outgoingRequests() const override;
+
+    /**
+     * @brief Persists outgoing friend request usernames.
+     * @param requests Outgoing request usernames.
+     * @pre Maximum 5,000 requests.
+     * @post Written to disk.
+     */
+    void setOutgoingRequests(const QStringList &requests) override;
+
+    /**
      * @brief Retrieves saved server bookmarks.
      * @return List of bookmark variant maps.
      */

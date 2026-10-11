@@ -182,39 +182,53 @@ void TestStorage::testAccountScopedConversations() {
 void TestStorage::testAccountScopedFriends() {
     NeoNect::Storage::SettingsRepository repo("test_account_scoped_friends");
     repo.clearSession();
+    repo.setUsername("bob");
+    repo.setFriends({});
+    repo.setPendingRequests({});
+    repo.setOutgoingRequests({});
+    repo.clearSession();
 
     // Alice logs in and adds friends
     repo.setUsername("alice");
     repo.setFriends({"friend1", "friend2"});
     repo.setPendingRequests({"pending1"});
+    repo.setOutgoingRequests({"outgoing1", "outgoing2"});
     QCOMPARE(repo.friends().size(), 2);
     QCOMPARE(repo.pendingRequests().size(), 1);
+    QCOMPARE(repo.outgoingRequests().size(), 2);
 
     // Alice logs out
     repo.clearSession();
 
-    // Bob logs in - should have 0 friends and 0 pending requests
+    // Bob logs in - should have 0 friends, 0 pending requests, and 0 outgoing requests
     repo.setUsername("bob");
     QCOMPARE(repo.friends().size(), 0);
     QCOMPARE(repo.pendingRequests().size(), 0);
+    QCOMPARE(repo.outgoingRequests().size(), 0);
 
     // Bob adds his own friend
     repo.setFriends({"friend_of_bob"});
+    repo.setOutgoingRequests({"bob_target"});
     QCOMPARE(repo.friends().size(), 1);
     QCOMPARE(repo.friends().at(0), QString("friend_of_bob"));
+    QCOMPARE(repo.outgoingRequests().size(), 1);
+    QCOMPARE(repo.outgoingRequests().at(0), QString("bob_target"));
 
     // Switch back to Alice - should still have Alice's friends
     repo.clearSession();
     repo.setUsername("alice");
     QCOMPARE(repo.friends().size(), 2);
     QCOMPARE(repo.pendingRequests().size(), 1);
+    QCOMPARE(repo.outgoingRequests().size(), 2);
 
     // Cleanup
     repo.setFriends({});
     repo.setPendingRequests({});
+    repo.setOutgoingRequests({});
     repo.setUsername("bob");
     repo.setFriends({});
     repo.setPendingRequests({});
+    repo.setOutgoingRequests({});
     repo.clearSession();
 }
 

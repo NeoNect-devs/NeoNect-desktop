@@ -534,10 +534,6 @@ void Application::initializeServices() {
     // RelayService <-> FriendService
     QObject::connect(m_relayService.get(), &Services::RelayService::incomingFriendPacket,
                      friendService.get(), &Services::FriendService::handleIncomingFriendPacket);
-    QObject::connect(friendService.get(), &Services::FriendService::requestSendDomainMessage,
-                     m_relayService.get(), &Services::RelayService::sendDomainMessage);
-    QObject::connect(m_relayService.get(), &Services::RelayService::messageTransmissionStatus,
-                     friendService.get(), &Services::FriendService::handleTransmissionStatus);
 
     // FriendService -> NotificationManager
     QObject::connect(friendService.get(), &Services::FriendService::friendRequestReceived,

@@ -50,6 +50,8 @@ public:
 
     // Test Control Helpers
     void seedUser(const QString &username, const QString &password);
+    void seedFriendRequest(const QString &sender, const QString &recipient);
+    void seedFriendship(const QString &user1, const QString &user2);
     void setSimulateNetworkError(bool simulate);
     void setSimulateHttpError(int statusCode);
     int queuedMessageCount(const QString &deviceId) const;
@@ -64,6 +66,7 @@ signals:
 private:
     void loadSharedState();
     void saveSharedState();
+    QString resolveCurrentUsername() const;
 
     void handleHealth(Transport::HttpResponseCallback callback);
     void handleCapabilities(Transport::HttpResponseCallback callback);
@@ -85,6 +88,10 @@ private:
     void handleFriends(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleFriendsGet(Transport::HttpResponseCallback callback);
     void handleFriendsDelete(const QByteArray &data, Transport::HttpResponseCallback callback);
+    void handleFriendRequestsGet(Transport::HttpResponseCallback callback);
+    void handleFriendRequestsAccept(const QByteArray &data, Transport::HttpResponseCallback callback);
+    void handleFriendRequestsDecline(const QByteArray &data, Transport::HttpResponseCallback callback);
+    void handleFriendRequestsDelete(const QByteArray &data, Transport::HttpResponseCallback callback);
 
     mutable std::recursive_mutex m_mutex;
     QString m_baseUrl{"http://mock.neonect.local"};
@@ -99,6 +106,7 @@ private:
     QMap<QString, MockUser> m_users; // username -> MockUser
     QMap<QString, QString> m_tokenToUser; // token -> username
     QSet<QString> m_friendships; // "user1:user2" sorted pairs
+    QSet<QString> m_friendRequests; // "sender->recipient" directed pairs
     std::vector<MockQueuedMessage> m_deliveryQueue;
     QMap<QString, QPair<QByteArray, int>> m_simulatedResponses;
 };

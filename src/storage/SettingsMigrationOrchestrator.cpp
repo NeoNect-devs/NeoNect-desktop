@@ -39,6 +39,7 @@ bool SettingsMigrationOrchestrator::migrateSettingsIfNecessary(const QString& pr
     migrateKey(Constants::KEY_OPEN_CONVERSATIONS, true);
     migrateKey(Constants::KEY_FRIENDS, true);
     migrateKey(Constants::KEY_PENDING_REQUESTS, true);
+    migrateKey(Constants::KEY_OUTGOING_REQUESTS, true);
     migrateKey(Constants::KEY_BOOKMARKS, false);
 
     // Verify and sync

@@ -57,8 +57,10 @@ class NetworkManager : public QObject {
     Q_PROPERTY(bool isConnected READ isConnected NOTIFY isConnectedChanged)
     /** @brief List of confirmed friend usernames. */
     Q_PROPERTY(QStringList friends READ friends NOTIFY friendsChanged)
-    /** @brief List of pending friend request usernames. */
+    /** @brief List of pending incoming friend request usernames. */
     Q_PROPERTY(QStringList pendingRequests READ pendingRequests NOTIFY pendingRequestsChanged)
+    /** @brief List of pending outgoing friend request usernames. */
+    Q_PROPERTY(QStringList outgoingRequests READ outgoingRequests NOTIFY outgoingRequestsChanged)
     /** @brief List of saved server bookmarks. */
     Q_PROPERTY(QVariantList bookmarks READ bookmarks NOTIFY bookmarksChanged)
     /** @brief List of currently opened direct conversation tabs. */
@@ -122,8 +124,10 @@ public:
     bool isConnected() const;
     /** @brief Returns cached friends list. */
     QStringList friends() const;
-    /** @brief Returns pending friend requests list. */
+    /** @brief Returns pending incoming friend requests list. */
     QStringList pendingRequests() const;
+    /** @brief Returns pending outgoing friend requests list. */
+    QStringList outgoingRequests() const;
     /** @brief Returns server bookmarks list. */
     QVariantList bookmarks() const;
 
@@ -301,6 +305,12 @@ public:
     Q_INVOKABLE void rejectFriend(const QString &username);
 
     /**
+     * @brief Cancels an outgoing pending friend request.
+     * @param username Target username.
+     */
+    Q_INVOKABLE void cancelFriendRequest(const QString &username);
+
+    /**
      * @brief Removes a user from friends list.
      * @param username Target username.
      */
@@ -423,8 +433,10 @@ signals:
     void isConnectedChanged();
     /** @brief Emitted when friends list changes. */
     void friendsChanged();
-    /** @brief Emitted when pending requests list changes. */
+    /** @brief Emitted when pending incoming requests list changes. */
     void pendingRequestsChanged();
+    /** @brief Emitted when pending outgoing requests list changes. */
+    void outgoingRequestsChanged();
     /** @brief Emitted when bookmarks list is modified. */
     void bookmarksChanged();
     /** @brief Emitted when open conversations tab list changes. */
@@ -465,6 +477,8 @@ signals:
     void acceptFriendResult(bool success, const QString &message, const QString &username);
     /** @brief Emitted with reject friend outcome. */
     void rejectFriendResult(bool success, const QString &message, const QString &username);
+    /** @brief Emitted with cancel outgoing friend request outcome. */
+    void cancelFriendRequestResult(bool success, const QString &message, const QString &username);
     /** @brief Emitted with remove friend outcome. */
     void removeFriendResult(bool success, const QString &message, const QString &username);
     /** @brief Emitted when a friend's online status updates. */

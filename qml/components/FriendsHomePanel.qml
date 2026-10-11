@@ -11,17 +11,45 @@ Rectangle {
 
     signal messageFriendRequested(string username)
     signal addFriendSubmitted(string username)
+    signal clearAddFriendInputRequested()
 
     property string activeTab: "online" // "online", "all", "pending", "blocked", "add_friend"
     property string searchQuery: ""
     property var pendingRequests: NetworkManager.pendingRequests
+    property var outgoingRequests: (typeof NetworkManager !== "undefined" && NetworkManager && NetworkManager.outgoingRequests) ? NetworkManager.outgoingRequests : []
     property var activeStatus: (typeof NetworkManager !== "undefined" && NetworkManager && NetworkManager.allFriendStatuses) ? NetworkManager.allFriendStatuses() : ({})
     property string addFriendStatusMsg: ""
     property bool addFriendSuccess: false
+    property bool addFriendSubmitting: false
+    property var pendingMutations: ({})
+
+    function isMutating(action, username) {
+        if (!username) return false;
+        return !!root.pendingMutations[action + ":" + username.toLowerCase()];
+    }
+
+    function setMutating(action, username, state) {
+        if (!username) return;
+        var copy = Object.assign({}, root.pendingMutations);
+        var key = action + ":" + username.toLowerCase();
+        if (state) {
+            copy[key] = true;
+        } else {
+            delete copy[key];
+        }
+        root.pendingMutations = copy;
+    }
+
+    function countPendingTotal() {
+        var inc = root.pendingRequests ? root.pendingRequests.length : 0;
+        var out = root.outgoingRequests ? root.outgoingRequests.length : 0;
+        return inc + out;
+    }
 
     Component.onCompleted: {
         if (typeof NetworkManager !== "undefined" && NetworkManager) {
             root.activeStatus = NetworkManager.allFriendStatuses();
+            root.outgoingRequests = NetworkManager.outgoingRequests || [];
             NetworkManager.checkFriendsStatus();
         }
     }
@@ -45,6 +73,11 @@ Rectangle {
                 root.pendingRequests = NetworkManager.pendingRequests;
             }
         }
+        function onOutgoingRequestsChanged() {
+            if (typeof NetworkManager !== "undefined" && NetworkManager) {
+                root.outgoingRequests = NetworkManager.outgoingRequests;
+            }
+        }
         function onIsConnectedChanged() {
             if (!NetworkManager.isConnected) {
                 var copy = Object.assign({}, root.activeStatus);
@@ -57,8 +90,26 @@ Rectangle {
             }
         }
         function onAddFriendResult(success, message, username) {
+            root.addFriendSubmitting = false;
             root.addFriendStatusMsg = message;
             root.addFriendSuccess = success;
+            if (success) {
+                root.clearAddFriendInputRequested();
+            }
+        }
+        function onAcceptFriendResult(success, message, username) {
+            root.setMutating("accept", username, false);
+            root.setMutating("reject", username, false);
+        }
+        function onRejectFriendResult(success, message, username) {
+            root.setMutating("reject", username, false);
+            root.setMutating("accept", username, false);
+        }
+        function onCancelFriendRequestResult(success, message, username) {
+            root.setMutating("cancel", username, false);
+        }
+        function onRemoveFriendResult(success, message, username) {
+            root.setMutating("remove", username, false);
         }
     }
 
@@ -228,7 +279,7 @@ Rectangle {
                         }
 
                         Rectangle {
-                            visible: root.pendingRequests && root.pendingRequests.length > 0
+                            visible: root.countPendingTotal() > 0
                             width: Math.max(16, pendingBadgeText.implicitWidth + 8)
                             height: 16
                             radius: 8
@@ -237,7 +288,7 @@ Rectangle {
                             Text {
                                 id: pendingBadgeText
                                 anchors.centerIn: parent
-                                text: root.pendingRequests ? root.pendingRequests.length : 0
+                                text: root.countPendingTotal()
                                 color: "#FFFFFF"
                                 font.family: "Segoe UI"
                                 font.pixelSize: 10
@@ -332,6 +383,13 @@ Rectangle {
             anchors.margins: 24
             spacing: 16
 
+            Connections {
+                target: root
+                function onClearAddFriendInputRequested() {
+                    addFriendInput.clear();
+                }
+            }
+
             Text {
                 text: "ADD FRIEND"
                 color: "#FFFFFF"
@@ -378,19 +436,25 @@ Rectangle {
                             visible: !addFriendInput.text && !addFriendInput.activeFocus
                         }
 
-                        onAccepted: sendReqBtn.clicked()
+                        onAccepted: {
+                            if (addFriendInput.text.trim() !== "" && !root.addFriendSubmitting) {
+                                root.addFriendSubmitting = true;
+                                root.addFriendStatusMsg = "";
+                                root.addFriendSubmitted(addFriendInput.text.trim());
+                            }
+                        }
                     }
 
                     Rectangle {
                         id: sendReqBtn
                         width: 140; height: 36
                         radius: 4
-                        color: addFriendInput.text.trim() ? (sendReqMouse.containsMouse ? "#0066CC" : "#0A84FF") : Qt.rgba(10, 132, 255, 0.4)
-                        enabled: addFriendInput.text.trim() !== ""
+                        color: (addFriendInput.text.trim() && !root.addFriendSubmitting) ? (sendReqMouse.containsMouse ? "#0066CC" : "#0A84FF") : Qt.rgba(10, 132, 255, 0.4)
+                        enabled: addFriendInput.text.trim() !== "" && !root.addFriendSubmitting
 
                         Text {
                             anchors.centerIn: parent
-                            text: "Send Friend Request"
+                            text: root.addFriendSubmitting ? "Sending..." : "Send Friend Request"
                             color: "#FFFFFF"
                             font.family: "Segoe UI"
                             font.pixelSize: 12
@@ -403,9 +467,10 @@ Rectangle {
                             hoverEnabled: true
                             cursorShape: parent.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: {
-                                if (addFriendInput.text.trim() !== "") {
+                                if (addFriendInput.text.trim() !== "" && !root.addFriendSubmitting) {
+                                    root.addFriendSubmitting = true;
+                                    root.addFriendStatusMsg = "";
                                     root.addFriendSubmitted(addFriendInput.text.trim());
-                                    addFriendInput.clear();
                                 }
                             }
                         }
@@ -494,7 +559,7 @@ Rectangle {
                 text: {
                     if (root.activeTab === "online") return "ONLINE — " + root.countOnline();
                     if (root.activeTab === "all") return "ALL FRIENDS — " + root.allFriends.length;
-                    if (root.activeTab === "pending") return "PENDING — " + root.pendingRequests.length;
+                    if (root.activeTab === "pending") return "PENDING — " + root.countPendingTotal();
                     return "BLOCKED — 0";
                 }
                 color: ThemeData.textSecondary
@@ -515,11 +580,52 @@ Rectangle {
 
                 model: {
                     var filtered = [];
-                    var sourceList = root.activeTab === "pending" ? root.pendingRequests : root.allFriends;
-                    for (var i = 0; i < sourceList.length; i++) {
-                        var uName = sourceList[i];
+                    if (root.activeTab === "pending") {
+                        var incList = root.pendingRequests || [];
+                        for (var i = 0; i < incList.length; i++) {
+                            var incName = incList[i];
+                            if (root.searchQuery !== "" && incName.toLowerCase().indexOf(root.searchQuery.toLowerCase()) === -1) {
+                                continue;
+                            }
+                            filtered.push({
+                                name: incName,
+                                tag: "",
+                                status: root.getFriendStatus(incName),
+                                customStatus: "Incoming Friend Request",
+                                requestDirection: "incoming",
+                                avatarColor: "#0A84FF"
+                            });
+                        }
+                        var outList = root.outgoingRequests || [];
+                        for (var j = 0; j < outList.length; j++) {
+                            var outName = outList[j];
+                            if (root.searchQuery !== "" && outName.toLowerCase().indexOf(root.searchQuery.toLowerCase()) === -1) {
+                                continue;
+                            }
+                            filtered.push({
+                                name: outName,
+                                tag: "",
+                                status: root.getFriendStatus(outName),
+                                customStatus: "Outgoing Friend Request",
+                                requestDirection: "outgoing",
+                                avatarColor: "#0A84FF"
+                            });
+                        }
+                        return filtered;
+                    }
+
+                    var sourceList = root.allFriends || [];
+                    for (var k = 0; k < sourceList.length; k++) {
+                        var uName = sourceList[k];
                         var statusVal = root.getFriendStatus(uName);
-                        var item = { name: uName, tag: "", status: statusVal, customStatus: "", avatarColor: "#0A84FF" };
+                        var item = {
+                            name: uName,
+                            tag: "",
+                            status: statusVal,
+                            customStatus: "",
+                            requestDirection: "",
+                            avatarColor: "#0A84FF"
+                        };
 
                         if (root.searchQuery !== "" && item.name.toLowerCase().indexOf(root.searchQuery.toLowerCase()) === -1) {
                             continue;
@@ -528,7 +634,7 @@ Rectangle {
                             if (statusVal !== "offline") {
                                 filtered.push(item);
                             }
-                        } else if (root.activeTab === "all" || root.activeTab === "pending") {
+                        } else if (root.activeTab === "all") {
                             filtered.push(item);
                         }
                     }
@@ -640,21 +746,23 @@ Rectangle {
                             }
                         }
 
-                        // Action Buttons (Message & Call or Accept & Reject)
+                        // Action Buttons (Message & Remove, or Incoming Accept/Decline, or Outgoing Cancel)
                         RowLayout {
                             spacing: 8
                             Layout.alignment: Qt.AlignVCenter
 
-                            // Pending Mode Actions: Accept and Decline Buttons
+                            // Pending Incoming Mode Actions: Accept and Decline Buttons
                             RowLayout {
-                                visible: root.activeTab === "pending"
+                                visible: root.activeTab === "pending" && modelData.requestDirection !== "outgoing"
                                 spacing: 8
 
                                 // Accept Button
                                 Rectangle {
+                                    property bool busy: root.isMutating("accept", modelData.name) || root.isMutating("reject", modelData.name)
                                     width: 36; height: 36
                                     radius: 18
-                                    color: acceptBtnMouse.containsMouse ? Qt.rgba(35, 165, 90, 0.35) : Qt.rgba(35, 165, 90, 0.15)
+                                    opacity: busy ? 0.5 : 1.0
+                                    color: acceptBtnMouse.containsMouse && !busy ? Qt.rgba(35, 165, 90, 0.35) : Qt.rgba(35, 165, 90, 0.15)
                                     border.color: "#23A55A"
                                     border.width: 1
 
@@ -669,9 +777,11 @@ Rectangle {
                                         id: acceptBtnMouse
                                         anchors.fill: parent
                                         hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
+                                        enabled: !parent.busy
+                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                                         onClicked: {
                                             var targetName = modelData.name;
+                                            root.setMutating("accept", targetName, true);
                                             NetworkManager.acceptFriend(targetName);
                                             if (typeof NotificationManager !== "undefined" && NotificationManager) {
                                                 NotificationManager.dismissBySender(targetName, "friend_request");
@@ -682,9 +792,11 @@ Rectangle {
 
                                 // Decline Button
                                 Rectangle {
+                                    property bool busy: root.isMutating("accept", modelData.name) || root.isMutating("reject", modelData.name)
                                     width: 36; height: 36
                                     radius: 18
-                                    color: rejectBtnMouse.containsMouse ? Qt.rgba(242, 63, 67, 0.35) : Qt.rgba(242, 63, 67, 0.15)
+                                    opacity: busy ? 0.5 : 1.0
+                                    color: rejectBtnMouse.containsMouse && !busy ? Qt.rgba(242, 63, 67, 0.35) : Qt.rgba(242, 63, 67, 0.15)
                                     border.color: "#F23F43"
                                     border.width: 1
 
@@ -700,9 +812,11 @@ Rectangle {
                                         id: rejectBtnMouse
                                         anchors.fill: parent
                                         hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
+                                        enabled: !parent.busy
+                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                                         onClicked: {
                                             var targetName = modelData.name;
+                                            root.setMutating("reject", targetName, true);
                                             NetworkManager.rejectFriend(targetName);
                                             if (typeof NotificationManager !== "undefined" && NotificationManager) {
                                                 NotificationManager.dismissBySender(targetName, "friend_request");
@@ -712,7 +826,64 @@ Rectangle {
                                 }
                             }
 
-                            // Normal Mode Actions: Message Button
+                            // Pending Outgoing Mode Actions: Outgoing Badge and Cancel Button
+                            RowLayout {
+                                visible: root.activeTab === "pending" && modelData.requestDirection === "outgoing"
+                                spacing: 8
+
+                                Rectangle {
+                                    height: 24
+                                    radius: 12
+                                    color: Qt.rgba(255, 255, 255, 0.08)
+                                    border.color: Qt.rgba(255, 255, 255, 0.15)
+                                    border.width: 1
+                                    implicitWidth: outgoingBadgeLabel.implicitWidth + 16
+
+                                    Text {
+                                        id: outgoingBadgeLabel
+                                        anchors.centerIn: parent
+                                        text: "Outgoing"
+                                        color: "#949BA4"
+                                        font.family: "Segoe UI"
+                                        font.pixelSize: 11
+                                        font.bold: true
+                                    }
+                                }
+
+                                // Cancel Outgoing Request Button
+                                Rectangle {
+                                    property bool busy: root.isMutating("cancel", modelData.name)
+                                    width: 36; height: 36
+                                    radius: 18
+                                    opacity: busy ? 0.5 : 1.0
+                                    color: cancelOutBtnMouse.containsMouse && !busy ? Qt.rgba(242, 63, 67, 0.35) : Qt.rgba(242, 63, 67, 0.15)
+                                    border.color: "#F23F43"
+                                    border.width: 1
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "✕"
+                                        color: "#F23F43"
+                                        font.pixelSize: 14
+                                        font.bold: true
+                                    }
+
+                                    MouseArea {
+                                        id: cancelOutBtnMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        enabled: !parent.busy
+                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                        onClicked: {
+                                            var targetName = modelData.name;
+                                            root.setMutating("cancel", targetName, true);
+                                            NetworkManager.cancelFriendRequest(targetName);
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Normal Mode Actions: Message and Remove Friend Buttons
                             RowLayout {
                                 visible: root.activeTab !== "pending"
                                 spacing: 8
@@ -739,6 +910,38 @@ Rectangle {
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
                                             root.messageFriendRequested(modelData.name.toLowerCase());
+                                        }
+                                    }
+                                }
+
+                                // Remove Friend Action Button
+                                Rectangle {
+                                    property bool busy: root.isMutating("remove", modelData.name)
+                                    width: 36; height: 36
+                                    radius: 18
+                                    opacity: busy ? 0.5 : 1.0
+                                    color: removeFriendBtnMouse.containsMouse && !busy ? Qt.rgba(242, 63, 67, 0.25) : "#1E1F22"
+                                    border.color: removeFriendBtnMouse.containsMouse && !busy ? "#F23F43" : "transparent"
+                                    border.width: 1
+
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "✕"
+                                        color: removeFriendBtnMouse.containsMouse && !parent.busy ? "#F23F43" : "#B5BAC1"
+                                        font.pixelSize: 13
+                                        font.bold: true
+                                    }
+
+                                    MouseArea {
+                                        id: removeFriendBtnMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        enabled: !parent.busy
+                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                        onClicked: {
+                                            var targetName = modelData.name;
+                                            root.setMutating("remove", targetName, true);
+                                            NetworkManager.removeFriend(targetName);
                                         }
                                     }
                                 }
