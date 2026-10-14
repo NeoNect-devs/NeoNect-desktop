@@ -112,7 +112,11 @@ cmake --build build --config Release
 
 ### 4. Run Automated Test Suites
 ```bash
+# Windows
 .\build\NeoNectTests.exe
+
+# Linux
+./build/NeoNectTests
 ```
 
 ---

@@ -1,4 +1,5 @@
 build/
+build-*/
 dist/
 package_*_staging/
 .cache/
@@ -18,6 +19,8 @@ CMakeLists.txt.user
 # Local Databases
 *.sqlite
 *.db
+*.db-shm
+*.db-wal
 
 # Temporary / Patch files
 *.tmp
