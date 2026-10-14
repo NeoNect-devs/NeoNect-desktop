@@ -1,4 +1,5 @@
 #include "MessageStorage.h"
+#include <QCoreApplication>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
@@ -6,34 +7,88 @@
 #include <QVariant>
 #include <QUuid>
 #include <QDateTime>
+#include <QSet>
+#include <map>
 
 namespace NeoNect {
 namespace Core {
 namespace Messaging {
 
+namespace {
+    struct DbConnection {
+        QString name;
+        explicit DbConnection(const QString& n) : name(n) {}
+        ~DbConnection() {
+            if (!QCoreApplication::instance()) {
+                return;
+            }
+            if (QSqlDatabase::contains(name)) {
+                {
+                    QSqlDatabase db = QSqlDatabase::database(name, false);
+                    if (db.isOpen()) {
+                        db.close();
+                    }
+                }
+                QSqlDatabase::removeDatabase(name);
+            }
+        }
+    };
+
+    struct ThreadConnections {
+        std::map<QString, std::pair<std::weak_ptr<bool>, std::unique_ptr<DbConnection>>> connections;
+
+        ~ThreadConnections() {
+            connections.clear();
+        }
+
+        void cleanup() {
+            for (auto it = connections.begin(); it != connections.end(); ) {
+                if (it->second.first.expired()) {
+                    it = connections.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+    };
+
+    thread_local ThreadConnections t_msgThreadConnections;
+}
+
 SqliteMessageStorage::SqliteMessageStorage(const QString& dbPath) : m_dbPath(dbPath) {
+    if (m_dbPath == ":memory:") {
+        m_dbPath = QString("file:memdb_%1?mode=memory&cache=shared")
+                       .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+    }
+    m_instanceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    m_aliveToken = std::make_shared<bool>(true);
 }
 
 SqliteMessageStorage::~SqliteMessageStorage() {
     QMutexLocker locker(&m_mutex);
-    for (const QString& name : m_connectionNames.values()) {
-        QSqlDatabase::removeDatabase(name);
-    }
+    m_aliveToken.reset();
+    t_msgThreadConnections.cleanup();
 }
 
 QSqlDatabase SqliteMessageStorage::getDatabase() {
     QMutexLocker locker(&m_mutex);
-    Qt::HANDLE threadId = QThread::currentThreadId();
-    if (!m_connectionNames.contains(threadId)) {
+    t_msgThreadConnections.cleanup();
+    auto it = t_msgThreadConnections.connections.find(m_instanceId);
+    if (it == t_msgThreadConnections.connections.end()) {
         QString name = QUuid::createUuid().toString();
         QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", name);
+        if (m_dbPath.startsWith("file:memdb_")) {
+            db.setConnectOptions("QSQLITE_OPEN_URI");
+        }
         db.setDatabaseName(m_dbPath);
         if (db.open()) {
             bool migrationFailed = false;
             {
                 QSqlQuery pragmaQuery(db);
-                if (!pragmaQuery.exec("PRAGMA journal_mode = WAL;")) {
-                    qWarning() << "Failed to set WAL mode for MessageStorage:" << pragmaQuery.lastError().text();
+                if (!m_dbPath.startsWith("file:memdb_")) {
+                    if (!pragmaQuery.exec("PRAGMA journal_mode = WAL;")) {
+                        qWarning() << "Failed to set WAL mode for MessageStorage:" << pragmaQuery.lastError().text();
+                    }
                 }
                 if (!pragmaQuery.exec("PRAGMA synchronous = NORMAL;")) {
                     qWarning() << "Failed to set synchronous mode for MessageStorage:" << pragmaQuery.lastError().text();
@@ -59,8 +114,10 @@ QSqlDatabase SqliteMessageStorage::getDatabase() {
                            "duration INTEGER DEFAULT 0, "
                            "waveform BLOB, "
                            "media_width INTEGER DEFAULT 0, "
-                           "media_height INTEGER DEFAULT 0)");
+                           "media_height INTEGER DEFAULT 0, "
+                           "error_text TEXT DEFAULT '')");
                 query.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_server_id ON messages (server_id) WHERE server_id > 0");
+                query.exec("CREATE INDEX IF NOT EXISTS idx_messages_conv_created ON messages (conversation_id, created_at ASC, id ASC)");
                 
                 // Schema migration check
                 QSqlQuery pragmaCheck(db);
@@ -82,7 +139,8 @@ QSqlDatabase SqliteMessageStorage::getDatabase() {
                         {"duration", "duration INTEGER DEFAULT 0"},
                         {"waveform", "waveform BLOB"},
                         {"media_width", "media_width INTEGER DEFAULT 0"},
-                        {"media_height", "media_height INTEGER DEFAULT 0"}
+                        {"media_height", "media_height INTEGER DEFAULT 0"},
+                        {"error_text", "error_text TEXT DEFAULT ''"}
                     };
                     
                     for (const auto& col : targetColumns) {
@@ -114,13 +172,15 @@ QSqlDatabase SqliteMessageStorage::getDatabase() {
             QSqlDatabase::removeDatabase(name);
             return QSqlDatabase();
         }
-        m_connectionNames.insert(threadId, name);
+        t_msgThreadConnections.connections[m_instanceId] =
+            std::make_pair(std::weak_ptr<bool>(m_aliveToken), std::make_unique<DbConnection>(name));
         return db;
     }
-    return QSqlDatabase::database(m_connectionNames.value(threadId));
+    return QSqlDatabase::database(it->second.second->name);
 }
 
 bool SqliteMessageStorage::saveMessage(const Message& msg) {
+    QMutexLocker locker(&m_mutex);
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
@@ -148,8 +208,8 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
     }
 
     QSqlQuery query(db);
-    query.prepare("INSERT OR REPLACE INTO messages (id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, updated_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height) "
-                  "VALUES (:id, :srv, :cid, :sid, :rid, :txt, :state, :created_at, :updated_at, :type, :media_url, :file_name, :file_size, :duration, :waveform, :media_width, :media_height)");
+    query.prepare("INSERT OR REPLACE INTO messages (id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, updated_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height, error_text) "
+                  "VALUES (:id, :srv, :cid, :sid, :rid, :txt, :state, :created_at, :updated_at, :type, :media_url, :file_name, :file_size, :duration, :waveform, :media_width, :media_height, :error_text)");
     query.bindValue(":id", msg.messageId);
     query.bindValue(":srv", msg.serverId);
     query.bindValue(":cid", msg.conversationId);
@@ -167,6 +227,7 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
     query.bindValue(":waveform", msg.waveform);
     query.bindValue(":media_width", msg.mediaWidth);
     query.bindValue(":media_height", msg.mediaHeight);
+    query.bindValue(":error_text", msg.errorText);
     
     if (query.exec()) {
         return db.commit();
@@ -177,11 +238,12 @@ bool SqliteMessageStorage::saveMessage(const Message& msg) {
 }
 
 std::optional<Message> SqliteMessageStorage::getMessage(const QString& messageId) {
+    QMutexLocker locker(&m_mutex);
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return std::nullopt;
 
     QSqlQuery query(db);
-    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height FROM messages WHERE id = :id");
+    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height, error_text FROM messages WHERE id = :id");
     query.bindValue(":id", messageId);
     if (query.exec() && query.next()) {
         Message msg;
@@ -202,32 +264,114 @@ std::optional<Message> SqliteMessageStorage::getMessage(const QString& messageId
         msg.waveform = query.value(13).toByteArray();
         msg.mediaWidth = query.value(14).toInt();
         msg.mediaHeight = query.value(15).toInt();
+        msg.errorText = query.value(16).toString();
         return msg;
     }
     return std::nullopt;
 }
 
-bool SqliteMessageStorage::updateMessageState(const QString& messageId, MessageState newState) {
+bool SqliteMessageStorage::saveMessages(const std::vector<Message>& msgs) {
+    if (msgs.empty()) return true;
+    QMutexLocker locker(&m_mutex);
+    QSqlDatabase db = getDatabase();
+    if (!db.isOpen() && !db.open()) return false;
+
+    if (!db.transaction()) return false;
+
+    for (const auto& msg : msgs) {
+        QSqlQuery checkQuery(db);
+        checkQuery.prepare("SELECT 1 FROM messages WHERE id = :id");
+        checkQuery.bindValue(":id", msg.messageId);
+        if (checkQuery.exec() && checkQuery.next()) {
+            continue;
+        }
+
+        if (msg.serverId > 0) {
+            QSqlQuery delQuery(db);
+            delQuery.prepare("DELETE FROM messages WHERE server_id = :srv AND id != :id");
+            delQuery.bindValue(":srv", msg.serverId);
+            delQuery.bindValue(":id", msg.messageId);
+            if (!delQuery.exec()) {
+                db.rollback();
+                return false;
+            }
+        }
+
+        QSqlQuery query(db);
+        query.prepare("INSERT OR REPLACE INTO messages (id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, updated_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height, error_text) "
+                      "VALUES (:id, :srv, :cid, :sid, :rid, :txt, :state, :created_at, :updated_at, :type, :media_url, :file_name, :file_size, :duration, :waveform, :media_width, :media_height, :error_text)");
+        query.bindValue(":id", msg.messageId);
+        query.bindValue(":srv", msg.serverId);
+        query.bindValue(":cid", msg.conversationId);
+        query.bindValue(":sid", msg.senderId);
+        query.bindValue(":rid", msg.receiverId);
+        query.bindValue(":txt", msg.plaintext);
+        query.bindValue(":state", static_cast<int>(msg.state));
+        query.bindValue(":created_at", msg.timestamp);
+        query.bindValue(":updated_at", msg.timestamp);
+        query.bindValue(":type", msg.type);
+        query.bindValue(":media_url", msg.mediaUrl);
+        query.bindValue(":file_name", msg.fileName);
+        query.bindValue(":file_size", static_cast<qint64>(msg.fileSize));
+        query.bindValue(":duration", msg.duration);
+        query.bindValue(":waveform", msg.waveform);
+        query.bindValue(":media_width", msg.mediaWidth);
+        query.bindValue(":media_height", msg.mediaHeight);
+        query.bindValue(":error_text", msg.errorText);
+
+        if (!query.exec()) {
+            db.rollback();
+            return false;
+        }
+    }
+
+    return db.commit();
+}
+
+bool SqliteMessageStorage::updateMessageState(const QString& messageId, MessageState newState, const QString& errorText) {
+    QMutexLocker locker(&m_mutex);
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 
     // Single statement, SQLite handles atomicity for a single UPDATE.
     QSqlQuery query(db);
-    query.prepare("UPDATE messages SET state = :state, updated_at = :updated_at WHERE id = :id");
-    query.bindValue(":state", static_cast<int>(newState));
+    if (!errorText.isNull()) {
+        query.prepare("UPDATE messages SET state = :state, error_text = :error_text, updated_at = :updated_at WHERE id = :id");
+        query.bindValue(":state", static_cast<int>(newState));
+        query.bindValue(":error_text", errorText);
+        query.bindValue(":updated_at", QDateTime::currentMSecsSinceEpoch());
+        query.bindValue(":id", messageId);
+    } else {
+        query.prepare("UPDATE messages SET state = :state, updated_at = :updated_at WHERE id = :id");
+        query.bindValue(":state", static_cast<int>(newState));
+        query.bindValue(":updated_at", QDateTime::currentMSecsSinceEpoch());
+        query.bindValue(":id", messageId);
+    }
+    return query.exec();
+}
+
+bool SqliteMessageStorage::updateMessageMediaUrl(const QString& messageId, const QString& mediaUrl) {
+    QMutexLocker locker(&m_mutex);
+    QSqlDatabase db = getDatabase();
+    if (!db.isOpen() && !db.open()) return false;
+
+    QSqlQuery query(db);
+    query.prepare("UPDATE messages SET media_url = :media_url, updated_at = :updated_at WHERE id = :id");
+    query.bindValue(":media_url", mediaUrl);
     query.bindValue(":updated_at", QDateTime::currentMSecsSinceEpoch());
     query.bindValue(":id", messageId);
     return query.exec();
 }
 
 std::vector<Message> SqliteMessageStorage::getConversationMessages(const QString& conversationId) {
+    QMutexLocker locker(&m_mutex);
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return {};
 
     std::vector<Message> results;
     QSqlQuery query(db);
     // ordered by timestamp, then messageId tie breaker
-    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height FROM messages "
+    query.prepare("SELECT id, server_id, conversation_id, sender_id, receiver_id, plaintext, state, created_at, type, media_url, file_name, file_size, duration, waveform, media_width, media_height, error_text FROM messages "
                   "WHERE conversation_id = :cid ORDER BY created_at ASC, id ASC");
     query.bindValue(":cid", conversationId);
     if (query.exec()) {
@@ -250,6 +394,7 @@ std::vector<Message> SqliteMessageStorage::getConversationMessages(const QString
             msg.waveform = query.value(13).toByteArray();
             msg.mediaWidth = query.value(14).toInt();
             msg.mediaHeight = query.value(15).toInt();
+            msg.errorText = query.value(16).toString();
             results.push_back(msg);
         }
     }
@@ -257,6 +402,7 @@ std::vector<Message> SqliteMessageStorage::getConversationMessages(const QString
 }
 
 bool SqliteMessageStorage::deleteMessage(const QString& messageId) {
+    QMutexLocker locker(&m_mutex);
     QSqlDatabase db = getDatabase();
     if (!db.isOpen() && !db.open()) return false;
 

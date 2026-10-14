@@ -25,7 +25,7 @@ function formatMediaSource(rawUrl) {
     if (!rawUrl || typeof rawUrl !== "string") return "";
     var s = rawUrl.trim();
     if (s.length === 0) return "";
-    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("file://") || s.startsWith("qrc:/") || s.startsWith("data:")) {
+    if (s.startsWith("http://") || s.startsWith("https://") || s.startsWith("file://") || s.startsWith("qrc:/") || s.startsWith("data:") || s.startsWith("image://")) {
         return s;
     }
     // Convert backslashes to forward slashes

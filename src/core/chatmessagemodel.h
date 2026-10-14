@@ -193,6 +193,11 @@ public:
     Q_INVOKABLE void clearActiveViewportStore();
 
     /**
+     * @brief Purges all in-memory conversation caches, scroll positions, drafts, and active viewport state.
+     */
+    Q_INVOKABLE void clearAllCaches();
+
+    /**
      * @brief Returns timestamp of the oldest message loaded in view.
      */
     Q_INVOKABLE qint64 oldestTimestamp() const;
@@ -344,7 +349,7 @@ public slots:
     /** @brief Slot handling newly arrived message signal. */
     void onMessageAdded(const QString &conversationId, const QVariantMap &message);
     /** @brief Slot handling message delivery status updates. */
-    void onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText);
+    void onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText, const QString &mediaUrl = QString());
     /** @brief Slot handling message deletion signal. */
     void onMessageRemoved(const QString &conversationId, const QString &messageId);
     /** @brief Slot handling transfer progress telemetry. */

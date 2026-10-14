@@ -118,7 +118,7 @@ Window {
         notifWindow.show();
         notifWindow.raise();
 
-        console.log("--> [NotificationPill] Screen pill displayed at: (" + notifWindow.x + ", " + notifWindow.y + ") size: " + notifWindow.width + "x" + notifWindow.height + " | Title: " + notifObj.title);
+        console.log("--> [NotificationPill] Screen pill displayed at: (" + notifWindow.x + ", " + notifWindow.y + ") size: " + notifWindow.width + "x" + notifWindow.height);
     }
 
     // Dismiss only the floating on-screen toast pill (leaves notification in center history)

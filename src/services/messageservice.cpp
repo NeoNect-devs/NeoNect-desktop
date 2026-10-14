@@ -17,15 +17,12 @@
 namespace NeoNect {
 namespace Services {
 
-static qint64 determineFileSize(const QString &mediaUrl, qint64 providedSize) {
-    if (providedSize > 0) return providedSize;
-    if (mediaUrl.isEmpty()) return 0;
-    QString cleanPath = mediaUrl;
-    QUrl url(mediaUrl);
+static QString resolveLocalMediaPath(const QString &rawUrl) {
+    if (rawUrl.isEmpty()) return QString();
+    QString cleanPath = rawUrl.trimmed();
+    QUrl url(cleanPath);
     if (url.isLocalFile()) {
         cleanPath = url.toLocalFile();
-    } else if (cleanPath.startsWith("file:///")) {
-        cleanPath = cleanPath.mid(8);
     } else if (cleanPath.startsWith("file://")) {
         cleanPath = cleanPath.mid(7);
     }
@@ -34,8 +31,78 @@ static qint64 determineFileSize(const QString &mediaUrl, qint64 providedSize) {
         cleanPath = cleanPath.mid(1);
     }
 #endif
+    return cleanPath;
+}
+
+static qint64 determineFileSize(const QString &mediaUrl, qint64 providedSize) {
+    if (providedSize > 0) return providedSize;
+    const QString cleanPath = resolveLocalMediaPath(mediaUrl);
+    if (cleanPath.isEmpty()) return 0;
     QFileInfo fi(cleanPath);
     return (fi.exists() && fi.isFile()) ? fi.size() : 0;
+}
+
+static QString resolveCompletedMediaUrl(const QString &type, const QString &id, const QString &path, const QString &serverUrl, const QString &userId) {
+    if (type == "image") {
+        if (!path.isEmpty() && QFile::exists(path) && !path.endsWith(".spool")) {
+            if (!serverUrl.isEmpty() && !userId.isEmpty()) {
+                QString imagesDir = NeoNect::Storage::StoragePathResolver::mediaImagesDirectory(serverUrl, userId);
+                QDir().mkpath(imagesDir);
+                QImageReader reader(path);
+                QString ext = QString::fromUtf8(reader.format()).toLower();
+                if (ext.isEmpty()) ext = QFileInfo(path).suffix().toLower();
+                if (ext.isEmpty()) ext = "png";
+                QString targetPath = imagesDir + "/" + id + "." + ext;
+                if (path != targetPath) {
+                    QFile::remove(targetPath);
+                    if (QFile::rename(path, targetPath) || QFile::copy(path, targetPath)) {
+                        if (QFile::exists(path) && path != targetPath) {
+                            QFile::remove(path);
+                        }
+                    }
+                }
+            }
+        }
+        return id;
+    }
+    if (type == "voice" || type == "voice_note" || type == "audio") {
+        QString destPath = path;
+        if (!serverUrl.isEmpty() && !userId.isEmpty()) {
+            QString voiceDir = NeoNect::Storage::StoragePathResolver::mediaVoiceDirectory(serverUrl, userId);
+            QDir().mkpath(voiceDir);
+            QString targetPath = voiceDir + "/" + id + ".wav";
+            if (path != targetPath && QFile::exists(path)) {
+                QFile::remove(targetPath);
+                if (QFile::rename(path, targetPath) || QFile::copy(path, targetPath)) {
+                    if (QFile::exists(path) && path != targetPath) {
+                        QFile::remove(path);
+                    }
+                    destPath = targetPath;
+                }
+            } else if (QFile::exists(targetPath)) {
+                destPath = targetPath;
+            }
+        }
+        return QUrl::fromLocalFile(destPath).toString();
+    }
+    if (!path.isEmpty() && QFile::exists(path) && !path.endsWith(".spool") && !serverUrl.isEmpty() && !userId.isEmpty()) {
+        QString attachDir = NeoNect::Storage::StoragePathResolver::mediaAttachmentsDirectory(serverUrl, userId);
+        QDir().mkpath(attachDir);
+        QString fn = QFileInfo(path).fileName();
+        QString targetPath = attachDir + "/" + (fn.isEmpty() ? (id + ".final") : fn);
+        if (path != targetPath) {
+            QFile::remove(targetPath);
+            if (QFile::rename(path, targetPath) || QFile::copy(path, targetPath)) {
+                if (QFile::exists(path) && path != targetPath) {
+                    QFile::remove(path);
+                }
+                return QUrl::fromLocalFile(targetPath).toString();
+            }
+        } else {
+            return QUrl::fromLocalFile(targetPath).toString();
+        }
+    }
+    return QUrl::fromLocalFile(path).toString();
 }
 
 MessageService::MessageService(std::weak_ptr<NeoNect::Core::Messaging::IMessageStorage> storage, QObject* parent)
@@ -64,13 +131,231 @@ MessageService::~MessageService() {
     }
 }
 
+void MessageService::setFileTransferManager(std::shared_ptr<FileTransferManager> ftm) {
+    m_fileTransferManager = ftm;
+    if (!ftm) return;
+
+    ftm->setIsImageTransferCb([this](const QString& transferId) -> bool {
+        if (m_incomingMessages.contains(transferId)) {
+            return m_incomingMessages.value(transferId).type == "image";
+        }
+        if (m_outgoingMessages.contains(transferId)) {
+            return m_outgoingMessages.value(transferId).type == "image";
+        }
+        if (auto s = m_storage.lock()) {
+            if (auto msgOpt = s->getMessage(transferId)) {
+                return msgOpt->type == "image";
+            }
+        }
+        return false;
+    });
+
+    connect(ftm.get(), &FileTransferManager::transferProgress, this, [this](const QString& tid, int pct) {
+        if (m_completedTransfers.contains(tid) && pct < 100) {
+            return;
+        }
+        QString cid;
+        qint64 totalBytes = 0;
+        if (m_outgoingMessages.contains(tid)) {
+            const auto& m = m_outgoingMessages[tid];
+            if (m.status == Domain::MessageStatus::Sent || m.status == Domain::MessageStatus::Seen || m.status == Domain::MessageStatus::Failed) {
+                return;
+            }
+            cid = m.conversationId;
+            totalBytes = m.fileSize;
+        } else if (m_incomingMessages.contains(tid)) {
+            const auto& m = m_incomingMessages[tid];
+            if (m.status == Domain::MessageStatus::Sent || m.status == Domain::MessageStatus::Seen || m.status == Domain::MessageStatus::Failed) {
+                return;
+            }
+            cid = m.conversationId;
+            totalBytes = m.fileSize;
+        } else if (auto s = m_storage.lock()) {
+            if (auto cmOpt = s->getMessage(tid)) {
+                cid = cmOpt->conversationId;
+                totalBytes = cmOpt->fileSize;
+            }
+        }
+        if (totalBytes <= 0 && m_fileTransferManager) {
+            if (auto txOpt = m_fileTransferManager->getTransferInfo(tid)) {
+                totalBytes = txOpt->file_size;
+            }
+        }
+        if (totalBytes <= 0) {
+            totalBytes = 100;
+        }
+        if (pct > 0 && m_activeTransfers.contains(tid)) {
+            QTimer* timer = m_activeTransfers.take(tid);
+            if (timer) {
+                timer->stop();
+                timer->deleteLater();
+            }
+        }
+        qreal prog = std::clamp(pct / 100.0, 0.0, 1.0);
+        qint64 bytes = static_cast<qint64>(prog * totalBytes);
+        emit mediaTransferProgress(cid, tid, prog, bytes, totalBytes);
+    });
+
+    connect(ftm.get(), &FileTransferManager::transferCompleted, this, [this](const QString& tid, const QString& path) {
+        if (m_activeTransfers.contains(tid)) {
+            QTimer* timer = m_activeTransfers.take(tid);
+            if (timer) {
+                timer->stop();
+                timer->deleteLater();
+            }
+        }
+        if (m_outgoingMessages.contains(tid)) {
+            m_outgoingMessages[tid].status = Domain::MessageStatus::Sent;
+            m_outgoingMessages[tid].errorText = QStringLiteral("");
+            QString cid = m_outgoingMessages[tid].conversationId;
+            qint64 total = m_outgoingMessages[tid].fileSize > 0 ? m_outgoingMessages[tid].fileSize : 100;
+            emit mediaTransferProgress(cid, tid, 1.0, total, total);
+            this->updateMessageStatusAsync(tid, Domain::MessageStatus::Sent, "", this, nullptr);
+            emit messageUpdated(cid, tid, "sent", "");
+        } else {
+            m_completedTransfers.insert(tid, path);
+            QString cid;
+            QString resolvedMediaUrl;
+            if (auto s = m_storage.lock()) {
+                if (auto cmOpt = s->getMessage(tid)) {
+                    resolvedMediaUrl =
+                        resolveCompletedMediaUrl(cmOpt->type, tid, path, m_serverUrl, m_currentUserId);
+                    s->updateMessageMediaUrl(tid, resolvedMediaUrl);
+                    s->updateMessageState(tid, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+                    cid = cmOpt->conversationId;
+                    Domain::Message dm;
+                    dm.id = cmOpt->messageId;
+                    dm.serverId = cmOpt->serverId;
+                    dm.conversationId = cmOpt->conversationId;
+                    dm.senderId = cmOpt->senderId;
+                    dm.timestamp = cmOpt->timestamp;
+                    dm.text = cmOpt->plaintext;
+                    dm.type = cmOpt->type;
+                    dm.mediaUrl = resolvedMediaUrl;
+                    dm.fileName = cmOpt->fileName;
+                    dm.fileSize = cmOpt->fileSize;
+                    dm.duration = cmOpt->duration;
+                    dm.waveform = cmOpt->waveform;
+                    dm.mediaWidth = cmOpt->mediaWidth;
+                    dm.mediaHeight = cmOpt->mediaHeight;
+                    dm.errorText = QStringLiteral("");
+                    dm.status = Domain::MessageStatus::Sent;
+                    m_incomingMessages.insert(tid, dm);
+                    qint64 total = dm.fileSize > 0 ? dm.fileSize : 100;
+                    emit mediaTransferProgress(cid, tid, 1.0, total, total);
+                }
+            }
+            if (resolvedMediaUrl.isEmpty() && m_incomingMessages.contains(tid)) {
+                Domain::Message dm = m_incomingMessages.value(tid);
+                resolvedMediaUrl = resolveCompletedMediaUrl(dm.type, tid, path, m_serverUrl, m_currentUserId);
+                dm.mediaUrl = resolvedMediaUrl;
+                dm.errorText = QStringLiteral("");
+                dm.status = Domain::MessageStatus::Sent;
+                m_incomingMessages.insert(tid, dm);
+                cid = dm.conversationId;
+                if (auto s = m_storage.lock()) {
+                    s->updateMessageMediaUrl(tid, dm.mediaUrl);
+                    s->updateMessageState(tid, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+                }
+                qint64 total = dm.fileSize > 0 ? dm.fileSize : 100;
+                emit mediaTransferProgress(cid, tid, 1.0, total, total);
+            }
+            emit messageUpdated(cid, tid, "sent", "", resolvedMediaUrl);
+        }
+    });
+
+    connect(ftm.get(), &FileTransferManager::transferFailed, this, [this](const QString& tid, const QString& err) {
+        if (m_completedTransfers.contains(tid)) {
+            return;
+        }
+        if (m_outgoingMessages.contains(tid) &&
+            (m_outgoingMessages[tid].status == Domain::MessageStatus::Sent ||
+             m_outgoingMessages[tid].status == Domain::MessageStatus::Seen)) {
+            return;
+        }
+        if (m_incomingMessages.contains(tid) &&
+            (m_incomingMessages[tid].status == Domain::MessageStatus::Sent ||
+             m_incomingMessages[tid].status == Domain::MessageStatus::Seen)) {
+            return;
+        }
+        if (m_activeTransfers.contains(tid)) {
+            QTimer* timer = m_activeTransfers.take(tid);
+            if (timer) {
+                timer->stop();
+                timer->deleteLater();
+            }
+        }
+        if (m_outgoingMessages.contains(tid)) {
+            m_outgoingMessages[tid].status = Domain::MessageStatus::Failed;
+            m_outgoingMessages[tid].errorText = err;
+            QString cid = m_outgoingMessages[tid].conversationId;
+            this->updateMessageStatusAsync(tid, Domain::MessageStatus::Failed, err, this, nullptr);
+            emit messageUpdated(cid, tid, "failed", err);
+        } else {
+            QString cid;
+            if (m_incomingMessages.contains(tid)) {
+                m_incomingMessages[tid].status = Domain::MessageStatus::Failed;
+                m_incomingMessages[tid].errorText = err;
+                cid = m_incomingMessages[tid].conversationId;
+            }
+            if (cid.isEmpty()) {
+                if (auto s = m_storage.lock()) {
+                    if (auto cmOpt = s->getMessage(tid)) {
+                        cid = cmOpt->conversationId;
+                    }
+                }
+            }
+            this->updateMessageStatusAsync(tid, Domain::MessageStatus::Failed, err, this, nullptr);
+            emit messageUpdated(cid, tid, "failed", err);
+        }
+    });
+}
+
 void MessageService::setCurrentUserId(const QString &userId) {
     if (m_currentUserId != userId) {
         m_outgoingMessages.clear();
+        m_incomingMessages.clear();
         m_pendingMediaRequests.clear();
         m_receivedMediaRequests.clear();
     }
     m_currentUserId = userId;
+}
+
+void MessageService::startPeerTransfers(const QString &receiver, const QString &localPath, const QString &msgId) {
+    if (!m_fileTransferManager) return;
+    QString cleanReceiver = receiver;
+    if (cleanReceiver.startsWith("dms:", Qt::CaseInsensitive)) {
+        cleanReceiver = cleanReceiver.mid(4);
+    }
+    cleanReceiver = cleanReceiver.trimmed();
+    if (m_multiDeviceResolver) {
+        m_multiDeviceResolver(cleanReceiver, [this, cleanReceiver, localPath, msgId](QStringList deviceIds) {
+            if (!m_fileTransferManager) return;
+            if (deviceIds.isEmpty()) {
+                if (m_deviceResolver) {
+                    m_deviceResolver(cleanReceiver, [this, cleanReceiver, localPath, msgId](std::optional<QString> devOpt) {
+                        if (m_fileTransferManager && devOpt.has_value() && !devOpt->isEmpty()) {
+                            m_fileTransferManager->startTransfer(cleanReceiver, devOpt.value(), localPath, msgId);
+                        }
+                    });
+                }
+                return;
+            }
+            for (const QString &devId : deviceIds) {
+                if (!devId.isEmpty()) {
+                    m_fileTransferManager->startTransfer(cleanReceiver, devId, localPath, msgId);
+                }
+            }
+        });
+    } else if (m_deviceResolver) {
+        m_deviceResolver(cleanReceiver, [this, cleanReceiver, localPath, msgId](std::optional<QString> devOpt) {
+            if (m_fileTransferManager && devOpt.has_value() && !devOpt->isEmpty()) {
+                m_fileTransferManager->startTransfer(cleanReceiver, devOpt.value(), localPath, msgId);
+            }
+        });
+    } else {
+        m_fileTransferManager->startTransfer(cleanReceiver, "*", localPath, msgId);
+    }
 }
 
 void MessageService::cancelMediaTransfer(const QString &conversationId, const QString &messageId) {
@@ -84,14 +369,25 @@ void MessageService::cancelMediaTransfer(const QString &conversationId, const QS
         }
     }
 
+    if (m_fileTransferManager) {
+        m_fileTransferManager->cancelTransfer(messageId, "", "Transfer cancelled");
+    }
+
     QString convId = conversationId;
     if (convId.isEmpty() && m_outgoingMessages.contains(messageId)) {
         convId = m_outgoingMessages.value(messageId).conversationId;
+    }
+    if (convId.isEmpty() && m_incomingMessages.contains(messageId)) {
+        convId = m_incomingMessages.value(messageId).conversationId;
     }
 
     if (m_outgoingMessages.contains(messageId)) {
         m_outgoingMessages[messageId].status = Domain::MessageStatus::Failed;
         m_outgoingMessages[messageId].errorText = "Transfer cancelled";
+    }
+    if (m_incomingMessages.contains(messageId)) {
+        m_incomingMessages[messageId].status = Domain::MessageStatus::Failed;
+        m_incomingMessages[messageId].errorText = "Transfer cancelled";
     }
 
     this->updateMessageStatusAsync(messageId, Domain::MessageStatus::Failed, "Transfer cancelled", this, nullptr);
@@ -114,23 +410,9 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
     msg.fileSize = determineFileSize(mediaUrl, fileSize);
     msg.duration = duration;
 
-    // Detect image dimensions for local files immediately to reserve aspect-ratio
     if ((msg.type == "image" || type == "image") && !mediaUrl.isEmpty()) {
-        QString cleanPath = mediaUrl;
-        QUrl url(mediaUrl);
-        if (url.isLocalFile()) {
-            cleanPath = url.toLocalFile();
-        } else if (cleanPath.startsWith("file:///")) {
-            cleanPath = cleanPath.mid(8);
-        } else if (cleanPath.startsWith("file://")) {
-            cleanPath = cleanPath.mid(7);
-        }
-#ifdef _WIN32
-        if (cleanPath.startsWith("/") && cleanPath.length() >= 3 && cleanPath.at(2) == ':') {
-            cleanPath = cleanPath.mid(1);
-        }
-#endif
-        if (QFile::exists(cleanPath)) {
+        const QString cleanPath = resolveLocalMediaPath(mediaUrl);
+        if (!cleanPath.isEmpty() && QFile::exists(cleanPath)) {
             QImageReader reader(cleanPath);
             QSize sz = reader.size();
             if (sz.isValid() && sz.width() > 0 && sz.height() > 0) {
@@ -142,11 +424,23 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
     
     QJsonArray waveArray;
     for (const QVariant &v : waveform) {
-        waveArray.append(v.toInt());
+        double val = v.toDouble();
+        if (val > 1.0) {
+            val /= 100.0;
+        }
+        waveArray.append(val);
     }
     msg.waveform = QJsonDocument(waveArray).toJson(QJsonDocument::Compact);
     
     bool isSavedMessages = (conversationId == "dms:saved-messages" || conversationId == "saved-messages");
+    if (type == "avatar_update") {
+        msg.status = Domain::MessageStatus::Sent;
+        msg.timestamp = QDateTime::currentMSecsSinceEpoch();
+        if (!isSavedMessages) {
+            emit transmitMessage(msg);
+        }
+        return;
+    }
     msg.status = (isSavedMessages && type == "text") ? Domain::MessageStatus::Sent : Domain::MessageStatus::Sending;
     msg.timestamp = QDateTime::currentMSecsSinceEpoch();
 
@@ -154,6 +448,14 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
 
     QVariantMap msgMap = domainToVariantMap(msg);
     emit messageAdded(msg.conversationId, msgMap);
+
+    const QString localTransferPath = resolveLocalMediaPath(msg.mediaUrl);
+    const bool hasRealFileTransfer =
+        (!isSavedMessages && m_fileTransferManager != nullptr &&
+         (msg.type == "image" || msg.type == "file" ||
+          msg.type == "video" || msg.type == "audio" ||
+          msg.type == "voice" || msg.type == "voice_note") &&
+         !localTransferPath.isEmpty() && QFile::exists(localTransferPath));
 
     if (msg.type != "text") {
         qint64 total = msg.fileSize > 0 ? msg.fileSize : 2500000;
@@ -169,14 +471,21 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
 
         m_activeTransfers.insert(mId, timer);
 
-        connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total]() {
+        connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total, hasRealFileTransfer]() {
+            if (!m_activeTransfers.contains(mId) || (m_outgoingMessages.contains(mId) && m_outgoingMessages[mId].status != Domain::MessageStatus::Sending)) {
+                timer->stop();
+                m_activeTransfers.remove(mId);
+                timer->deleteLater();
+                return;
+            }
             (*step)++;
-            qreal prog = qMin(1.0, static_cast<qreal>(*step) / totalSteps);
+            const qreal maxSimulatedProg = hasRealFileTransfer ? 0.90 : 1.0;
+            qreal prog = qMin(maxSimulatedProg, static_cast<qreal>(*step) / totalSteps);
             qint64 bytes = static_cast<qint64>(prog * total);
 
             emit mediaTransferProgress(cId, mId, prog, bytes, total);
 
-            if (prog >= 1.0) {
+            if (!hasRealFileTransfer && prog >= 1.0) {
                 timer->stop();
                 m_activeTransfers.remove(mId);
                 timer->deleteLater();
@@ -191,24 +500,7 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
         timer->start();
     }
 
-    if (msg.type == "image" && m_fileTransferManager) {
-        QString receiver = msg.conversationId;
-        if (receiver.startsWith("dms:")) receiver = receiver.mid(4);
-
-        // Clean up media URL to get local path
-        QString cleanPath = msg.mediaUrl;
-        if (cleanPath.startsWith("file:///")) cleanPath = cleanPath.mid(8);
-        else if (cleanPath.startsWith("file://")) cleanPath = cleanPath.mid(7);
-#ifdef _WIN32
-        if (cleanPath.startsWith("/") && cleanPath.length() >= 3 && cleanPath.at(2) == ':') {
-            cleanPath = cleanPath.mid(1);
-        }
-#endif
-
-        m_fileTransferManager->startTransfer(receiver, "*", cleanPath, msg.id);
-    }
-
-    this->saveMessageAsync(msg, this, [this, msg, isSavedMessages](bool success) {
+    this->saveMessageAsync(msg, this, [this, msg, isSavedMessages, localTransferPath, hasRealFileTransfer](bool success) {
         if (!success) {
             qWarning() << "[MessageService] Failed to save outgoing message locally.";
             if (m_activeTransfers.contains(msg.id)) {
@@ -224,6 +516,9 @@ void MessageService::sendMessage(const QString &conversationId, const QString &t
 
         if (!isSavedMessages) {
             emit transmitMessage(msg);
+            if (hasRealFileTransfer && m_fileTransferManager) {
+                startPeerTransfers(msg.conversationId, localTransferPath, msg.id);
+            }
         } else if (msg.type == "text") {
             emit messageUpdated(msg.conversationId, msg.id, "sent", "");
         }
@@ -296,21 +591,8 @@ void MessageService::sendMediaRequest(const QString &conversationId, const QStri
     msg.timestamp = QDateTime::currentMSecsSinceEpoch();
 
     if (mediaType == "image" && !mediaUrl.isEmpty()) {
-        QString cleanPath = mediaUrl;
-        QUrl url(mediaUrl);
-        if (url.isLocalFile()) {
-            cleanPath = url.toLocalFile();
-        } else if (cleanPath.startsWith("file:///")) {
-            cleanPath = cleanPath.mid(8);
-        } else if (cleanPath.startsWith("file://")) {
-            cleanPath = cleanPath.mid(7);
-        }
-#ifdef _WIN32
-        if (cleanPath.startsWith("/") && cleanPath.length() >= 3 && cleanPath.at(2) == ':') {
-            cleanPath = cleanPath.mid(1);
-        }
-#endif
-        if (QFile::exists(cleanPath)) {
+        const QString cleanPath = resolveLocalMediaPath(mediaUrl);
+        if (!cleanPath.isEmpty() && QFile::exists(cleanPath)) {
             QImageReader reader(cleanPath);
             QSize sz = reader.size();
             if (sz.isValid() && sz.width() > 0 && sz.height() > 0) {
@@ -486,7 +768,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                 Domain::Message orig = m_pendingMediaRequests.take(reqId);
                 emit messageRemoved(orig.conversationId, reqId);
                 QString realType = orig.errorText.isEmpty() ? "file" : orig.errorText;
-                qDebug() << "[MessageService] Auto-sending media payload:" << orig.fileName << "type:" << realType << "size:" << orig.fileSize;
+                qDebug() << "[MessageService] Auto-sending media payload type:" << realType << "size:" << orig.fileSize;
                 
                 Domain::Message payloadMsg;
                 payloadMsg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -497,14 +779,32 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                 payloadMsg.mediaUrl = orig.mediaUrl;
                 payloadMsg.fileName = orig.fileName;
                 payloadMsg.fileSize = determineFileSize(payloadMsg.mediaUrl, orig.fileSize);
+                payloadMsg.mediaWidth = orig.mediaWidth;
+                payloadMsg.mediaHeight = orig.mediaHeight;
                 payloadMsg.errorText = reqId; // Carry requestId to clear on receiver side
                 payloadMsg.status = Domain::MessageStatus::Sending;
                 payloadMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
+
+                const QString cleanPath = resolveLocalMediaPath(payloadMsg.mediaUrl);
+                if (payloadMsg.type == "image" && payloadMsg.mediaWidth <= 0 && !cleanPath.isEmpty() && QFile::exists(cleanPath)) {
+                    QImageReader reader(cleanPath);
+                    QSize sz = reader.size();
+                    if (sz.isValid() && sz.width() > 0 && sz.height() > 0) {
+                        payloadMsg.mediaWidth = sz.width();
+                        payloadMsg.mediaHeight = sz.height();
+                    }
+                }
 
                 m_outgoingMessages.insert(payloadMsg.id, payloadMsg);
 
                 QVariantMap msgMap = domainToVariantMap(payloadMsg);
                 emit messageAdded(payloadMsg.conversationId, msgMap);
+
+                const bool hasRealFileTransfer =
+                    (m_fileTransferManager != nullptr &&
+                     (payloadMsg.type == "image" || payloadMsg.type == "file" ||
+                      payloadMsg.type == "video" || payloadMsg.type == "audio") &&
+                     !cleanPath.isEmpty() && QFile::exists(cleanPath));
 
                 qint64 total = payloadMsg.fileSize > 0 ? payloadMsg.fileSize : 2500000;
                 emit mediaTransferProgress(payloadMsg.conversationId, payloadMsg.id, 0.05, static_cast<qint64>(total * 0.05), total);
@@ -522,9 +822,16 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
 
                 m_activeTransfers.insert(mId, timer);
 
-                connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, reqId, cId, total]() {
+                connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, reqId, cId, total, hasRealFileTransfer]() {
+                    if (!m_activeTransfers.contains(mId) || (m_outgoingMessages.contains(mId) && m_outgoingMessages[mId].status != Domain::MessageStatus::Sending)) {
+                        timer->stop();
+                        m_activeTransfers.remove(mId);
+                        timer->deleteLater();
+                        return;
+                    }
                     (*step)++;
-                    qreal prog = qMin(1.0, static_cast<qreal>(*step) / totalSteps);
+                    const qreal maxSimulatedProg = hasRealFileTransfer ? 0.90 : 1.0;
+                    qreal prog = qMin(maxSimulatedProg, static_cast<qreal>(*step) / totalSteps);
                     qint64 bytes = static_cast<qint64>(prog * total);
 
                     emit mediaTransferProgress(cId, mId, prog, bytes, total);
@@ -532,7 +839,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                         emit mediaTransferProgress(cId, reqId, prog, bytes, total);
                     }
 
-                    if (prog >= 1.0) {
+                    if (!hasRealFileTransfer && prog >= 1.0) {
                         timer->stop();
                         m_activeTransfers.remove(mId);
                         timer->deleteLater();
@@ -549,7 +856,7 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                 });
                 timer->start();
 
-                this->saveMessageAsync(payloadMsg, this, [this, payloadMsg, reqId](bool success) {
+                this->saveMessageAsync(payloadMsg, this, [this, payloadMsg, reqId, cleanPath, hasRealFileTransfer](bool success) {
                     if (!success) {
                         qWarning() << "[MessageService] Failed to save outgoing message locally.";
                         if (m_activeTransfers.contains(payloadMsg.id)) {
@@ -564,6 +871,10 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
                     }
 
                     emit transmitMessage(payloadMsg);
+
+                    if (hasRealFileTransfer && m_fileTransferManager) {
+                        startPeerTransfers(payloadMsg.conversationId, cleanPath, payloadMsg.id);
+                    }
                 });
             }
             continue;
@@ -584,30 +895,56 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
             currentMsg.status = Domain::MessageStatus::Pending;
             m_receivedMediaRequests.insert(currentMsg.id, currentMsg);
         } else if (!currentMsg.errorText.isEmpty()) {
-            // Incoming transmitted payload referencing previous request
             QString origReqId = currentMsg.errorText;
             emit messageRemoved(currentMsg.conversationId, origReqId);
             this->deleteMessageAsync(origReqId);
             m_receivedMediaRequests.remove(origReqId);
             currentMsg.errorText = "";
+            if (auto s = m_storage.lock()) {
+                s->updateMessageState(currentMsg.id, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+            }
         }
 
         bool isIncomingMedia = (currentMsg.type != "text" && currentMsg.type != "media_request" && currentMsg.type != "media_decline" && currentMsg.type != "media_accept" && currentMsg.type != "sticker" && !currentMsg.type.startsWith("typing_") && currentMsg.type != "seen");
         if (isIncomingMedia) {
-            currentMsg.status = Domain::MessageStatus::Sending;
+            QString completedPath;
+            bool isAlreadyCompleted = false;
+            if (m_completedTransfers.contains(currentMsg.id)) {
+                completedPath = m_completedTransfers.value(currentMsg.id);
+                isAlreadyCompleted = true;
+            } else if (m_fileTransferManager) {
+                if (auto txOpt = m_fileTransferManager->getTransferInfo(currentMsg.id)) {
+                    if (txOpt->status == "completed" && !txOpt->spool_path.isEmpty() && QFile::exists(txOpt->spool_path)) {
+                        completedPath = txOpt->spool_path;
+                        m_completedTransfers.insert(currentMsg.id, completedPath);
+                        isAlreadyCompleted = true;
+                    }
+                }
+            }
+
+            if (isAlreadyCompleted) {
+                currentMsg.mediaUrl =
+                    resolveCompletedMediaUrl(currentMsg.type, currentMsg.id, completedPath, m_serverUrl, m_currentUserId);
+                currentMsg.status = Domain::MessageStatus::Sent;
+                if (auto s = m_storage.lock()) {
+                    s->updateMessageMediaUrl(currentMsg.id, currentMsg.mediaUrl);
+                    s->updateMessageState(currentMsg.id, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+                }
+            } else {
+                currentMsg.status = Domain::MessageStatus::Downloading;
+                currentMsg.mediaUrl = QString();
+            }
+            m_incomingMessages.insert(currentMsg.id, currentMsg);
         }
 
         msgsToSave.push_back(currentMsg);
 
-        // When a message arrives from peer, clear their typing indicator
         emit peerTypingStatusChanged(currentMsg.conversationId, currentMsg.senderId, false);
 
         QVariantMap msgMap = domainToVariantMap(currentMsg);
-        QMetaObject::invokeMethod(this, [this, msgMap, convId = currentMsg.conversationId]() {
-            emit messageAdded(convId, msgMap);
-        }, Qt::QueuedConnection);
+        emit messageAdded(currentMsg.conversationId, msgMap);
 
-        if (isIncomingMedia) {
+        if (isIncomingMedia && currentMsg.status == Domain::MessageStatus::Downloading) {
             qint64 total = currentMsg.fileSize > 0 ? currentMsg.fileSize : 2500000;
             emit mediaTransferProgress(currentMsg.conversationId, currentMsg.id, 0.05, static_cast<qint64>(total * 0.05), total);
 
@@ -618,21 +955,33 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
 
             QString mId = currentMsg.id;
             QString cId = currentMsg.conversationId;
+            const bool waitForTransferCompletion = (m_fileTransferManager != nullptr);
 
             m_activeTransfers.insert(mId, timer);
 
-            connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total]() {
+            connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total, waitForTransferCompletion]() {
+                if (!m_activeTransfers.contains(mId) || m_completedTransfers.contains(mId) ||
+                    (m_incomingMessages.contains(mId) && m_incomingMessages[mId].status != Domain::MessageStatus::Downloading)) {
+                    timer->stop();
+                    m_activeTransfers.remove(mId);
+                    timer->deleteLater();
+                    return;
+                }
                 (*step)++;
-                qreal prog = qMin(1.0, static_cast<qreal>(*step) / totalSteps);
+                const qreal maxSimulatedProg = waitForTransferCompletion ? 0.90 : 1.0;
+                qreal prog = qMin(maxSimulatedProg, static_cast<qreal>(*step) / totalSteps);
                 qint64 bytes = static_cast<qint64>(prog * total);
 
                 emit mediaTransferProgress(cId, mId, prog, bytes, total);
 
-                if (prog >= 1.0) {
+                if (!waitForTransferCompletion && prog >= 1.0) {
                     timer->stop();
                     m_activeTransfers.remove(mId);
                     timer->deleteLater();
 
+                    if (m_incomingMessages.contains(mId)) {
+                        m_incomingMessages[mId].status = Domain::MessageStatus::Sent;
+                    }
                     this->updateMessageStatusAsync(mId, Domain::MessageStatus::Sent, "", this, nullptr);
                     emit messageUpdated(cId, mId, "sent", "");
                 }
@@ -642,9 +991,22 @@ void MessageService::handleIncomingMessages(const std::vector<Domain::Message> &
     }
     
     if (!msgsToSave.empty()) {
-        this->saveMessagesAsync(msgsToSave, this, [this](bool success) {
+        this->saveMessagesAsync(msgsToSave, this, [this, msgsToSave](bool success) {
             if (!success) {
                 qWarning() << "[MessageService] Failed to save batch of incoming messages";
+            }
+            if (auto s = m_storage.lock()) {
+                for (const auto& savedMsg : msgsToSave) {
+                    if (m_completedTransfers.contains(savedMsg.id)) {
+                        const QString path = m_completedTransfers.value(savedMsg.id);
+                        const bool isEncryptedImageSpool =
+                            (savedMsg.type == "image" || path.isEmpty() || path.endsWith(".spool"));
+                        const QString resolvedMediaUrl =
+                            isEncryptedImageSpool ? savedMsg.id : QUrl::fromLocalFile(path).toString();
+                        s->updateMessageMediaUrl(savedMsg.id, resolvedMediaUrl);
+                        s->updateMessageState(savedMsg.id, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+                    }
+                }
             }
         });
     }
@@ -687,16 +1049,25 @@ void MessageService::handleMessageDeliveryStatus(const QString &messageId, bool 
     Domain::MessageStatus status = Domain::MessageStatus::Sent;
     emit messageUpdated("", messageId, "sent", errorText);
 
+    bool isMediaRequest = m_pendingMediaRequests.contains(messageId);
     if (m_outgoingMessages.contains(messageId)) {
         m_outgoingMessages[messageId].status = status;
-        m_outgoingMessages[messageId].errorText = errorText;
+        if (m_outgoingMessages[messageId].type == "media_request") {
+            isMediaRequest = true;
+        }
+        if (!errorText.isEmpty() || m_outgoingMessages[messageId].type != "media_request") {
+            m_outgoingMessages[messageId].errorText = errorText;
+        }
     }
     if (m_pendingMediaRequests.contains(messageId)) {
         m_pendingMediaRequests[messageId].status = status;
-        m_pendingMediaRequests[messageId].errorText = errorText;
+        if (!errorText.isEmpty()) {
+            m_pendingMediaRequests[messageId].errorText = errorText;
+        }
     }
 
-    this->updateMessageStatusAsync(messageId, status, errorText, this, [messageId](bool dbSuccess) {
+    const QString dbErrorText = (errorText.isNull() && !isMediaRequest) ? QStringLiteral("") : errorText;
+    this->updateMessageStatusAsync(messageId, status, dbErrorText, this, [messageId](bool dbSuccess) {
         if (!dbSuccess) {
             qWarning() << "[MessageService] Failed to update message delivery status in DB for:" << messageId;
         }
@@ -716,12 +1087,93 @@ void MessageService::retryMessage(const QString &messageId) {
             return;
         }
 
+        const bool isFromMe = m_outgoingMessages.contains(msg.id) ||
+                              m_pendingMediaRequests.contains(msg.id) ||
+                              (m_currentUserId.isEmpty() && msg.senderId.isEmpty()) ||
+                              (!m_currentUserId.isEmpty() && msg.senderId.compare(m_currentUserId, Qt::CaseInsensitive) == 0);
+
+        if (!isFromMe) {
+            if (m_activeTransfers.contains(msg.id)) {
+                QTimer *oldTimer = m_activeTransfers.take(msg.id);
+                if (oldTimer) {
+                    oldTimer->stop();
+                    oldTimer->deleteLater();
+                }
+            }
+
+            QString completedPath;
+            bool isAlreadyCompleted = false;
+            if (m_completedTransfers.contains(msg.id)) {
+                completedPath = m_completedTransfers.value(msg.id);
+                isAlreadyCompleted = true;
+            } else if (m_fileTransferManager) {
+                if (auto txOpt = m_fileTransferManager->getTransferInfo(msg.id)) {
+                    if (txOpt->status == "completed" && !txOpt->spool_path.isEmpty() && QFile::exists(txOpt->spool_path)) {
+                        completedPath = txOpt->spool_path;
+                        m_completedTransfers.insert(msg.id, completedPath);
+                        isAlreadyCompleted = true;
+                    }
+                }
+            }
+
+            if (isAlreadyCompleted) {
+                const bool isEncryptedImageSpool =
+                    (msg.type == "image" || completedPath.isEmpty() || completedPath.endsWith(".spool"));
+                msg.mediaUrl = isEncryptedImageSpool ? msg.id : QUrl::fromLocalFile(completedPath).toString();
+                msg.status = Domain::MessageStatus::Sent;
+                msg.errorText = QStringLiteral("");
+                m_incomingMessages.insert(msg.id, msg);
+                if (auto s = m_storage.lock()) {
+                    s->updateMessageMediaUrl(msg.id, msg.mediaUrl);
+                    s->updateMessageState(msg.id, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+                }
+                qint64 total = msg.fileSize > 0 ? msg.fileSize : 100;
+                emit mediaTransferProgress(msg.conversationId, msg.id, 1.0, total, total);
+                emit messageUpdated(msg.conversationId, msg.id, "sent", "", msg.mediaUrl);
+                return;
+            }
+
+            if (m_fileTransferManager) {
+                msg.status = Domain::MessageStatus::Downloading;
+                msg.errorText = QStringLiteral("");
+                m_incomingMessages.insert(msg.id, msg);
+                if (auto s = m_storage.lock()) {
+                    s->updateMessageState(msg.id, NeoNect::Core::Messaging::MessageState::CREATED, QStringLiteral(""));
+                }
+                qint64 total = msg.fileSize > 0 ? msg.fileSize : 2500000;
+                emit messageUpdated(msg.conversationId, msg.id, "downloading", "");
+                emit mediaTransferProgress(msg.conversationId, msg.id, 0.05, static_cast<qint64>(total * 0.05), total);
+
+                QString senderUser = msg.senderId.trimmed();
+                if (senderUser.isEmpty() && msg.conversationId.startsWith("dms:", Qt::CaseInsensitive)) {
+                    senderUser = msg.conversationId.mid(4).trimmed();
+                }
+                m_fileTransferManager->resumeIncomingTransfer(msg.id, senderUser);
+                return;
+            }
+
+            emit messageUpdated(msg.conversationId, msg.id, "failed", "Transfer unavailable");
+            return;
+        }
+
         msg.status = Domain::MessageStatus::Sending;
-        msg.errorText = "";
+        if (msg.type != "media_request") {
+            msg.errorText = "";
+        }
         m_outgoingMessages.insert(msg.id, msg);
 
+        if (auto s = m_storage.lock()) {
+            s->updateMessageState(msg.id, NeoNect::Core::Messaging::MessageState::CREATED,
+                                  msg.type == "media_request" ? QString() : QStringLiteral(""));
+        }
         emit messageUpdated(msg.conversationId, msg.id, "sending", "");
-        this->updateMessageStatusAsync(msg.id, Domain::MessageStatus::Sending, "", this, nullptr);
+
+        const QString cleanPath = resolveLocalMediaPath(msg.mediaUrl);
+        const bool hasRealFileTransfer =
+            (m_fileTransferManager != nullptr &&
+             (msg.type == "image" || msg.type == "file" ||
+              msg.type == "video" || msg.type == "audio") &&
+             !cleanPath.isEmpty() && QFile::exists(cleanPath));
 
         if (msg.type != "text" && msg.type != "media_request") {
             qint64 total = msg.fileSize > 0 ? msg.fileSize : 2500000;
@@ -737,14 +1189,21 @@ void MessageService::retryMessage(const QString &messageId) {
 
             m_activeTransfers.insert(mId, timer);
 
-            connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total]() {
+            connect(timer, &QTimer::timeout, this, [this, timer, step, totalSteps, mId, cId, total, hasRealFileTransfer]() {
+                if (!m_activeTransfers.contains(mId) || (m_outgoingMessages.contains(mId) && m_outgoingMessages[mId].status != Domain::MessageStatus::Sending)) {
+                    timer->stop();
+                    m_activeTransfers.remove(mId);
+                    timer->deleteLater();
+                    return;
+                }
                 (*step)++;
-                qreal prog = qMin(1.0, static_cast<qreal>(*step) / totalSteps);
+                const qreal maxSimulatedProg = hasRealFileTransfer ? 0.90 : 1.0;
+                qreal prog = qMin(maxSimulatedProg, static_cast<qreal>(*step) / totalSteps);
                 qint64 bytes = static_cast<qint64>(prog * total);
 
                 emit mediaTransferProgress(cId, mId, prog, bytes, total);
 
-                if (prog >= 1.0) {
+                if (!hasRealFileTransfer && prog >= 1.0) {
                     timer->stop();
                     m_activeTransfers.remove(mId);
                     timer->deleteLater();
@@ -764,6 +1223,9 @@ void MessageService::retryMessage(const QString &messageId) {
             emit transmitMessage(msg);
         } else {
             emit transmitMessage(msg);
+            if (hasRealFileTransfer && m_fileTransferManager) {
+                startPeerTransfers(msg.conversationId, cleanPath, msg.id);
+            }
         }
     };
 
@@ -774,6 +1236,11 @@ void MessageService::retryMessage(const QString &messageId) {
 
     if (m_pendingMediaRequests.contains(messageId)) {
         executeRetry(m_pendingMediaRequests.value(messageId));
+        return;
+    }
+
+    if (m_incomingMessages.contains(messageId)) {
+        executeRetry(m_incomingMessages.value(messageId));
         return;
     }
 
@@ -792,7 +1259,8 @@ QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const
     map["messageId"] = msg.id;
     map["conversationId"] = msg.conversationId;
     map["senderId"] = msg.senderId;
-    map["fromMe"] = (msg.senderId.toLower() == m_currentUserId.toLower());
+    const bool isFromMe = (msg.senderId.toLower() == m_currentUserId.toLower());
+    map["fromMe"] = isFromMe;
     map["type"] = msg.type;
     map["messageType"] = msg.type;
     map["text"] = msg.text;
@@ -804,12 +1272,19 @@ QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const
     QJsonArray waveArray = QJsonDocument::fromJson(msg.waveform).array();
     QVariantList waveList;
     for (const QJsonValue &v : waveArray) {
-        waveList.append(v.toInt());
+        double val = v.toDouble();
+        if (val > 1.0) {
+            val /= 100.0;
+        }
+        waveList.append(val);
     }
     map["waveform"] = waveList;
     
     switch (msg.status) {
-        case Domain::MessageStatus::Sending: map["status"] = "sending"; break;
+        case Domain::MessageStatus::Sending:
+            map["status"] = (!isFromMe && !m_currentUserId.isEmpty() && !msg.senderId.isEmpty()) ? "downloading" : "sending";
+            break;
+        case Domain::MessageStatus::Downloading: map["status"] = "downloading"; break;
         case Domain::MessageStatus::Sent: map["status"] = "sent"; break;
         case Domain::MessageStatus::Failed: map["status"] = "failed"; break;
         case Domain::MessageStatus::Seen: map["status"] = "seen"; break;
@@ -818,7 +1293,7 @@ QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const
         case Domain::MessageStatus::Declined: map["status"] = "declined"; break;
     }
 
-    if (msg.status == Domain::MessageStatus::Sending && msg.type != "text") {
+    if ((msg.status == Domain::MessageStatus::Sending || msg.status == Domain::MessageStatus::Downloading) && msg.type != "text") {
         map["transferProgress"] = 0.05;
         map["transferBytes"] = static_cast<qint64>((msg.fileSize > 0 ? msg.fileSize : 2500000) * 0.05);
     } else {
@@ -835,6 +1310,7 @@ QVariantMap MessageService::domainToVariantMap(const Domain::Message &msg) const
 static NeoNect::Core::Messaging::MessageState mapStatus(NeoNect::Domain::MessageStatus status) {
     switch (status) {
         case NeoNect::Domain::MessageStatus::Sending: return NeoNect::Core::Messaging::MessageState::CREATED;
+        case NeoNect::Domain::MessageStatus::Downloading: return NeoNect::Core::Messaging::MessageState::CREATED;
         case NeoNect::Domain::MessageStatus::Sent: return NeoNect::Core::Messaging::MessageState::SENT;
         case NeoNect::Domain::MessageStatus::Seen: return NeoNect::Core::Messaging::MessageState::READ;
         case NeoNect::Domain::MessageStatus::Failed: return NeoNect::Core::Messaging::MessageState::FAILED;
@@ -850,6 +1326,85 @@ static NeoNect::Domain::MessageStatus mapState(NeoNect::Core::Messaging::Message
         case NeoNect::Core::Messaging::MessageState::READ: return NeoNect::Domain::MessageStatus::Seen;
         case NeoNect::Core::Messaging::MessageState::FAILED: return NeoNect::Domain::MessageStatus::Failed;
         default: return NeoNect::Domain::MessageStatus::Sent;
+    }
+}
+
+void MessageService::reconcileMediaMessage(Domain::Message &dm, NeoNect::Core::Messaging::IMessageStorage *storage) {
+    const bool isFromMe = m_currentUserId.isEmpty() ? true : (dm.senderId.compare(m_currentUserId, Qt::CaseInsensitive) == 0);
+    if (!isFromMe && dm.status == Domain::MessageStatus::Sending) {
+        dm.status = Domain::MessageStatus::Downloading;
+    }
+
+    const bool isMediaAttachment =
+        (dm.type == "image" || dm.type == "file" || dm.type == "video" ||
+         dm.type == "audio" || dm.type == "voice" || dm.type == "voice_note");
+    if (!isMediaAttachment) {
+        return;
+    }
+
+    if (!isFromMe && dm.type == "image") {
+        if (dm.mediaUrl.contains('/') || dm.mediaUrl.contains('\\') || dm.mediaUrl.startsWith("file:")) {
+            dm.mediaUrl = dm.id;
+            if (storage) {
+                storage->updateMessageMediaUrl(dm.id, dm.mediaUrl);
+            }
+        }
+    }
+
+    if (m_completedTransfers.contains(dm.id)) {
+        const QString path = m_completedTransfers.value(dm.id);
+        if (!isFromMe || dm.mediaUrl.isEmpty()) {
+            dm.mediaUrl = resolveCompletedMediaUrl(dm.type, dm.id, path, m_serverUrl, m_currentUserId);
+            if (storage) {
+                storage->updateMessageMediaUrl(dm.id, dm.mediaUrl);
+                storage->updateMessageState(dm.id, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+            }
+        }
+        if (dm.status != Domain::MessageStatus::Seen) {
+            dm.status = Domain::MessageStatus::Sent;
+        }
+        dm.errorText = QStringLiteral("");
+        return;
+    }
+
+    if (m_fileTransferManager && (dm.mediaUrl.isEmpty() || dm.mediaUrl == dm.id || dm.status == Domain::MessageStatus::Downloading || dm.status == Domain::MessageStatus::Sending)) {
+        if (auto txOpt = m_fileTransferManager->getTransferInfo(dm.id)) {
+            if (txOpt->status == "completed" && !txOpt->spool_path.isEmpty() && QFile::exists(txOpt->spool_path)) {
+                m_completedTransfers.insert(dm.id, txOpt->spool_path);
+                if (!isFromMe || dm.mediaUrl.isEmpty()) {
+                    dm.mediaUrl = resolveCompletedMediaUrl(dm.type, dm.id, txOpt->spool_path, m_serverUrl, m_currentUserId);
+                    if (storage) {
+                        storage->updateMessageMediaUrl(dm.id, dm.mediaUrl);
+                        storage->updateMessageState(dm.id, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+                    }
+                }
+                if (dm.status != Domain::MessageStatus::Seen) {
+                    dm.status = Domain::MessageStatus::Sent;
+                }
+                dm.errorText = QStringLiteral("");
+                return;
+            }
+            if (txOpt->status == "failed" || txOpt->status == "cancelled") {
+                dm.status = Domain::MessageStatus::Failed;
+                if (dm.errorText.isEmpty()) {
+                    dm.errorText = (txOpt->status == "cancelled") ? QStringLiteral("Transfer cancelled") : QStringLiteral("Transfer failed");
+                }
+                return;
+            }
+            if (txOpt->status == "active") {
+                dm.status = isFromMe ? Domain::MessageStatus::Sending : Domain::MessageStatus::Downloading;
+                return;
+            }
+        } else if (!isFromMe && dm.mediaUrl.isEmpty()) {
+            if (m_activeTransfers.contains(dm.id)) {
+                dm.status = Domain::MessageStatus::Downloading;
+            } else if (dm.type == "image" || dm.type == "file" || dm.type == "video" || dm.type == "audio") {
+                dm.status = Domain::MessageStatus::Failed;
+                if (dm.errorText.isEmpty()) {
+                    dm.errorText = QStringLiteral("Transfer incomplete");
+                }
+            }
+        }
     }
 }
 
@@ -869,6 +1424,7 @@ void MessageService::saveMessageAsync(const Domain::Message &msg, const QObject*
     coreMsg.waveform = msg.waveform;
     coreMsg.mediaWidth = msg.mediaWidth;
     coreMsg.mediaHeight = msg.mediaHeight;
+    coreMsg.errorText = msg.errorText;
     coreMsg.state = mapStatus(msg.status);
     
     QPointer<MessageService> self(this);
@@ -906,6 +1462,7 @@ void MessageService::saveMessagesAsync(const std::vector<Domain::Message> &msgs,
         coreMsg.waveform = msg.waveform;
         coreMsg.mediaWidth = msg.mediaWidth;
         coreMsg.mediaHeight = msg.mediaHeight;
+        coreMsg.errorText = msg.errorText;
         coreMsg.state = mapStatus(msg.status);
         coreMsgs.push_back(coreMsg);
     }
@@ -914,13 +1471,28 @@ void MessageService::saveMessagesAsync(const std::vector<Domain::Message> &msgs,
     QPointer<const QObject> ctx(context);
     auto storage = m_storage;
     
-    QMetaObject::invokeMethod(m_workerContext, [self, coreMsgs, ctx, callback, storage, context]() {
-        bool allSuccess = true;
-        for (const auto& coreMsg : coreMsgs) {
-            auto s = storage.lock();
+    QMetaObject::invokeMethod(m_workerContext, [self, coreMsgs, ctx, callback, storage, context]() mutable {
+        auto s = storage.lock();
         if (!s) return;
-        if (!s->saveMessage(coreMsg)) {
-                allSuccess = false;
+        for (auto& cm : coreMsgs) {
+            if (cm.state == NeoNect::Core::Messaging::MessageState::SENT) {
+                if (auto existing = s->getMessage(cm.messageId)) {
+                    if (existing->state == NeoNect::Core::Messaging::MessageState::DELIVERED ||
+                        existing->state == NeoNect::Core::Messaging::MessageState::READ) {
+                        cm.state = existing->state;
+                    }
+                }
+            }
+        }
+        bool allSuccess = s->saveMessages(coreMsgs);
+        for (const auto& cm : coreMsgs) {
+            if (!cm.mediaUrl.isEmpty()) {
+                if (auto existing = s->getMessage(cm.messageId)) {
+                    if (existing->mediaUrl.isEmpty()) {
+                        s->updateMessageMediaUrl(cm.messageId, cm.mediaUrl);
+                        s->updateMessageState(cm.messageId, NeoNect::Core::Messaging::MessageState::DELIVERED, QStringLiteral(""));
+                    }
+                }
             }
         }
         if (callback && self) {
@@ -937,11 +1509,24 @@ void MessageService::updateMessageStatusAsync(const QString &id, Domain::Message
     QPointer<MessageService> self(this);
     QPointer<const QObject> ctx(context);
     auto storage = m_storage;
+
+    if (auto s = storage.lock()) {
+        if (s->getMessage(id).has_value()) {
+            bool success = s->updateMessageState(id, coreStatus, errorText);
+            if (callback && self) {
+                QMetaObject::invokeMethod(self, [context, ctx, callback, success]() {
+                    if (context && !ctx) return;
+                    callback(success);
+                });
+            }
+            return;
+        }
+    }
     
-    QMetaObject::invokeMethod(m_workerContext, [self, id, coreStatus, ctx, callback, storage, context]() {
+    QMetaObject::invokeMethod(m_workerContext, [self, id, coreStatus, errorText, ctx, callback, storage, context]() {
         auto s = storage.lock();
         if (!s) return;
-        bool success = s->updateMessageState(id, coreStatus);
+        bool success = s->updateMessageState(id, coreStatus, errorText);
         if (callback && self) {
             QMetaObject::invokeMethod(self, [context, ctx, callback, success]() {
                 if (context && !ctx) return;
@@ -952,10 +1537,29 @@ void MessageService::updateMessageStatusAsync(const QString &id, Domain::Message
 }
 
 void MessageService::markMessagesSeenAsync(const QString &conversationId, const QString &senderId, const QObject* context, std::function<void(bool)> callback) {
-    if (callback) {
-        auto cb = callback;
-        QTimer::singleShot(0, [cb]() { cb(true); });
-    }
+    QPointer<MessageService> self(this);
+    QPointer<const QObject> ctx(context);
+    auto storage = m_storage;
+
+    QMetaObject::invokeMethod(m_workerContext, [self, conversationId, senderId, ctx, callback, storage, context]() {
+        auto s = storage.lock();
+        if (s) {
+            auto msgs = s->getConversationMessages(conversationId);
+            for (const auto& cm : msgs) {
+                if (senderId.isEmpty() || cm.senderId.compare(senderId, Qt::CaseInsensitive) == 0) {
+                    if (cm.state != NeoNect::Core::Messaging::MessageState::READ) {
+                        s->updateMessageState(cm.messageId, NeoNect::Core::Messaging::MessageState::READ);
+                    }
+                }
+            }
+        }
+        if (callback && self) {
+            QMetaObject::invokeMethod(self, [context, ctx, callback]() {
+                if (context && !ctx) return;
+                callback(true);
+            });
+        }
+    });
 }
 
 void MessageService::deleteMessageAsync(const QString &id) {
@@ -985,12 +1589,15 @@ void MessageService::getMessagesAsync(const QString &conversationId, int limit, 
     QPointer<const QObject> ctx(context);
     auto storage = m_storage;
     
-    QMetaObject::invokeMethod(m_workerContext, [self, conversationId, ctx, callback, storage, context]() {
+    QMetaObject::invokeMethod(m_workerContext, [self, conversationId, limit, beforeTimestamp, ctx, callback, storage, context]() {
         auto s = storage.lock();
         if (!s) return;
         auto coreMsgs = s->getConversationMessages(conversationId);
         std::vector<Domain::Message> messages;
         for (const auto& cm : coreMsgs) {
+            if (beforeTimestamp > 0 && cm.timestamp >= beforeTimestamp) {
+                continue;
+            }
             Domain::Message dm;
             dm.id = cm.messageId;
             dm.serverId = cm.serverId;
@@ -1006,13 +1613,21 @@ void MessageService::getMessagesAsync(const QString &conversationId, int limit, 
             dm.waveform = cm.waveform;
             dm.mediaWidth = cm.mediaWidth;
             dm.mediaHeight = cm.mediaHeight;
+            dm.errorText = cm.errorText;
             dm.status = mapState(cm.state);
             messages.push_back(dm);
         }
+        if (limit > 0 && static_cast<int>(messages.size()) > limit) {
+            messages.erase(messages.begin(), messages.end() - limit);
+        }
         
         if (callback && self) {
-            QMetaObject::invokeMethod(self, [context, ctx, callback, messages]() {
-                if (context && !ctx) return;
+            QMetaObject::invokeMethod(self, [self, context, ctx, callback, messages, storage]() mutable {
+                if (!self || (context && !ctx)) return;
+                auto sMain = storage.lock();
+                for (auto& dm : messages) {
+                    self->reconcileMediaMessage(dm, sMain.get());
+                }
                 callback(messages);
             });
         }
@@ -1045,13 +1660,18 @@ void MessageService::getMessageByIdAsync(const QString &id, const QObject* conte
             dm.waveform = cmOpt->waveform;
             dm.mediaWidth = cmOpt->mediaWidth;
             dm.mediaHeight = cmOpt->mediaHeight;
+            dm.errorText = cmOpt->errorText;
             dm.status = mapState(cmOpt->state);
             optMsg = dm;
         }
         
         if (callback && self) {
-            QMetaObject::invokeMethod(self, [context, ctx, callback, optMsg]() {
-                if (context && !ctx) return;
+            QMetaObject::invokeMethod(self, [self, context, ctx, callback, optMsg, storage]() mutable {
+                if (!self || (context && !ctx)) return;
+                if (optMsg.has_value()) {
+                    auto sMain = storage.lock();
+                    self->reconcileMediaMessage(optMsg.value(), sMain.get());
+                }
                 callback(optMsg);
             });
         }

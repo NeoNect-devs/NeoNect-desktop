@@ -17,6 +17,9 @@
 
 #pragma once
 #include <QObject>
+#include <QHash>
+#include <QSet>
+#include <QVariantList>
 #include <memory>
 #include <functional>
 #include "../transport/ihttptransport.h"
@@ -112,6 +115,7 @@ private:
      * @param attempt Current retry attempt index.
      */
     void registerDeviceInternal(const QString &deviceId, const QString &publicKey, int attempt);
+    void fetchRecipientKeysInternal(const QString &target, int attempt);
 
     /** @brief HTTP transport layer. */
     std::shared_ptr<Transport::IHttpTransport> m_transport;
@@ -119,6 +123,8 @@ private:
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
     
     std::function<QString()> m_identityKeyProvider;
+    QSet<QString> m_inFlightRecipientKeyQueries;
+    QHash<QString, QVariantList> m_recipientKeysCache;
 };
 
 } // namespace Services

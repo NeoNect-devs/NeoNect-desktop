@@ -33,9 +33,10 @@ public:
         SendChatMsgCb sendChatMsgCb,
         QObject* parent = nullptr);
 
-    // API to start transfer
     void startTransfer(const QString& recipientUser, const QString& recipientDevice, const QString& filePath, const QString& overrideTransferId = "");
     void cancelTransfer(const QString& transferId, const QString& peerDevice, const QString& reason);
+    std::optional<Storage::E2EEFileTransfer> getTransferInfo(const QString& transferId) const;
+    bool resumeIncomingTransfer(const QString& transferId, const QString& senderUser);
     void setStore(std::weak_ptr<Storage::ISecureE2EEStore> store) { m_store = store; }
 
     using IsImageTransferCb = std::function<bool(const QString& transferId)>;
@@ -89,6 +90,8 @@ private:
     QMap<QString, QMap<uint32_t, qint64>> m_inFlight;
     QMap<QString, QMap<uint32_t, int>> m_retryCounts;
     QMap<QString, QString> m_activeUsers;
+    QMap<QString, QString> m_transferFileNames;
+    QMap<QString, bool> m_completedTransferIds;
     QTimer* m_retryTimer;
     int m_inFlightTimeoutMs = 10000;
 };

@@ -47,6 +47,8 @@ Window {
     onAppStateChanged: {
         if (typeof viewFlowLoader !== "undefined") {
             if (appState === "gateway") {
+                root.currentSelectedServer = "dms";
+                root.currentActiveChannel = "friends";
                 viewFlowLoader.sourceComponent = null;
                 viewFlowLoader.source = "";
                 viewFlowLoader.source = "entrypage/entry.qml";

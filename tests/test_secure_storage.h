@@ -64,4 +64,5 @@ private slots:
     void testMasterKey_RestartPersistence();
     void testMasterKey_MigrationIdempotency();
     void testMasterKey_MigrationReadBackFailureSafety();
+    void testDatabase_UnopenedStoreMethodsFailClosed();
 };

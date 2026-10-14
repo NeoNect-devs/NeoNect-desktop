@@ -1,5 +1,7 @@
 #include "SessionManager.h"
 #include <QDateTime>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 namespace NeoNect {
 namespace Crypto {
@@ -106,6 +108,7 @@ DoubleRatchet::State SessionManager::sessionRecordToState(const Storage::E2EESes
 }
 
 bool SessionManager::hasSession(const QString& sessionId) {
+    if (m_sessionsNeedingReinit.contains(sessionId)) return false;
     auto store = m_store.lock();
     if (!store) return false;
     return store->getSession(sessionId).success;
@@ -194,6 +197,9 @@ ServiceResult<std::monostate> SessionManager::createSession(
     auto saveRes = store->updateSessionState(tx);
     if (!saveRes.success) return saveRes;
 
+    m_sessionsNeedingReinit.remove(sessionId);
+    m_consecutiveDecryptFailures.remove(sessionId);
+
     return ServiceResult<std::monostate>::ok(std::monostate{});
 }
 
@@ -252,6 +258,18 @@ ServiceResult<std::monostate> SessionManager::sendMessage(
     return ServiceResult<std::monostate>::ok(std::monostate{});
 }
 
+bool SessionManager::dispatchEnvelope(
+    const QString& recipientUsername,
+    const QString& recipientDeviceId,
+    const QString& messageId,
+    const QByteArray& envelopeBytes)
+{
+    if (!m_sendCb || envelopeBytes.isEmpty()) {
+        return false;
+    }
+    return m_sendCb(recipientUsername, recipientDeviceId, messageId, envelopeBytes);
+}
+
 VoidResult SessionManager::handleEnvelope(
     const QByteArray &envelopeBytes,
     const Transport::TransportMetadata &metadata)
@@ -259,6 +277,11 @@ VoidResult SessionManager::handleEnvelope(
     auto store = m_store.lock();
     if (!store) return VoidResult::fail("Storage context unavailable");
     QString sessionId = metadata.senderDeviceId;
+    if (!metadata.senderUserId.isEmpty()) {
+        sessionId = metadata.senderDeviceId.isEmpty()
+            ? metadata.senderUserId
+            : (metadata.senderUserId + ":" + metadata.senderDeviceId);
+    }
     
     auto initialEnvOpt = Wire::WireCodec::decodeInitialEnvelope(envelopeBytes);
     if (initialEnvOpt) {
@@ -293,33 +316,22 @@ VoidResult SessionManager::handleEnvelope(
         auto ratchetEnvOpt = Wire::WireCodec::decodeRatchetEnvelope(decRatchetEnvBytesOpt.value());
         if (!ratchetEnvOpt) return VoidResult::fail("Decrypted InitialEnvelope payload is not a valid RatchetEnvelope");
         
-        auto sessionRes = store->getSession(sessionId);
-        DoubleRatchet::State state;
-        if (sessionRes.success) {
-            state = sessionRecordToState(sessionRes.data.value());
-        } else {
-            m_ratchet->RatchetInitBob(state, x3dhRes->sharedSecret, std::make_pair(std::move(bobIdentity.privateKey), bobIdentity.publicKey));
-        }
+        const QByteArray senderIdentityKeyBytes(
+            reinterpret_cast<const char*>(env.senderIdentityKey.data.data()),
+            env.senderIdentityKey.data.size());
 
         DoubleRatchet::Header drHeader;
         drHeader.dh = ratchetEnvOpt->header.dh;
         drHeader.pn = ratchetEnvOpt->header.pn;
         drHeader.n = ratchetEnvOpt->header.n;
-        
-        auto skippedRes = store->getSkippedKey(sessionId, QByteArray(reinterpret_cast<const char*>(drHeader.dh.data.data()), drHeader.dh.data.size()), drHeader.n);
-        if (skippedRes.success) {
-            DoubleRatchet::SkippedKeyId id{drHeader.dh.data, drHeader.n};
-            DoubleRatchet::MessageKey mk;
-            mk.data.resize(32);
-            std::copy(skippedRes.data.value().message_key.constData(), skippedRes.data.value().message_key.constData() + 32, mk.data.data());
-            state.MKSKIPPED.emplace(id, std::move(mk));
-        }
 
-        auto receiveRes = m_ratchet->Receive(state, drHeader);
-        if (!receiveRes) return VoidResult::fail("DoubleRatchet Receive failed on initial message");
+        DoubleRatchet::State initState;
+        m_ratchet->RatchetInitBob(initState, x3dhRes->sharedSecret, std::make_pair(std::move(bobIdentity.privateKey), bobIdentity.publicKey));
+        auto initReceiveRes = m_ratchet->Receive(initState, drHeader);
+        if (!initReceiveRes) return VoidResult::fail("DoubleRatchet Receive failed on initial message");
 
         QByteArray rAd = Wire::WireCodec::getRatchetMessageAAD(ratchetEnvOpt->header);
-        ByteView msgKeyView{receiveRes->second.data.data(), static_cast<size_t>(receiveRes->second.data.size())};
+        ByteView msgKeyView{initReceiveRes->second.data.data(), static_cast<size_t>(initReceiveRes->second.data.size())};
         ByteView rCtView{reinterpret_cast<const uint8_t*>(ratchetEnvOpt->ciphertext.constData()), static_cast<size_t>(ratchetEnvOpt->ciphertext.size())};
         ByteView rTagView{reinterpret_cast<const uint8_t*>(ratchetEnvOpt->tag.data.constData()), static_cast<size_t>(ratchetEnvOpt->tag.data.size())};
         ByteView rAdView{reinterpret_cast<const uint8_t*>(rAd.constData()), static_cast<size_t>(rAd.size())};
@@ -327,15 +339,85 @@ VoidResult SessionManager::handleEnvelope(
         auto decPtOpt = m_aead->decrypt(msgKeyView, rCtView, rTagView, rAdView);
         if (!decPtOpt) return VoidResult::fail("Ratchet payload decryption failed");
 
-        if (!sessionRes.success && env.oneTimePreKeyId.has_value()) {
-            store->consumeOneTimePreKeyAtomically(env.oneTimePreKeyId.value());
+        QJsonParseError jsonErr;
+        QJsonDocument ptDoc = QJsonDocument::fromJson(decPtOpt.value(), &jsonErr);
+        const QString extractedSender =
+            (jsonErr.error == QJsonParseError::NoError && ptDoc.isObject())
+                ? ptDoc.object().value("senderId").toString().trimmed()
+                : QString();
+
+        if (m_senderVerifier && metadata.senderUserId.isEmpty()) {
+            const QString userToVerify = !extractedSender.isEmpty()
+                ? extractedSender
+                : (sessionId.contains(':') ? sessionId.section(':', 0, 0).trimmed() : QString());
+            if (userToVerify.isEmpty() ||
+                !m_senderVerifier(userToVerify, metadata.senderDeviceId, senderIdentityKeyBytes) ||
+                extractedSender.isEmpty()) {
+                return VoidResult::fail("Sender identity verification failed");
+            }
+            sessionId = metadata.senderDeviceId.isEmpty()
+                ? extractedSender
+                : (extractedSender + ":" + metadata.senderDeviceId);
+        } else if (!metadata.senderUserId.isEmpty()) {
+            const QString boundUser = metadata.senderUserId.trimmed();
+            if (!boundUser.isEmpty() && !extractedSender.isEmpty() &&
+                boundUser.compare(extractedSender, Qt::CaseInsensitive) != 0) {
+                return VoidResult::fail("Authenticated session user does not match payload senderId");
+            }
+        } else if (!extractedSender.isEmpty()) {
+            return VoidResult::fail("Sender identity verification failed");
+        }
+
+        auto sessionRes = store->getSession(sessionId);
+        DoubleRatchet::State baseState;
+        DoubleRatchet::State nextState;
+        bool shouldConsumeOpk = false;
+        if (sessionRes.success) {
+            if (!sessionRes.data.value().remote_identity_key.isEmpty() &&
+                sessionRes.data.value().remote_identity_key != senderIdentityKeyBytes) {
+                return VoidResult::fail("Remote identity key mismatch for existing session");
+            }
+            sessionId = sessionRes.data.value().session_id;
+            baseState = sessionRecordToState(sessionRes.data.value());
+            if (baseState.DHr.has_value() && baseState.DHr->data == drHeader.dh.data) {
+                auto skippedRes = store->getSkippedKey(sessionId, QByteArray(reinterpret_cast<const char*>(drHeader.dh.data.data()), drHeader.dh.data.size()), drHeader.n);
+                if (skippedRes.success) {
+                    DoubleRatchet::SkippedKeyId id{drHeader.dh.data, drHeader.n};
+                    DoubleRatchet::MessageKey mk;
+                    mk.data.resize(32);
+                    std::copy(skippedRes.data.value().message_key.constData(), skippedRes.data.value().message_key.constData() + 32, mk.data.data());
+                    baseState.MKSKIPPED.emplace(id, std::move(mk));
+                }
+                auto existingReceiveRes = m_ratchet->Receive(baseState, drHeader);
+                if (!existingReceiveRes) return VoidResult::fail("DoubleRatchet Receive failed on initial message");
+                nextState = std::move(existingReceiveRes->first);
+            } else {
+                baseState.MKSKIPPED.clear();
+                nextState = std::move(initReceiveRes->first);
+                shouldConsumeOpk = env.oneTimePreKeyId.has_value();
+            }
+        } else {
+            nextState = std::move(initReceiveRes->first);
+            shouldConsumeOpk = env.oneTimePreKeyId.has_value();
+        }
+
+        if (m_commitVerifier && !m_commitVerifier(sessionId, decPtOpt.value())) {
+            return VoidResult::fail("Local message persistence failed");
+        }
+
+        if (shouldConsumeOpk) {
+            if (m_preKeyStore) {
+                m_preKeyStore->consumeOneTimePreKey(env.oneTimePreKeyId.value());
+            } else {
+                store->consumeOneTimePreKeyAtomically(env.oneTimePreKeyId.value());
+            }
         }
 
         Storage::SessionUpdateTx tx;
-        tx.session = stateToSessionRecord(receiveRes->first, sessionId, QByteArray(reinterpret_cast<const char*>(env.senderIdentityKey.data.data()), env.senderIdentityKey.data.size()), identityRes.data.value().identity_id);
+        tx.session = stateToSessionRecord(nextState, sessionId, senderIdentityKeyBytes, identityRes.data.value().identity_id);
         
-        for (const auto& [id, mk] : receiveRes->first.MKSKIPPED) {
-            if (state.MKSKIPPED.find(id) == state.MKSKIPPED.end()) {
+        for (const auto& [id, mk] : nextState.MKSKIPPED) {
+            if (baseState.MKSKIPPED.find(id) == baseState.MKSKIPPED.end()) {
                 Storage::E2EESkippedKey skey;
                 skey.session_id = sessionId;
                 skey.remote_ratchet_public_key = QByteArray(reinterpret_cast<const char*>(id.dh.constData()), id.dh.size());
@@ -345,8 +427,8 @@ VoidResult SessionManager::handleEnvelope(
                 tx.new_skipped_keys.push_back(skey);
             }
         }
-        for (const auto& [id, mk] : state.MKSKIPPED) {
-            if (receiveRes->first.MKSKIPPED.find(id) == receiveRes->first.MKSKIPPED.end()) {
+        for (const auto& [id, mk] : baseState.MKSKIPPED) {
+            if (nextState.MKSKIPPED.find(id) == nextState.MKSKIPPED.end()) {
                 Storage::E2EESkippedKey skey;
                 skey.session_id = sessionId;
                 skey.remote_ratchet_public_key = QByteArray(reinterpret_cast<const char*>(id.dh.constData()), id.dh.size());
@@ -357,6 +439,9 @@ VoidResult SessionManager::handleEnvelope(
 
         auto saveRes = store->updateSessionState(tx);
         if (!saveRes.success) return VoidResult::fail(saveRes.message);
+
+        m_sessionsNeedingReinit.remove(sessionId);
+        m_consecutiveDecryptFailures.remove(sessionId);
 
         if (m_receiveCb) {
             m_receiveCb(sessionId, decPtOpt.value());
@@ -367,70 +452,118 @@ VoidResult SessionManager::handleEnvelope(
 
     auto ratchetEnvOpt = Wire::WireCodec::decodeRatchetEnvelope(envelopeBytes);
     if (ratchetEnvOpt) {
-        auto sessionRes = store->getSession(sessionId);
-        if (!sessionRes.success) return VoidResult::fail("Session not found");
-        
-        DoubleRatchet::State state = sessionRecordToState(sessionRes.data.value());
-        
+        std::vector<Storage::E2EESession> candidates;
+        if (!metadata.senderUserId.isEmpty()) {
+            auto sessionRes = store->getSession(sessionId);
+            if (!sessionRes.success || !sessionRes.data.has_value()) {
+                return VoidResult::fail("Session not found");
+            }
+            candidates.push_back(sessionRes.data.value());
+        } else {
+            auto sessionsRes = store->getSessionsForDevice(metadata.senderDeviceId);
+            if (!sessionsRes.success || !sessionsRes.data.has_value() || sessionsRes.data->empty()) {
+                return VoidResult::fail("Session not found");
+            }
+            candidates = std::move(sessionsRes.data.value());
+        }
+
         DoubleRatchet::Header drHeader;
         drHeader.dh = ratchetEnvOpt->header.dh;
         drHeader.pn = ratchetEnvOpt->header.pn;
         drHeader.n = ratchetEnvOpt->header.n;
-        
-        auto skippedRes = store->getSkippedKey(sessionId, QByteArray(reinterpret_cast<const char*>(drHeader.dh.data.data()), drHeader.dh.data.size()), drHeader.n);
-        if (skippedRes.success) {
-            DoubleRatchet::SkippedKeyId id{drHeader.dh.data, drHeader.n};
-            DoubleRatchet::MessageKey mk;
-            mk.data.resize(32);
-            std::copy(skippedRes.data.value().message_key.constData(), skippedRes.data.value().message_key.constData() + 32, mk.data.data());
-            state.MKSKIPPED.emplace(id, std::move(mk));
-        }
 
-        auto receiveRes = m_ratchet->Receive(state, drHeader);
-        if (!receiveRes) return VoidResult::fail("DoubleRatchet Receive failed");
+        const QByteArray rAd = Wire::WireCodec::getRatchetMessageAAD(ratchetEnvOpt->header);
+        const ByteView rCtView{reinterpret_cast<const uint8_t*>(ratchetEnvOpt->ciphertext.constData()), static_cast<size_t>(ratchetEnvOpt->ciphertext.size())};
+        const ByteView rTagView{reinterpret_cast<const uint8_t*>(ratchetEnvOpt->tag.data.constData()), static_cast<size_t>(ratchetEnvOpt->tag.data.size())};
+        const ByteView rAdView{reinterpret_cast<const uint8_t*>(rAd.constData()), static_cast<size_t>(rAd.size())};
 
-        QByteArray rAd = Wire::WireCodec::getRatchetMessageAAD(ratchetEnvOpt->header);
-        ByteView msgKeyView{receiveRes->second.data.data(), static_cast<size_t>(receiveRes->second.data.size())};
-        ByteView rCtView{reinterpret_cast<const uint8_t*>(ratchetEnvOpt->ciphertext.constData()), static_cast<size_t>(ratchetEnvOpt->ciphertext.size())};
-        ByteView rTagView{reinterpret_cast<const uint8_t*>(ratchetEnvOpt->tag.data.constData()), static_cast<size_t>(ratchetEnvOpt->tag.data.size())};
-        ByteView rAdView{reinterpret_cast<const uint8_t*>(rAd.constData()), static_cast<size_t>(rAd.size())};
+        bool hadReceiveSuccess = false;
+        for (const auto& candidate : candidates) {
+            const QString candidateSessionId = candidate.session_id;
+            DoubleRatchet::State state = sessionRecordToState(candidate);
 
-        auto decPtOpt = m_aead->decrypt(msgKeyView, rCtView, rTagView, rAdView);
-        if (!decPtOpt) return VoidResult::fail("Ratchet payload decryption failed");
-
-        Storage::SessionUpdateTx tx;
-        tx.session = stateToSessionRecord(receiveRes->first, sessionId, sessionRes.data.value().remote_identity_key, sessionRes.data.value().local_identity_id);
-        
-        // Compute diff for skipped keys
-        for (const auto& [id, mk] : receiveRes->first.MKSKIPPED) {
-            if (state.MKSKIPPED.find(id) == state.MKSKIPPED.end()) {
-                Storage::E2EESkippedKey skey;
-                skey.session_id = sessionId;
-                skey.remote_ratchet_public_key = QByteArray(reinterpret_cast<const char*>(id.dh.constData()), id.dh.size());
-                skey.message_number = id.n;
-                skey.message_key = QByteArray(reinterpret_cast<const char*>(mk.data.data()), mk.data.size());
-                skey.created_at = QDateTime::currentMSecsSinceEpoch();
-                tx.new_skipped_keys.push_back(skey);
+            auto skippedRes = store->getSkippedKey(candidateSessionId, QByteArray(reinterpret_cast<const char*>(drHeader.dh.data.data()), drHeader.dh.data.size()), drHeader.n);
+            if (skippedRes.success) {
+                DoubleRatchet::SkippedKeyId id{drHeader.dh.data, drHeader.n};
+                DoubleRatchet::MessageKey mk;
+                mk.data.resize(32);
+                std::copy(skippedRes.data.value().message_key.constData(), skippedRes.data.value().message_key.constData() + 32, mk.data.data());
+                state.MKSKIPPED.emplace(id, std::move(mk));
             }
-        }
-        for (const auto& [id, mk] : state.MKSKIPPED) {
-            if (receiveRes->first.MKSKIPPED.find(id) == receiveRes->first.MKSKIPPED.end()) {
-                Storage::E2EESkippedKey skey;
-                skey.session_id = sessionId;
-                skey.remote_ratchet_public_key = QByteArray(reinterpret_cast<const char*>(id.dh.constData()), id.dh.size());
-                skey.message_number = id.n;
-                tx.deleted_skipped_keys.push_back(skey);
+
+            auto receiveRes = m_ratchet->Receive(state, drHeader);
+            if (!receiveRes) {
+                if (++m_consecutiveDecryptFailures[candidateSessionId] >= 2) {
+                    m_sessionsNeedingReinit.insert(candidateSessionId);
+                }
+                continue;
             }
+            hadReceiveSuccess = true;
+
+            ByteView msgKeyView{receiveRes->second.data.data(), static_cast<size_t>(receiveRes->second.data.size())};
+            auto decPtOpt = m_aead->decrypt(msgKeyView, rCtView, rTagView, rAdView);
+            if (!decPtOpt) {
+                if (++m_consecutiveDecryptFailures[candidateSessionId] >= 2) {
+                    m_sessionsNeedingReinit.insert(candidateSessionId);
+                }
+                continue;
+            }
+
+            if (candidateSessionId.contains(':')) {
+                const QString boundUser = candidateSessionId.section(':', 0, 0).trimmed();
+                QJsonParseError jsonErr;
+                QJsonDocument ptDoc = QJsonDocument::fromJson(decPtOpt.value(), &jsonErr);
+                if (jsonErr.error == QJsonParseError::NoError && ptDoc.isObject() && ptDoc.object().contains("senderId")) {
+                    const QString extractedSender = ptDoc.object().value("senderId").toString().trimmed();
+                    if (!boundUser.isEmpty() && !extractedSender.isEmpty() &&
+                        boundUser.compare(extractedSender, Qt::CaseInsensitive) != 0) {
+                        return VoidResult::fail("Authenticated session user does not match payload senderId");
+                    }
+                }
+            }
+
+            if (m_commitVerifier && !m_commitVerifier(candidateSessionId, decPtOpt.value())) {
+                return VoidResult::fail("Local message persistence failed");
+            }
+
+            Storage::SessionUpdateTx tx;
+            tx.session = stateToSessionRecord(receiveRes->first, candidateSessionId, candidate.remote_identity_key, candidate.local_identity_id);
+
+            for (const auto& [id, mk] : receiveRes->first.MKSKIPPED) {
+                if (state.MKSKIPPED.find(id) == state.MKSKIPPED.end()) {
+                    Storage::E2EESkippedKey skey;
+                    skey.session_id = candidateSessionId;
+                    skey.remote_ratchet_public_key = QByteArray(reinterpret_cast<const char*>(id.dh.constData()), id.dh.size());
+                    skey.message_number = id.n;
+                    skey.message_key = QByteArray(reinterpret_cast<const char*>(mk.data.data()), mk.data.size());
+                    skey.created_at = QDateTime::currentMSecsSinceEpoch();
+                    tx.new_skipped_keys.push_back(skey);
+                }
+            }
+            for (const auto& [id, mk] : state.MKSKIPPED) {
+                if (receiveRes->first.MKSKIPPED.find(id) == receiveRes->first.MKSKIPPED.end()) {
+                    Storage::E2EESkippedKey skey;
+                    skey.session_id = candidateSessionId;
+                    skey.remote_ratchet_public_key = QByteArray(reinterpret_cast<const char*>(id.dh.constData()), id.dh.size());
+                    skey.message_number = id.n;
+                    tx.deleted_skipped_keys.push_back(skey);
+                }
+            }
+
+            auto saveRes = store->updateSessionState(tx);
+            if (!saveRes.success) return VoidResult::fail(saveRes.message);
+
+            m_sessionsNeedingReinit.remove(candidateSessionId);
+            m_consecutiveDecryptFailures.remove(candidateSessionId);
+
+            if (m_receiveCb) {
+                m_receiveCb(candidateSessionId, decPtOpt.value());
+            }
+
+            return VoidResult::ok(std::monostate{});
         }
 
-        auto saveRes = store->updateSessionState(tx);
-        if (!saveRes.success) return VoidResult::fail(saveRes.message);
-
-        if (m_receiveCb) {
-            m_receiveCb(sessionId, decPtOpt.value());
-        }
-
-        return VoidResult::ok(std::monostate{});
+        return VoidResult::fail(hadReceiveSuccess ? "Ratchet payload decryption failed" : "DoubleRatchet Receive failed");
     }
 
     return VoidResult::fail("Unhandled envelope");

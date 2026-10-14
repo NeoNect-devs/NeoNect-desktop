@@ -45,14 +45,15 @@ static QString verifyContainment(const QString &isolatedRoot, const QString &can
 
 NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
                                std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
-                               
                                std::shared_ptr<NeoNect::Services::AuthService> authService,
                                std::shared_ptr<NeoNect::Services::DeviceService> deviceService,
                                std::shared_ptr<NeoNect::Services::RelayService> relayService,
                                std::shared_ptr<NeoNect::Services::FriendService> friendService,
+                               std::shared_ptr<NeoNect::Storage::ICapabilitiesRepository> capabilities,
                                QObject *parent)
     : QObject(parent), m_transport(std::move(transport)),
       m_storage(std::move(storage)),
+      m_capabilities(std::move(capabilities)),
       m_authService(std::move(authService)), m_deviceService(std::move(deviceService)),
       m_relayService(std::move(relayService)), m_friendService(std::move(friendService))
 {
@@ -65,17 +66,27 @@ NetworkManager::NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTranspor
     }
 
     if (m_storage) {
-        m_sessionToken = m_storage->authToken();
-        QVariantList raw = m_storage->openConversations();
         QString myUser = m_storage->username().trimmed().toLower();
-        for (const auto &c : raw) {
-            QString name = c.toMap().value("name").toString().trimmed().toLower();
-            if (!name.isEmpty() && name != "saved-messages" && name != "friends" && (myUser.isEmpty() || name != myUser)) {
-                m_openConversations.append(c);
+        if (myUser.isEmpty()) {
+            if (!m_storage->authToken().isEmpty()) {
+                m_storage->setAuthToken(QString());
             }
+            m_sessionToken.clear();
+        } else {
+            m_sessionToken = m_storage->authToken();
         }
-        sortOpenConversations();
-        m_storage->setOpenConversations(m_openConversations);
+        {
+            std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+            QVariantList raw = m_storage->openConversations();
+            for (const auto &c : raw) {
+                QString name = c.toMap().value("name").toString().trimmed().toLower();
+                if (!name.isEmpty() && name != "saved-messages" && name != "friends" && (myUser.isEmpty() || name != myUser)) {
+                    m_openConversations.append(c);
+                }
+            }
+            sortOpenConversations();
+            m_storage->setOpenConversations(m_openConversations);
+        }
     }
     if (m_authService) {
         setupServiceSignals();
@@ -103,6 +114,7 @@ void NetworkManager::setupServiceSignals() {
     connect(m_authService.get(), &NeoNect::Services::AuthService::verificationResult, this, [this](bool success, const QString &message) {
         setIsLoading(false);
         emit serverUrlChanged();
+        emit capabilitiesChanged();
         emit verificationResult(success, message);
 
         if (!m_pendingBookmarkUsername.isEmpty()) {
@@ -131,27 +143,49 @@ void NetworkManager::setupServiceSignals() {
     connect(m_authService.get(), &NeoNect::Services::AuthService::loginResult, this, [this](bool success, const QString &tokenOrError) {
         setIsLoading(false);
         if (success) {
+            if (!m_lastAuthError.isEmpty()) {
+                m_lastAuthError.clear();
+                emit lastAuthErrorChanged();
+            }
             m_sessionToken = tokenOrError;
             m_transport->setAuthToken(tokenOrError);
+            QString sessionError;
+            if (m_sessionValidator && !m_sessionValidator(sessionError)) {
+                abortSessionWithError(sessionError);
+                return;
+            }
             emit tokenChanged();
+            if (m_sessionToken.isEmpty()) {
+                return;
+            }
             emit currentUsernameChanged();
+            if (m_sessionToken.isEmpty()) {
+                return;
+            }
             emit displayNameChanged();
 
             // Reload user-scoped open conversations
-            m_openConversations.clear();
-            if (m_storage) {
-                QVariantList raw = m_storage->openConversations();
-                QString myUser = m_storage->username().trimmed().toLower();
-                for (const auto &c : raw) {
-                    QString name = c.toMap().value("name").toString().trimmed().toLower();
-                    if (!name.isEmpty() && name != "saved-messages" && name != "friends" && (myUser.isEmpty() || name != myUser)) {
-                        m_openConversations.append(c);
+            {
+                std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+                m_openConversations.clear();
+                if (m_storage) {
+                    QVariantList raw = m_storage->openConversations();
+                    QString myUser = m_storage->username().trimmed().toLower();
+                    for (const auto &c : raw) {
+                        QString name = c.toMap().value("name").toString().trimmed().toLower();
+                        if (!name.isEmpty() && name != "saved-messages" && name != "friends" && (myUser.isEmpty() || name != myUser)) {
+                            m_openConversations.append(c);
+                        }
                     }
+                    sortOpenConversations();
+                    m_storage->setOpenConversations(m_openConversations);
                 }
-                sortOpenConversations();
-                m_storage->setOpenConversations(m_openConversations);
             }
             emit openConversationsChanged();
+            emit loginResult(success, tokenOrError);
+            if (m_sessionToken.isEmpty()) {
+                return;
+            }
 
             m_friendService->loadFriends();
             m_friendService->startHeartbeat();
@@ -161,8 +195,10 @@ void NetworkManager::setupServiceSignals() {
         } else {
             m_pendingBookmarkUsername.clear();
             m_pendingBookmarkPassword.clear();
+            m_lastAuthError = tokenOrError;
+            emit lastAuthErrorChanged();
+            emit loginResult(success, tokenOrError);
         }
-        emit loginResult(success, tokenOrError);
     });
 
     connect(m_authService.get(), &NeoNect::Services::AuthService::userProfileFetched, this, [this](bool success, const QString &username) {
@@ -209,7 +245,10 @@ void NetworkManager::setupServiceSignals() {
     connect(m_relayService.get(), &NeoNect::Services::RelayService::sessionUnauthorized, this, [this](const QString &message) {
         m_friendService->stopHeartbeat();
         m_sessionToken.clear();
-        m_openConversations.clear();
+        {
+            std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+            m_openConversations.clear();
+        }
         emit openConversationsChanged();
         emit tokenChanged();
         emit currentUsernameChanged();
@@ -322,6 +361,87 @@ void NetworkManager::setPeerDisplayName(const QString &username, const QString &
     emit friendsChanged();
 }
 
+void NetworkManager::setCapabilities(std::shared_ptr<NeoNect::Storage::ICapabilitiesRepository> capabilities) {
+    m_capabilities = std::move(capabilities);
+    emit capabilitiesChanged();
+}
+
+qint64 NetworkManager::maxEnvelopeBytes() const {
+    if (m_capabilities && m_capabilities->maxEnvelopeBytes().has_value()) {
+        return static_cast<qint64>(m_capabilities->maxEnvelopeBytes().value());
+    }
+    return 1048576LL;
+}
+
+qint64 NetworkManager::maxUploadBytes() const {
+    return maxEnvelopeBytes();
+}
+
+qint64 NetworkManager::maxHttpBodyBytes() const {
+    if (m_capabilities && m_capabilities->maxHttpBodyBytes().has_value()) {
+        return m_capabilities->maxHttpBodyBytes().value();
+    }
+    return 4194304LL;
+}
+
+qint64 NetworkManager::maxFileTransferBytes() const {
+    // NeoNect server exposes envelope and HTTP limits, but chunked file transfers
+    // are relayed via E2EE envelopes between peers without an explicit server total-file ceiling.
+    // Return 0 indicating unconstrained total file size (chunked by protocol).
+    return 0LL;
+}
+
+QString NetworkManager::capabilityState() const {
+    if (!m_capabilities) return QStringLiteral("unknown");
+    switch (m_capabilities->capabilityState()) {
+        case NeoNect::Storage::CapabilityState::VALID:
+            return QStringLiteral("valid");
+        case NeoNect::Storage::CapabilityState::UNKNOWN:
+            return QStringLiteral("unknown");
+        case NeoNect::Storage::CapabilityState::UNAVAILABLE:
+            return QStringLiteral("unavailable");
+        case NeoNect::Storage::CapabilityState::UNSUPPORTED:
+            return QStringLiteral("unsupported");
+        case NeoNect::Storage::CapabilityState::INVALID:
+            return QStringLiteral("invalid");
+    }
+    return QStringLiteral("unknown");
+}
+
+bool NetworkManager::isFileSizeAllowed(qint64 sizeBytes) const {
+    if (sizeBytes <= 0) return false;
+    if (!m_capabilities) return true;
+    auto state = m_capabilities->capabilityState();
+    if (state == NeoNect::Storage::CapabilityState::UNAVAILABLE ||
+        state == NeoNect::Storage::CapabilityState::INVALID ||
+        state == NeoNect::Storage::CapabilityState::UNSUPPORTED) {
+        return false;
+    }
+    qint64 limit = maxFileTransferBytes();
+    return (limit <= 0 || sizeBytes <= limit);
+}
+
+bool NetworkManager::isEnvelopeSizeAllowed(qint64 sizeBytes) const {
+    if (sizeBytes <= 0) return false;
+    if (!m_capabilities) return true;
+    auto state = m_capabilities->capabilityState();
+    if (state == NeoNect::Storage::CapabilityState::UNAVAILABLE ||
+        state == NeoNect::Storage::CapabilityState::INVALID ||
+        state == NeoNect::Storage::CapabilityState::UNSUPPORTED) {
+        return false;
+    }
+    qint64 limit = maxEnvelopeBytes();
+    return (limit <= 0 || sizeBytes <= limit);
+}
+
+QString NetworkManager::formatBytes(qint64 bytes) const {
+    if (bytes <= 0) return QStringLiteral("0 B");
+    if (bytes < 1024) return QString::number(bytes) + QStringLiteral(" B");
+    if (bytes < 1024 * 1024) return QString::number(bytes / 1024.0, 'f', 1) + QStringLiteral(" KB");
+    if (bytes < 1024LL * 1024LL * 1024LL) return QString::number(bytes / (1024.0 * 1024.0), 'f', 1) + QStringLiteral(" MB");
+    return QString::number(bytes / (1024.0 * 1024.0 * 1024.0), 'f', 2) + QStringLiteral(" GB");
+}
+
 QString NetworkManager::avatarUrl() const {
     if (!m_storage) return QString();
     QString username = m_storage->username().trimmed().toLower();
@@ -379,7 +499,7 @@ bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
 
     QImage image;
     if (!image.load(localPath)) {
-        qWarning() << "[NetworkManager] setAvatar failed to load image from:" << localPath;
+        qWarning() << "[NetworkManager] setAvatar failed to load image";
         return false;
     }
 
@@ -395,7 +515,10 @@ bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
         squareImage = squareImage.scaled(targetSize, targetSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
     }
 
-    // 3. Compress ensuring size is strictly under 1MB (1024 * 1024 bytes)
+    // 3. Compress ensuring Base64-encoded payload fits within server envelope limit (maxEnvelopeBytes)
+    int maxEnv = static_cast<int>(maxEnvelopeBytes());
+    int maxAvatarBudget = qBound(64 * 1024, (maxEnv * 3 / 4) - 65536, 512 * 1024);
+
     QByteArray compressedData;
     int quality = 90;
     while (quality >= 30) {
@@ -405,13 +528,13 @@ bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
         squareImage.save(&buffer, "JPEG", quality);
         buffer.close();
 
-        if (compressedData.size() <= 1024 * 1024) {
+        if (compressedData.size() <= maxAvatarBudget) {
             break;
         }
         quality -= 10;
     }
 
-    while (compressedData.size() > 1024 * 1024 && squareImage.width() > 128) {
+    while (compressedData.size() > maxAvatarBudget && squareImage.width() > 128) {
         squareImage = squareImage.scaled(squareImage.width() / 2, squareImage.height() / 2, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
         compressedData.clear();
         QBuffer buffer(&compressedData);
@@ -427,7 +550,7 @@ bool NetworkManager::setAvatar(const QString &filePathOrUrl) {
     QString savedLocalPath = avatarDir + "/avatar.jpg";
     QFile file(savedLocalPath);
     if (!file.open(QIODevice::WriteOnly)) {
-        qWarning() << "[NetworkManager] setAvatar failed to write to:" << savedLocalPath;
+        qWarning() << "[NetworkManager] setAvatar failed to write avatar file";
         return false;
     }
     file.write(compressedData);
@@ -505,7 +628,7 @@ QString NetworkManager::getAvatarUrl(const QString &username) const {
     
     QString sUrl = serverUrl();
     if (myUser.isEmpty() || sUrl.isEmpty()) {
-        qWarning() << "getAvatarUrl myUser or sUrl empty. myUser:" << myUser << "sUrl:" << sUrl;
+        qWarning() << "getAvatarUrl: user or server URL empty";
         return QString();
     }
 
@@ -527,10 +650,10 @@ QString NetworkManager::getAvatarUrl(const QString &username) const {
                 if (QFile::exists(safePath)) {
                     return localUrl;
                 } else {
-                    qWarning() << "getAvatarUrl file doesn't exist:" << safePath;
+                    qWarning() << "getAvatarUrl: avatar file does not exist";
                 }
             } else {
-                qWarning() << "getAvatarUrl path check failed. path:" << path << "isolatedRoot:" << isolatedRoot;
+                qWarning() << "getAvatarUrl: containment check failed";
             }
         }
     }
@@ -539,7 +662,7 @@ QString NetworkManager::getAvatarUrl(const QString &username) const {
     if (QFile::exists(peerAvatarPath)) {
         return QUrl::fromLocalFile(peerAvatarPath).toString();
     }
-    qWarning() << "getAvatarUrl fallback file doesn't exist:" << peerAvatarPath;
+    qWarning() << "getAvatarUrl: fallback avatar file does not exist";
     return QString();
 }
 
@@ -716,8 +839,11 @@ void NetworkManager::setProfile(const QString &profileName) {
     emit bookmarksChanged();
 
     if (m_storage) {
-        m_openConversations = m_storage->openConversations();
-        sortOpenConversations();
+        {
+            std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+            m_openConversations = m_storage->openConversations();
+            sortOpenConversations();
+        }
         emit openConversationsChanged();
     }
 
@@ -744,15 +870,35 @@ void NetworkManager::loginUser(const QString &username, const QString &password)
     m_authService->loginUser(username, password);
 }
 
+void NetworkManager::resumeSavedSession() {
+    if (m_sessionToken.isEmpty() || !m_storage || m_storage->username().isEmpty()) {
+        return;
+    }
+    QString url = serverUrl();
+    m_transport->setBaseUrl(url);
+    m_transport->setAuthToken(m_sessionToken);
+    m_authService->verifyServer(url);
+    m_friendService->loadFriends();
+    m_friendService->startHeartbeat();
+    m_friendService->checkFriendsStatus();
+    autoRegisterDevice();
+    m_authService->fetchUserProfile();
+}
+
 void NetworkManager::logoutUser() {
     m_pendingBookmarkUsername.clear();
     m_pendingBookmarkPassword.clear();
+    m_lastAuthError.clear();
+    emit lastAuthErrorChanged();
     m_relayService->stopPolling();
     m_friendService->stopHeartbeat();
     m_authService->logoutUser();
     m_sessionToken.clear();
     m_transport->setAuthToken(QString());
-    m_openConversations.clear();
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+        m_openConversations.clear();
+    }
     m_isAutoIdle = false;
     m_friendService->loadFriends();
     emit openConversationsChanged();
@@ -762,6 +908,34 @@ void NetworkManager::logoutUser() {
     emit isConnectedChanged();
     emit effectiveStatusChanged();
     emit loginResult(false, "");
+}
+
+void NetworkManager::abortSessionWithError(const QString &errorMessage) {
+    setIsLoading(false);
+    m_pendingBookmarkUsername.clear();
+    m_pendingBookmarkPassword.clear();
+    if (m_relayService) m_relayService->stopPolling();
+    if (m_friendService) m_friendService->stopHeartbeat();
+    if (m_storage) {
+        m_storage->clearSession();
+    }
+    m_sessionToken.clear();
+    if (m_transport) m_transport->setAuthToken(QString());
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+        m_openConversations.clear();
+    }
+    m_isAutoIdle = false;
+    if (m_friendService) m_friendService->loadFriends();
+    m_lastAuthError = errorMessage;
+    emit lastAuthErrorChanged();
+    emit openConversationsChanged();
+    emit tokenChanged();
+    emit currentUsernameChanged();
+    emit displayNameChanged();
+    emit isConnectedChanged();
+    emit effectiveStatusChanged();
+    emit loginResult(false, errorMessage);
 }
 
 void NetworkManager::registerDevice(const QString &deviceId, const QString &publicKey) {
@@ -817,11 +991,18 @@ void NetworkManager::removeFriend(const QString &username) {
 
 void NetworkManager::checkFriendsStatus() {
     m_friendService->checkFriendsStatus();
-    for (const auto &conv : m_openConversations) {
-        QString name = conv.toMap().value("name").toString().trimmed().toLower();
-        if (!name.isEmpty() && name != "saved-messages" && name != "friends") {
-            m_friendService->checkUserStatus(name);
+    QStringList targets;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+        for (const auto &conv : m_openConversations) {
+            QString name = conv.toMap().value("name").toString().trimmed().toLower();
+            if (!name.isEmpty() && name != "saved-messages" && name != "friends") {
+                targets.append(name);
+            }
         }
+    }
+    for (const QString &target : targets) {
+        m_friendService->checkUserStatus(target);
     }
 }
 
@@ -844,18 +1025,23 @@ QVariantMap NetworkManager::allFriendStatuses() const {
 }
 
 void NetworkManager::sortOpenConversations() {
+    std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
     std::sort(m_openConversations.begin(), m_openConversations.end(), [](const QVariant &a, const QVariant &b) {
         qint64 tA = a.toMap().value("lastActivity").toLongLong();
         qint64 tB = b.toMap().value("lastActivity").toLongLong();
         if (tA != tB) {
-            return tA > tB; // More recent activity first
+            return tA > tB;
         }
         return a.toMap().value("name").toString().compare(b.toMap().value("name").toString(), Qt::CaseInsensitive) < 0;
     });
 }
 
 QVariantList NetworkManager::openConversations() const {
-    QVariantList list = m_openConversations;
+    QVariantList list;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+        list = m_openConversations;
+    }
     for (int i = 0; i < list.size(); ++i) {
         QVariantMap map = list.at(i).toMap();
         QString name = map.value("name").toString();
@@ -877,28 +1063,31 @@ void NetworkManager::openDirectConversation(const QString &username, qint64 acti
 
     qint64 ts = activityTimestamp > 0 ? activityTimestamp : QDateTime::currentMSecsSinceEpoch();
 
-    bool found = false;
-    for (int i = 0; i < m_openConversations.size(); ++i) {
-        QVariantMap map = m_openConversations.at(i).toMap();
-        if (map.value("name").toString().toLower() == lower) {
-            map["lastActivity"] = ts;
-            m_openConversations[i] = map;
-            found = true;
-            break;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+        bool found = false;
+        for (int i = 0; i < m_openConversations.size(); ++i) {
+            QVariantMap map = m_openConversations.at(i).toMap();
+            if (map.value("name").toString().toLower() == lower) {
+                map["lastActivity"] = ts;
+                m_openConversations[i] = map;
+                found = true;
+                break;
+            }
         }
-    }
 
-    if (!found) {
-        QVariantMap map;
-        map["name"] = lower;
-        map["lastActivity"] = ts;
-        map["unreadCount"] = 0;
-        m_openConversations.append(map);
-    }
+        if (!found) {
+            QVariantMap map;
+            map["name"] = lower;
+            map["lastActivity"] = ts;
+            map["unreadCount"] = 0;
+            m_openConversations.append(map);
+        }
 
-    sortOpenConversations();
-    if (m_storage) {
-        m_storage->setOpenConversations(m_openConversations);
+        sortOpenConversations();
+        if (m_storage) {
+            m_storage->setOpenConversations(m_openConversations);
+        }
     }
     emit openConversationsChanged();
 }
@@ -908,18 +1097,22 @@ void NetworkManager::closeDirectConversation(const QString &username) {
     if (lower.isEmpty()) return;
 
     bool removed = false;
-    for (int i = 0; i < m_openConversations.size(); ++i) {
-        if (m_openConversations.at(i).toMap().value("name").toString().toLower() == lower) {
-            m_openConversations.removeAt(i);
-            removed = true;
-            break;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+        for (int i = 0; i < m_openConversations.size(); ++i) {
+            if (m_openConversations.at(i).toMap().value("name").toString().toLower() == lower) {
+                m_openConversations.removeAt(i);
+                removed = true;
+                break;
+            }
+        }
+
+        if (removed && m_storage) {
+            m_storage->setOpenConversations(m_openConversations);
         }
     }
 
     if (removed) {
-        if (m_storage) {
-            m_storage->setOpenConversations(m_openConversations);
-        }
         emit openConversationsChanged();
     }
 }
@@ -936,6 +1129,7 @@ void NetworkManager::updateConversationActivity(const QString &username, qint64 
 
 int NetworkManager::unreadCount(const QString &username) const {
     QString lower = username.trimmed().toLower();
+    std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
     for (const QVariant &item : m_openConversations) {
         QVariantMap map = item.toMap();
         if (map.value("name").toString().toLower() == lower) {
@@ -954,22 +1148,26 @@ void NetworkManager::markConversationAsRead(const QString &username) {
     if (lower.isEmpty() || lower == "saved-messages" || lower == "friends" || (!myUser.isEmpty() && lower == myUser)) return;
 
     bool updated = false;
-    for (int i = 0; i < m_openConversations.size(); ++i) {
-        QVariantMap map = m_openConversations.at(i).toMap();
-        if (map.value("name").toString().toLower() == lower) {
-            if (map.value("unreadCount", 0).toInt() > 0) {
-                map["unreadCount"] = 0;
-                m_openConversations[i] = map;
-                updated = true;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+        for (int i = 0; i < m_openConversations.size(); ++i) {
+            QVariantMap map = m_openConversations.at(i).toMap();
+            if (map.value("name").toString().toLower() == lower) {
+                if (map.value("unreadCount", 0).toInt() > 0) {
+                    map["unreadCount"] = 0;
+                    m_openConversations[i] = map;
+                    updated = true;
+                }
+                break;
             }
-            break;
+        }
+
+        if (updated && m_storage) {
+            m_storage->setOpenConversations(m_openConversations);
         }
     }
 
     if (updated) {
-        if (m_storage) {
-            m_storage->setOpenConversations(m_openConversations);
-        }
         emit openConversationsChanged();
     }
 }
@@ -983,31 +1181,34 @@ void NetworkManager::incrementUnreadCount(const QString &username) {
     if (lower.isEmpty() || lower == "saved-messages" || lower == "friends" || (!myUser.isEmpty() && lower == myUser)) return;
 
     qint64 now = QDateTime::currentMSecsSinceEpoch();
-    bool found = false;
-    for (int i = 0; i < m_openConversations.size(); ++i) {
-        QVariantMap map = m_openConversations.at(i).toMap();
-        if (map.value("name").toString().toLower() == lower) {
-            int current = map.value("unreadCount", 0).toInt();
-            map["unreadCount"] = current + 1;
-            map["lastActivity"] = now;
-            m_openConversations[i] = map;
-            found = true;
-            break;
+    {
+        std::lock_guard<std::recursive_mutex> lock(m_openConversationsMutex);
+        bool found = false;
+        for (int i = 0; i < m_openConversations.size(); ++i) {
+            QVariantMap map = m_openConversations.at(i).toMap();
+            if (map.value("name").toString().toLower() == lower) {
+                int current = map.value("unreadCount", 0).toInt();
+                map["unreadCount"] = current + 1;
+                map["lastActivity"] = now;
+                m_openConversations[i] = map;
+                found = true;
+                break;
+            }
         }
-    }
 
-    if (!found) {
-        QVariantMap map;
-        map["name"] = lower;
-        map["lastActivity"] = now;
-        map["unreadCount"] = 1;
-        m_openConversations.append(map);
-    }
+        if (!found) {
+            QVariantMap map;
+            map["name"] = lower;
+            map["lastActivity"] = now;
+            map["unreadCount"] = 1;
+            m_openConversations.append(map);
+        }
 
-    sortOpenConversations();
+        sortOpenConversations();
 
-    if (m_storage) {
-        m_storage->setOpenConversations(m_openConversations);
+        if (m_storage) {
+            m_storage->setOpenConversations(m_openConversations);
+        }
     }
     emit openConversationsChanged();
 }

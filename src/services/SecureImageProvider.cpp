@@ -2,8 +2,14 @@
 #include "SecureImageProvider.h"
 #include <QImage>
 #include <QFile>
+#include <QDir>
+#include <QFileInfo>
+#include <QRandomGenerator>
 #include <QCryptographicHash>
 #include <QUuid>
+#include <QCache>
+#include <QMutex>
+#include "../storage/StoragePathResolver.h"
 
 namespace NeoNect {
 namespace Services {
@@ -12,6 +18,12 @@ namespace {
 
 QByteArray transferIdToBinary(const QString& tid) {
     return QUuid("{" + tid + "}").toRfc4122();
+}
+
+QByteArray deriveSenderSpoolKey(const std::shared_ptr<Crypto::ICryptoBackend>& crypto, const QByteArray& rootKey, const QByteArray& transferId, const QString& senderDeviceId) {
+    QByteArray info = "sender_spool_" + senderDeviceId.toUtf8();
+    auto res = crypto->HkdfSha256(rootKey, transferId, info, 32);
+    return res.isEmpty() ? QByteArray() : res;
 }
 
 QByteArray deriveRecipientDeviceKey(const std::shared_ptr<Crypto::ICryptoBackend>& crypto, const QByteArray& rootKey, const QByteArray& transferId, const QString& recipientDeviceId) {
@@ -49,8 +61,9 @@ public:
         const QSize &requestedSize,
         std::weak_ptr<Storage::ISecureE2EEStore> store,
         std::shared_ptr<Crypto::ICryptoBackend> crypto,
-        std::shared_ptr<Storage::ISettingsRepository> settings)
-        : m_id(id), m_reqSize(requestedSize), m_store(store), m_crypto(crypto), m_settings(settings)
+        std::shared_ptr<Storage::ISettingsRepository> settings,
+        SecureImageProvider *provider)
+        : m_id(id), m_reqSize(requestedSize), m_store(store), m_crypto(crypto), m_settings(settings), m_provider(provider)
     {
         setAutoDelete(false);
     }
@@ -69,32 +82,101 @@ public:
     }
 
     void run() override {
+        QString cleanId = m_id.section('?', 0, 0).section('#', 0, 0).trimmed();
+        if (cleanId.isEmpty()) { finishTask("error"); return; }
+
+        if (m_provider) {
+            QImage cached = m_provider->getCachedImage(cleanId);
+            if (!cached.isNull()) {
+                m_image = cached;
+                finishTask("");
+                return;
+            }
+        }
+
+        QString sUrl = m_settings ? m_settings->serverUrl() : QString();
+        QString sUser = m_settings ? m_settings->username() : QString();
+
+        if (!sUrl.isEmpty() && !sUser.isEmpty()) {
+            QString imagesDir = NeoNect::Storage::StoragePathResolver::mediaImagesDirectory(sUrl, sUser);
+            QStringList exts = {"png", "jpg", "jpeg", "webp", "gif", "bmp"};
+            for (const auto& ext : exts) {
+                QString p = imagesDir + "/" + cleanId + "." + ext;
+                if (QFile::exists(p)) {
+                    QFile imgFile(p);
+                    if (imgFile.open(QIODevice::ReadOnly)) {
+                        QByteArray raw = imgFile.readAll();
+                        if (m_image.loadFromData(raw)) {
+                            if (m_provider) m_provider->setCachedImage(cleanId, m_image);
+                            finishTask("");
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (QFile::exists(cleanId)) {
+            QFile directFile(cleanId);
+            if (directFile.open(QIODevice::ReadOnly)) {
+                QByteArray raw = directFile.readAll();
+                if (m_image.loadFromData(raw)) {
+                    if (m_provider) m_provider->setCachedImage(cleanId, m_image);
+                    finishTask("");
+                    return;
+                }
+            }
+        }
+
         auto store = m_store.lock();
         if (!store) { finishTask("error"); return; }
 
-        QString localDeviceId = m_settings->deviceId();
-        // Since we are the recipient, the sender passed our device ID.
-                auto txRes = store->getFileTransferById(m_id);
-        if (!txRes.success) { finishTask("error"); return; }
+        QString localDeviceId = m_settings ? m_settings->deviceId() : QString();
+        auto txRes = store->getFileTransferById(cleanId);
+        if (!txRes.success || !txRes.data.has_value()) { finishTask("error"); return; }
         auto tx = txRes.data.value();
 
-        if (tx.status != "completed") { finishTask("error"); return; }
-        if (tx.file_size < 0 || tx.chunk_size <= 0 || tx.chunk_count <= 0) { finishTask("error"); return; }
-        if (tx.received_bitset.size() < (tx.chunk_count + 7) / 8) { finishTask("error"); return; }
-
-        for (int i = 0; i < tx.chunk_count; ++i) {
-            if ((tx.received_bitset[i / 8] & (1 << (i % 8))) == 0) {
-                finishTask("error"); return;
+        if (tx.file_size <= 0 || tx.chunk_size <= 0 || tx.chunk_count <= 0) { finishTask("error"); return; }
+        if (!tx.is_sender) {
+            qsizetype reqBitset = static_cast<qsizetype>((static_cast<qint64>(tx.chunk_count) + 7) / 8);
+            if (tx.received_bitset.size() < reqBitset) { finishTask("error"); return; }
+            for (int i = 0; i < tx.chunk_count; ++i) {
+                int bIdx = i / 8;
+                if (bIdx >= tx.received_bitset.size() || (tx.received_bitset[bIdx] & (1 << (i % 8))) == 0) {
+                    finishTask("error"); return;
+                }
             }
         }
 
         QFile spool(tx.spool_path);
         if (!spool.open(QIODevice::ReadOnly)) { finishTask("error"); return; }
 
-        QByteArray deviceKey = deriveRecipientDeviceKey(m_crypto, tx.root_file_key, transferIdToBinary(tx.transfer_id), localDeviceId);
-        Crypto::AeadKey aDeviceKey = toAeadKey(deviceKey);
+        if (!tx.spool_path.endsWith(".spool")) {
+            QByteArray rawData = spool.readAll();
+            QCryptographicHash rawHash(QCryptographicHash::Sha256);
+            rawHash.addData(rawData);
+            if (rawHash.result() == tx.file_hash) {
+                if (m_image.loadFromData(rawData)) {
+                    if (m_provider) m_provider->setCachedImage(cleanId, m_image);
+                    finishTask("");
+                } else {
+                    m_image = QImage();
+                    finishTask("decode error");
+                }
+                return;
+            }
+            spool.seek(0);
+        }
+
+        QByteArray transferIdBin = transferIdToBinary(tx.transfer_id);
+        QByteArray keyBytes = tx.is_sender
+            ? deriveSenderSpoolKey(m_crypto, tx.root_file_key, transferIdBin, localDeviceId)
+            : deriveRecipientDeviceKey(m_crypto, tx.root_file_key, transferIdBin, localDeviceId);
+        uint8_t nonceDomain = tx.is_sender ? 0 : 1;
+        Crypto::AeadKey aDeviceKey = toAeadKey(keyBytes);
 
         QByteArray imageData;
+        imageData.reserve(static_cast<qsizetype>(tx.file_size));
         QCryptographicHash fileHash(QCryptographicHash::Sha256);
 
         for (int i = 0; i < tx.chunk_count; ++i) {
@@ -115,9 +197,9 @@ public:
 
             QByteArray ct = spool.read(ptSize);
             Crypto::AeadTag tag{spool.read(16)};
-            Crypto::AeadNonce aNonce{generateNonce(i, 1)};
+            Crypto::AeadNonce aNonce{generateNonce(i, nonceDomain)};
 
-            auto decRes = m_crypto->AeadDecrypt(aDeviceKey, aNonce, ct, tag, transferIdToBinary(tx.transfer_id));
+            auto decRes = m_crypto->AeadDecrypt(aDeviceKey, aNonce, ct, tag, transferIdBin);
             if (!decRes.has_value()) {
                 finishTask("error"); return;
             }
@@ -130,6 +212,26 @@ public:
         }
 
         if (m_image.loadFromData(imageData)) {
+            if (!sUrl.isEmpty() && !sUser.isEmpty()) {
+                QString imagesDir = NeoNect::Storage::StoragePathResolver::mediaImagesDirectory(sUrl, sUser);
+                QDir().mkpath(imagesDir);
+                QString finalPath = imagesDir + "/" + cleanId + ".png";
+                QString tmpFinal = finalPath + ".tmp." + QString::number(QRandomGenerator::global()->generate());
+                if (m_image.save(tmpFinal, "PNG")) {
+                    if (QFile::exists(finalPath)) QFile::remove(finalPath);
+                    if (QFile::rename(tmpFinal, finalPath)) {
+                        QString oldSpool = tx.spool_path;
+                        tx.spool_path = finalPath;
+                        store->saveFileTransfer(tx);
+                        if (oldSpool != finalPath && QFile::exists(oldSpool)) {
+                            QFile::remove(oldSpool);
+                        }
+                    } else {
+                        QFile::remove(tmpFinal);
+                    }
+                }
+            }
+            if (m_provider) m_provider->setCachedImage(cleanId, m_image);
             finishTask("");
         } else {
             m_image = QImage();
@@ -142,6 +244,7 @@ public:
     std::weak_ptr<Storage::ISecureE2EEStore> m_store;
     std::shared_ptr<Crypto::ICryptoBackend> m_crypto;
     std::shared_ptr<Storage::ISettingsRepository> m_settings;
+    SecureImageProvider *m_provider{nullptr};
     QImage m_image;
     QString m_errorString;
     QString errorString() const override { return m_errorString; }
@@ -157,9 +260,36 @@ SecureImageProvider::SecureImageProvider(
 }
 
 QQuickImageResponse *SecureImageProvider::requestImageResponse(const QString &id, const QSize &requestedSize) {
-    auto *response = new SecureImageResponse(id, requestedSize, m_store, m_crypto, m_settings);
+    auto *response = new SecureImageResponse(id, requestedSize, m_store, m_crypto, m_settings, this);
     m_pool.start(response);
     return response;
+}
+
+QString SecureImageProvider::makeCacheKey(const QString &id) const {
+    if (!m_settings) return id;
+    QString dev = m_settings->deviceId();
+    QString user = m_settings->username();
+    return dev + ":" + user + ":" + id;
+}
+
+QImage SecureImageProvider::getCachedImage(const QString &id) const {
+    QMutexLocker locker(&m_cacheMutex);
+    QImage *img = m_cache.object(makeCacheKey(id));
+    return img ? *img : QImage();
+}
+
+void SecureImageProvider::setCachedImage(const QString &id, const QImage &image) {
+    if (image.isNull()) return;
+    QMutexLocker locker(&m_cacheMutex);
+    if (m_cache.maxCost() == 0) {
+        m_cache.setMaxCost(64);
+    }
+    m_cache.insert(makeCacheKey(id), new QImage(image));
+}
+
+void SecureImageProvider::clearCache() {
+    QMutexLocker locker(&m_cacheMutex);
+    m_cache.clear();
 }
 
 } // namespace Services

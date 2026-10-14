@@ -15,6 +15,9 @@ SecureE2EEStore::~SecureE2EEStore() {
 }
 
 ServiceResult<std::monostate> SecureE2EEStore::executeSql(const char* sql) {
+    if (!m_db) {
+        return NeoNect::ServiceResult<std::monostate>::fail("Database not open");
+    }
     char* errMsg = nullptr;
     if (sqlite3_exec(m_db, sql, nullptr, nullptr, &errMsg) != SQLITE_OK) {
         QString err = QString::fromUtf8(errMsg ? errMsg : "Unknown SQL error");
@@ -24,9 +27,20 @@ ServiceResult<std::monostate> SecureE2EEStore::executeSql(const char* sql) {
     return NeoNect::ServiceResult<std::monostate>::ok({});
 }
 
+bool SecureE2EEStore::isOpen() const {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_db != nullptr;
+}
+
 ServiceResult<std::monostate> SecureE2EEStore::initialize(const QString& dbPath, const QString& profileId) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    
+    if (m_db) {
+        close();
+    }
+    if (!m_keyProvider) {
+        return NeoNect::ServiceResult<std::monostate>::fail("Failed to obtain master key: key provider is null");
+    }
+
     m_dbPath = dbPath;
 
     auto keyResult = m_keyProvider->loadOrCreate(profileId);
@@ -205,6 +219,9 @@ ServiceResult<std::monostate> SecureE2EEStore::saveIdentity(const E2EEIdentity& 
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return NeoNect::ServiceResult<std::monostate>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "INSERT OR REPLACE INTO identity (identity_id, public_key, private_key, created_at, version) VALUES (?, ?, ?, ?, ?)";
     
@@ -229,6 +246,9 @@ ServiceResult<std::monostate> SecureE2EEStore::saveIdentity(const E2EEIdentity& 
 
 ServiceResult<E2EEIdentity> SecureE2EEStore::getIdentity() {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return ServiceResult<E2EEIdentity>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "SELECT identity_id, public_key, private_key, created_at, version FROM identity ORDER BY version DESC LIMIT 1";
 
@@ -236,7 +256,8 @@ ServiceResult<E2EEIdentity> SecureE2EEStore::getIdentity() {
         return ServiceResult<E2EEIdentity>::fail("Failed to prepare statement");
     }
 
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
+    int stepRc = sqlite3_step(stmt);
+    if (stepRc == SQLITE_ROW) {
         E2EEIdentity id;
         id.identity_id = sqlite3_column_int64(stmt, 0);
         id.public_key = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 1)), sqlite3_column_bytes(stmt, 1));
@@ -248,7 +269,10 @@ ServiceResult<E2EEIdentity> SecureE2EEStore::getIdentity() {
     }
 
     sqlite3_finalize(stmt);
-    return ServiceResult<E2EEIdentity>::fail("Identity not found");
+    if (stepRc == SQLITE_DONE) {
+        return ServiceResult<E2EEIdentity>::fail("Identity not found");
+    }
+    return ServiceResult<E2EEIdentity>::fail("Failed to query identity");
 }
 
 ServiceResult<std::monostate> SecureE2EEStore::saveSignedPreKey(const E2EESignedPreKey& spk) {
@@ -257,6 +281,9 @@ ServiceResult<std::monostate> SecureE2EEStore::saveSignedPreKey(const E2EESigned
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return NeoNect::ServiceResult<std::monostate>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "INSERT OR REPLACE INTO signed_prekeys (key_id, public_key, private_key, signature, created_at, status) VALUES (?, ?, ?, ?, ?, ?)";
     
@@ -282,6 +309,9 @@ ServiceResult<std::monostate> SecureE2EEStore::saveSignedPreKey(const E2EESigned
 
 ServiceResult<E2EESignedPreKey> SecureE2EEStore::getSignedPreKey(qint64 key_id) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return ServiceResult<E2EESignedPreKey>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "SELECT key_id, public_key, private_key, signature, created_at, status FROM signed_prekeys WHERE key_id = ?";
 
@@ -309,6 +339,9 @@ ServiceResult<E2EESignedPreKey> SecureE2EEStore::getSignedPreKey(qint64 key_id) 
 
 ServiceResult<std::vector<E2EESignedPreKey>> SecureE2EEStore::getAllSignedPreKeys() {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return ServiceResult<std::vector<E2EESignedPreKey>>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "SELECT key_id, public_key, private_key, signature, created_at, status FROM signed_prekeys";
 
@@ -340,6 +373,9 @@ ServiceResult<std::monostate> SecureE2EEStore::saveOneTimePreKeys(const std::vec
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return NeoNect::ServiceResult<std::monostate>::fail("Database not open");
+    }
     
     executeSql("BEGIN TRANSACTION;");
     sqlite3_stmt* stmt = nullptr;
@@ -377,6 +413,9 @@ ServiceResult<std::monostate> SecureE2EEStore::saveOneTimePreKeys(const std::vec
 
 ServiceResult<std::vector<E2EEOneTimePreKey>> SecureE2EEStore::getAvailableOneTimePreKeys() {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return ServiceResult<std::vector<E2EEOneTimePreKey>>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "SELECT key_id, public_key, private_key, state, created_at, consumed_at FROM one_time_prekeys WHERE state = ?";
 
@@ -408,6 +447,9 @@ ServiceResult<std::vector<E2EEOneTimePreKey>> SecureE2EEStore::getAvailableOneTi
 
 ServiceResult<std::monostate> SecureE2EEStore::consumeOneTimePreKeyAtomically(qint64 key_id) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return NeoNect::ServiceResult<std::monostate>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "UPDATE one_time_prekeys SET state = ?, consumed_at = ? WHERE key_id = ? AND state = ?";
     
@@ -437,6 +479,9 @@ ServiceResult<std::monostate> SecureE2EEStore::consumeOneTimePreKeyAtomically(qi
 
 ServiceResult<E2EEOneTimePreKey> SecureE2EEStore::getOneTimePreKey(qint64 key_id) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return ServiceResult<E2EEOneTimePreKey>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "SELECT key_id, public_key, private_key, state, created_at, consumed_at FROM one_time_prekeys WHERE key_id = ?";
 
@@ -473,6 +518,9 @@ ServiceResult<std::monostate> SecureE2EEStore::saveSession(const E2EESession& se
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return NeoNect::ServiceResult<std::monostate>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "INSERT OR REPLACE INTO ratchet_sessions (session_id, remote_identity_key, local_identity_id, DHs, DHr, RK, CKs, CKr, Ns, Nr, PN, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
     
@@ -506,16 +554,107 @@ ServiceResult<std::monostate> SecureE2EEStore::saveSession(const E2EESession& se
 
 ServiceResult<E2EESession> SecureE2EEStore::getSession(const QString& session_id) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    sqlite3_stmt* stmt = nullptr;
-    const char* sql = "SELECT session_id, remote_identity_key, local_identity_id, DHs, DHr, RK, CKs, CKr, Ns, Nr, PN, created_at, updated_at, version FROM ratchet_sessions WHERE session_id = ?";
+    if (!m_db) {
+        return ServiceResult<E2EESession>::fail("Database not open");
+    }
+    auto queryBySql = [&](const char* sql) -> std::optional<E2EESession> {
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+            return std::nullopt;
+        }
+        sqlite3_bind_text(stmt, 1, session_id.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(stmt) == SQLITE_ROW) {
+            E2EESession session;
+            session.session_id = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+            session.remote_identity_key = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 1)), sqlite3_column_bytes(stmt, 1));
+            session.local_identity_id = sqlite3_column_int64(stmt, 2);
+            session.DHs = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 3)), sqlite3_column_bytes(stmt, 3));
+            session.DHr = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 4)), sqlite3_column_bytes(stmt, 4));
+            session.RK = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 5)), sqlite3_column_bytes(stmt, 5));
+            session.CKs = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 6)), sqlite3_column_bytes(stmt, 6));
+            session.CKr = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 7)), sqlite3_column_bytes(stmt, 7));
+            session.Ns = sqlite3_column_int64(stmt, 8);
+            session.Nr = sqlite3_column_int64(stmt, 9);
+            session.PN = sqlite3_column_int64(stmt, 10);
+            session.created_at = sqlite3_column_int64(stmt, 11);
+            session.updated_at = sqlite3_column_int64(stmt, 12);
+            session.version = sqlite3_column_int64(stmt, 13);
+            sqlite3_finalize(stmt);
+            return session;
+        }
+        sqlite3_finalize(stmt);
+        return std::nullopt;
+    };
 
-    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        return ServiceResult<E2EESession>::fail("Failed to prepare statement");
+    const char* exactSql = "SELECT session_id, remote_identity_key, local_identity_id, DHs, DHr, RK, CKs, CKr, Ns, Nr, PN, created_at, updated_at, version FROM ratchet_sessions WHERE session_id = ?";
+    if (auto exact = queryBySql(exactSql)) {
+        return ServiceResult<E2EESession>::ok(*exact);
     }
 
-    sqlite3_bind_text(stmt, 1, session_id.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+    if (!session_id.isEmpty()) {
+        if (!session_id.contains(':')) {
+            const char* suffixSql = "SELECT session_id, remote_identity_key, local_identity_id, DHs, DHr, RK, CKs, CKr, Ns, Nr, PN, created_at, updated_at, version FROM ratchet_sessions WHERE instr(session_id, ':') > 0 AND substr(session_id, instr(session_id, ':') + 1) = ? ORDER BY updated_at DESC LIMIT 1";
+            if (auto byDevice = queryBySql(suffixSql)) {
+                return ServiceResult<E2EESession>::ok(*byDevice);
+            }
+        } else {
+            const QString userPrefix = session_id.section(':', 0, 0).trimmed();
+            if (!userPrefix.isEmpty()) {
+                const QString sameUserPrefixedId = userPrefix + ":" + session_id;
+                sqlite3_stmt* stmt = nullptr;
+                if (sqlite3_prepare_v2(m_db, exactSql, -1, &stmt, nullptr) == SQLITE_OK) {
+                    sqlite3_bind_text(stmt, 1, sameUserPrefixedId.toUtf8().constData(), -1, SQLITE_TRANSIENT);
+                    if (sqlite3_step(stmt) == SQLITE_ROW) {
+                        E2EESession session;
+                        session.session_id = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+                        session.remote_identity_key = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 1)), sqlite3_column_bytes(stmt, 1));
+                        session.local_identity_id = sqlite3_column_int64(stmt, 2);
+                        session.DHs = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 3)), sqlite3_column_bytes(stmt, 3));
+                        session.DHr = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 4)), sqlite3_column_bytes(stmt, 4));
+                        session.RK = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 5)), sqlite3_column_bytes(stmt, 5));
+                        session.CKs = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 6)), sqlite3_column_bytes(stmt, 6));
+                        session.CKr = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 7)), sqlite3_column_bytes(stmt, 7));
+                        session.Ns = sqlite3_column_int64(stmt, 8);
+                        session.Nr = sqlite3_column_int64(stmt, 9);
+                        session.PN = sqlite3_column_int64(stmt, 10);
+                        session.created_at = sqlite3_column_int64(stmt, 11);
+                        session.updated_at = sqlite3_column_int64(stmt, 12);
+                        session.version = sqlite3_column_int64(stmt, 13);
+                        sqlite3_finalize(stmt);
+                        return ServiceResult<E2EESession>::ok(session);
+                    }
+                    sqlite3_finalize(stmt);
+                }
+            }
+        }
+    }
 
-    if (sqlite3_step(stmt) == SQLITE_ROW) {
+    return ServiceResult<E2EESession>::fail("Session not found");
+}
+
+ServiceResult<std::vector<E2EESession>> SecureE2EEStore::getSessionsForDevice(const QString& device_id) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) return ServiceResult<std::vector<E2EESession>>::fail("Database not open");
+    if (device_id.isEmpty()) return ServiceResult<std::vector<E2EESession>>::fail("Session not found");
+
+    const char* sql =
+        "SELECT session_id, remote_identity_key, local_identity_id, DHs, DHr, RK, CKs, CKr, Ns, Nr, PN, created_at, updated_at, version "
+        "FROM ratchet_sessions "
+        "WHERE session_id = ? OR (instr(session_id, ':') > 0 AND substr(session_id, instr(session_id, ':') + 1) = ?) "
+        "ORDER BY CASE WHEN session_id = ? THEN 0 ELSE 1 END, updated_at DESC";
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return ServiceResult<std::vector<E2EESession>>::fail("Failed to prepare session lookup");
+    }
+
+    const QByteArray devUtf8 = device_id.toUtf8();
+    sqlite3_bind_text(stmt, 1, devUtf8.constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, devUtf8.constData(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, devUtf8.constData(), -1, SQLITE_TRANSIENT);
+
+    std::vector<E2EESession> results;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
         E2EESession session;
         session.session_id = QString::fromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
         session.remote_identity_key = QByteArray(reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 1)), sqlite3_column_bytes(stmt, 1));
@@ -531,12 +670,14 @@ ServiceResult<E2EESession> SecureE2EEStore::getSession(const QString& session_id
         session.created_at = sqlite3_column_int64(stmt, 11);
         session.updated_at = sqlite3_column_int64(stmt, 12);
         session.version = sqlite3_column_int64(stmt, 13);
-        sqlite3_finalize(stmt);
-        return ServiceResult<E2EESession>::ok(session);
+        results.push_back(std::move(session));
     }
-
     sqlite3_finalize(stmt);
-    return ServiceResult<E2EESession>::fail("Session not found");
+
+    if (results.empty()) {
+        return ServiceResult<std::vector<E2EESession>>::fail("Session not found");
+    }
+    return ServiceResult<std::vector<E2EESession>>::ok(std::move(results));
 }
 
 ServiceResult<std::monostate> SecureE2EEStore::updateSessionState(const SessionUpdateTx& tx) {
@@ -551,6 +692,9 @@ ServiceResult<std::monostate> SecureE2EEStore::updateSessionState(const SessionU
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return NeoNect::ServiceResult<std::monostate>::fail("Database not open");
+    }
     
     executeSql("BEGIN TRANSACTION;");
 
@@ -643,6 +787,9 @@ ServiceResult<std::monostate> SecureE2EEStore::updateSessionState(const SessionU
 
 ServiceResult<E2EESkippedKey> SecureE2EEStore::getSkippedKey(const QString& session_id, const QByteArray& remote_ratchet_public_key, qint64 message_number) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (!m_db) {
+        return ServiceResult<E2EESkippedKey>::fail("Database not open");
+    }
     sqlite3_stmt* stmt = nullptr;
     const char* sql = "SELECT session_id, remote_ratchet_public_key, message_number, message_key, created_at FROM skipped_message_keys WHERE session_id = ? AND remote_ratchet_public_key = ? AND message_number = ?";
 
@@ -689,7 +836,7 @@ NeoNect::ServiceResult<std::monostate> NeoNect::Storage::SecureE2EEStore::saveFi
     sqlite3_bind_int64(stmt, 4, transfer.file_size);
     sqlite3_bind_int(stmt, 5, transfer.chunk_size);
     sqlite3_bind_int(stmt, 6, transfer.max_envelope_bytes);
-    sqlite3_bind_int(stmt, 7, transfer.max_http_body_bytes);
+    sqlite3_bind_int64(stmt, 7, transfer.max_http_body_bytes);
     sqlite3_bind_int(stmt, 8, transfer.chunk_count);
     sqlite3_bind_blob(stmt, 9, transfer.file_hash.constData(), transfer.file_hash.size(), SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, 10, transfer.spool_path.toUtf8().constData(), -1, SQLITE_TRANSIENT);
@@ -730,7 +877,7 @@ NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer> NeoNect::Storage::Sec
         transfer.file_size = sqlite3_column_int64(stmt, 1);
         transfer.chunk_size = sqlite3_column_int(stmt, 2);
         transfer.max_envelope_bytes = sqlite3_column_int(stmt, 3);
-        transfer.max_http_body_bytes = sqlite3_column_int(stmt, 4);
+        transfer.max_http_body_bytes = sqlite3_column_int64(stmt, 4);
         transfer.chunk_count = sqlite3_column_int(stmt, 5);
         
         const void* hash_ptr = sqlite3_column_blob(stmt, 6);
@@ -782,7 +929,7 @@ NeoNect::ServiceResult<std::vector<NeoNect::Storage::E2EEFileTransfer>> NeoNect:
         transfer.file_size = sqlite3_column_int64(stmt, 3);
         transfer.chunk_size = sqlite3_column_int(stmt, 4);
         transfer.max_envelope_bytes = sqlite3_column_int(stmt, 5);
-        transfer.max_http_body_bytes = sqlite3_column_int(stmt, 6);
+        transfer.max_http_body_bytes = sqlite3_column_int64(stmt, 6);
         transfer.chunk_count = sqlite3_column_int(stmt, 7);
         
         const void* hash_ptr = sqlite3_column_blob(stmt, 8);
@@ -861,7 +1008,7 @@ NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer> NeoNect::Storage::Sec
     if (!m_db) return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::fail("Database not open");
 
     sqlite3_stmt* stmt = nullptr;
-    const char* sql = "SELECT peer_device_id, is_sender, file_size, chunk_size, max_envelope_bytes, max_http_body_bytes, chunk_count, file_hash, spool_path, root_file_key, received_bitset, status, created_at FROM file_transfers WHERE transfer_id = ? LIMIT 1";
+    const char* sql = "SELECT peer_device_id, is_sender, file_size, chunk_size, max_envelope_bytes, max_http_body_bytes, chunk_count, file_hash, spool_path, root_file_key, received_bitset, status, created_at FROM file_transfers WHERE transfer_id = ? ORDER BY CASE status WHEN 'completed' THEN 0 WHEN 'active' THEN 1 ELSE 2 END LIMIT 1";
     if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
         return NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer>::fail(sqlite3_errmsg(m_db));
     }
@@ -876,7 +1023,7 @@ NeoNect::ServiceResult<NeoNect::Storage::E2EEFileTransfer> NeoNect::Storage::Sec
         transfer.file_size = sqlite3_column_int64(stmt, 2);
         transfer.chunk_size = sqlite3_column_int(stmt, 3);
         transfer.max_envelope_bytes = sqlite3_column_int(stmt, 4);
-        transfer.max_http_body_bytes = sqlite3_column_int(stmt, 5);
+        transfer.max_http_body_bytes = sqlite3_column_int64(stmt, 5);
         transfer.chunk_count = sqlite3_column_int(stmt, 6);
 
         const void* hash_ptr = sqlite3_column_blob(stmt, 7);

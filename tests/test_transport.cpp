@@ -6,7 +6,24 @@
 namespace NeoNect {
 namespace Transport {
 
-// Basic frame assembly for tests
+namespace {
+struct TransportLogCapture {
+    QtMessageHandler prev = nullptr;
+    QString log;
+    static inline TransportLogCapture* active = nullptr;
+    TransportLogCapture() {
+        active = this;
+        prev = qInstallMessageHandler([](QtMsgType, const QMessageLogContext&, const QString &msg) {
+            if (active) active->log.append(msg + "\n");
+        });
+    }
+    ~TransportLogCapture() {
+        qInstallMessageHandler(prev);
+        active = nullptr;
+    }
+};
+}
+
 QByteArray makeFrame(quint8 opcode, const QByteArray &data, bool fin = true) {
     QByteArray frame;
     frame.append(static_cast<char>((fin ? 0x80 : 0x00) | (opcode & 0x0F)));
@@ -431,6 +448,67 @@ void TestTransport::testTlsConnectionSuccess() {
 
     sslSocket->close();
     sslSocket->deleteLater();
+}
+
+void TestTransport::testAutoReconnectAfterDisconnectAndRefused() {
+    WebSocketClient client;
+    startClient(&client, false);
+    const quint16 port = m_serverPort;
+
+    QSignalSpy disconnectedSpy(&client, &WebSocketClient::disconnected);
+    QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
+    QSignalSpy connectedSpy(&client, &WebSocketClient::connected);
+
+    stopServer();
+
+    QVERIFY(disconnectedSpy.count() >= 1 || disconnectedSpy.wait(2000));
+    QCOMPARE(client.state(), WebSocketState::Disconnected);
+
+    QVERIFY(errorSpy.wait(2500));
+    QCOMPARE(client.state(), WebSocketState::Disconnected);
+
+    m_server = new QTcpServer(this);
+    QVERIFY(m_server->listen(QHostAddress::LocalHost, port));
+
+    QTRY_VERIFY_WITH_TIMEOUT(m_server->hasPendingConnections(), 4000);
+    m_serverConnection = m_server->nextPendingConnection();
+    QVERIFY(m_serverConnection);
+    QTRY_VERIFY_WITH_TIMEOUT(m_serverConnection->bytesAvailable() > 0, 2000);
+    m_serverConnection->readAll();
+    m_serverConnection->write(generateHandshakeResponse());
+
+    QVERIFY(connectedSpy.count() >= 1 || connectedSpy.wait(2000));
+    QCOMPARE(client.state(), WebSocketState::Connected);
+}
+
+void TestTransport::testUpgradeFailureDoesNotLogSensitiveHeaders() {
+    WebSocketClient client;
+    setupServer(false);
+
+    QSignalSpy errorSpy(&client, &WebSocketClient::errorOccurred);
+    QString url = QString("ws://127.0.0.1:%1").arg(m_serverPort);
+
+    TransportLogCapture capture;
+    client.open(url, "test-device", "test-token");
+    QTRY_VERIFY_WITH_TIMEOUT(m_server->hasPendingConnections(), 3000);
+    m_serverConnection = m_server->nextPendingConnection();
+    QVERIFY(m_serverConnection);
+    QTRY_VERIFY_WITH_TIMEOUT(m_serverConnection->bytesAvailable() > 0, 2000);
+    m_serverConnection->readAll();
+
+    QByteArray failResponse = "HTTP/1.1 401 Unauthorized\r\n"
+                             "Set-Cookie: session=SUPER-SECRET-COOKIE-XYZ\r\n"
+                             "Authorization: Bearer SECRET-TOKEN-123\r\n"
+                             "Content-Length: 0\r\n\r\n";
+    m_serverConnection->write(failResponse);
+
+    QVERIFY(errorSpy.wait(2000));
+    QVERIFY(!capture.log.contains("SUPER-SECRET-COOKIE-XYZ"));
+    QVERIFY(!capture.log.contains("SECRET-TOKEN-123"));
+    QVERIFY(!capture.log.contains("Set-Cookie"));
+    QVERIFY(!capture.log.contains("Response Headers:"));
+    QVERIFY(capture.log.contains("WebSocket upgrade failed:"));
+    QVERIFY(capture.log.contains("401 Unauthorized"));
 }
 
 } // namespace Transport

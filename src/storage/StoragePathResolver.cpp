@@ -98,6 +98,25 @@ QString StoragePathResolver::chatAttachmentsDirectory(const QString& serverUrl, 
     return QDir(chatDirectory(serverUrl, username, conversationId)).filePath("attachments");
 }
 
+QString StoragePathResolver::mediaDirectory(const QString& serverUrl, const QString& username) {
+    if (serverUrl.isEmpty() || username.isEmpty()) {
+        return QDir(appRoot()).filePath("media");
+    }
+    return QDir(accountRoot(serverUrl, username)).filePath("media");
+}
+
+QString StoragePathResolver::mediaVoiceDirectory(const QString& serverUrl, const QString& username) {
+    return QDir(mediaDirectory(serverUrl, username)).filePath("voice");
+}
+
+QString StoragePathResolver::mediaImagesDirectory(const QString& serverUrl, const QString& username) {
+    return QDir(mediaDirectory(serverUrl, username)).filePath("images");
+}
+
+QString StoragePathResolver::mediaAttachmentsDirectory(const QString& serverUrl, const QString& username) {
+    return QDir(mediaDirectory(serverUrl, username)).filePath("attachments");
+}
+
 QString StoragePathResolver::messageDbPath(const QString& serverUrl, const QString& username) {
     return QDir(accountRoot(serverUrl, username)).filePath("messages.db");
 }

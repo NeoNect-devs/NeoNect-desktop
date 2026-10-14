@@ -16,6 +16,7 @@ Rectangle {
     signal stickerSent(string stickerUrl, string packId, string stickerName)
     signal voiceSent(var voiceData)
     signal mediaSent(var mediaData) // { type, mediaUrl, fileName, fileSize, duration, caption }
+    signal fileRejected(string reason)
     signal typingStarted()
     signal typingStopped()
 
@@ -140,6 +141,23 @@ Rectangle {
         if (actualSize <= 0) {
             actualSize = (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000)));
         }
+
+        if (typeof NetworkManager !== "undefined" && NetworkManager) {
+            if (!NetworkManager.isFileSizeAllowed(actualSize)) {
+                var limitBytes = NetworkManager.maxFileTransferBytes;
+                var reason = "";
+                if (NetworkManager.capabilityState === "unavailable" || NetworkManager.capabilityState === "invalid" || NetworkManager.capabilityState === "unsupported") {
+                    reason = "Cannot attach file: Server capabilities unavailable or unsupported.";
+                } else if (limitBytes > 0 && actualSize > limitBytes) {
+                    reason = "File \"" + fileName + "\" (" + formatBytes(actualSize) + ") exceeds file transfer limit (" + formatBytes(limitBytes) + ").";
+                } else {
+                    reason = "File \"" + fileName + "\" cannot be attached under current server limits.";
+                }
+                inputRoot.fileRejected(reason);
+                return;
+            }
+        }
+
         inputRoot.draftAttachment = {
             type: detectedType,
             url: url,

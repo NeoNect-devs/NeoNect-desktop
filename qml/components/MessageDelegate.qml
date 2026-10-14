@@ -336,10 +336,32 @@ import "UIHelpers.js" as UIHelpers
                                                 id: imgDelegateItem
                                                 visible: delegateRoot.isImage
 
+                                                readonly property string resolvedImgSource: {
+                                                    var raw = (model.mediaUrl || "").trim();
+                                                    if (!delegateRoot.isMe) {
+                                                        if (model.status === "downloading" || model.status === "sending") return "";
+                                                        if (model.status === "failed") return "";
+                                                        if (raw.indexOf("image://") === 0 || raw.indexOf("http") === 0 || raw.indexOf("qrc:") === 0) {
+                                                            return UIHelpers.formatMediaSource(raw);
+                                                        }
+                                                        var cleanId = raw;
+                                                        if (cleanId.length === 0 || cleanId.indexOf("/") >= 0 || cleanId.indexOf("\\") >= 0) {
+                                                            cleanId = (model.messageId || "").trim();
+                                                        }
+                                                        return cleanId.length > 0 ? ("image://secure/" + cleanId) : "";
+                                                    }
+                                                    if (raw.length === 0) return "";
+                                                    if (raw.indexOf("http") === 0 || raw.indexOf("file") === 0 || raw.indexOf("qrc:") === 0 || raw.indexOf("image://") === 0 || raw.indexOf("/") === 0 || raw.indexOf(":/") === 1 || raw.indexOf(":\\") === 1) {
+                                                        return UIHelpers.formatMediaSource(raw);
+                                                    }
+                                                    if (model.status === "downloading") return "";
+                                                    return "image://secure/" + raw;
+                                                }
                                                 readonly property bool isGif: {
                                                     var url = (model.mediaUrl || "").toLowerCase();
                                                     var fn = (model.fileName || "").toLowerCase();
-                                                    return url.endsWith(".gif") || fn.endsWith(".gif");
+                                                    var isDirectUrl = url.indexOf("http") === 0 || url.indexOf("file") === 0 || url.indexOf("qrc:") === 0 || url.indexOf("/") === 0 || url.indexOf(":/") === 1 || url.indexOf(":\\") === 1;
+                                                    return isDirectUrl && (url.endsWith(".gif") || fn.endsWith(".gif"));
                                                 }
                                                 readonly property var activeImgObj: isGif ? chatGif : chatImg
                                                 readonly property real naturalW: (model.mediaWidth && model.mediaWidth > 0) ? model.mediaWidth : ((activeImgObj && activeImgObj.implicitWidth > 0) ? activeImgObj.implicitWidth : 320)
@@ -382,7 +404,7 @@ import "UIHelpers.js" as UIHelpers
                                                         id: chatImg
                                                         visible: delegateRoot.isImage && !imgDelegateItem.isGif
                                                         anchors.fill: parent
-                                                        source: visible ? (model.mediaUrl.indexOf("http") === 0 || model.mediaUrl.indexOf("file") === 0 ? UIHelpers.formatMediaSource(model.mediaUrl) : "image://secure/" + model.mediaUrl) : ""
+                                                        source: visible ? imgDelegateItem.resolvedImgSource : ""
                                                         fillMode: Image.PreserveAspectFit
                                                         sourceSize.width: 640
                                                         smooth: true
@@ -395,7 +417,7 @@ import "UIHelpers.js" as UIHelpers
                                                         id: chatGif
                                                         visible: delegateRoot.isImage && imgDelegateItem.isGif
                                                         anchors.fill: parent
-                                                        source: visible ? (model.mediaUrl.indexOf("http") === 0 || model.mediaUrl.indexOf("file") === 0 ? UIHelpers.formatMediaSource(model.mediaUrl) : "image://secure/" + model.mediaUrl) : ""
+                                                        source: visible ? imgDelegateItem.resolvedImgSource : ""
                                                         fillMode: Image.PreserveAspectFit
                                                         sourceSize.width: 480
                                                         smooth: true
@@ -440,7 +462,7 @@ import "UIHelpers.js" as UIHelpers
                                                     // Failed to load / download / upload overlay
                                                     Rectangle {
                                                         anchors.fill: parent
-                                                        visible: (imgDelegateItem.isGif ? chatGif.status : chatImg.status) === Image.Error || (model.messageType === "image" && delegateRoot.isFailed && (!imgDelegateItem.activeImgObj.source || imgDelegateItem.activeImgObj.source == ""))
+                                                        visible: delegateRoot.isFailed || (model.status !== "sending" && model.status !== "downloading" && ((imgDelegateItem.isGif ? chatGif.status : chatImg.status) === Image.Error || imgDelegateItem.resolvedImgSource === ""))
                                                         color: "#1B1C20"
                                                         border.color: Qt.rgba(242, 63, 67, 0.4)
                                                         border.width: 1
@@ -459,7 +481,7 @@ import "UIHelpers.js" as UIHelpers
 
                                                             Text {
                                                                 Layout.alignment: Qt.AlignHCenter
-                                                                text: delegateRoot.isFailed ? "Image upload failed" : "Failed to load image"
+                                                                text: delegateRoot.isFailed ? (delegateRoot.isMe ? "Image upload failed" : "Image download failed") : "Failed to load image"
                                                                 color: "#FFFFFF"
                                                                 font.family: "Segoe UI"
                                                                 font.pixelSize: 12
@@ -497,7 +519,7 @@ import "UIHelpers.js" as UIHelpers
                                                                     hoverEnabled: true
                                                                     cursorShape: Qt.PointingHandCursor
                                                                     onClicked: {
-                                                                        if (delegateRoot.isFailed) {
+                                                                        if (delegateRoot.isFailed || imgDelegateItem.resolvedImgSource === "" || (imgDelegateItem.isGif ? chatGif.status : chatImg.status) === Image.Error) {
                                                                             delegateRoot.retryMessage(model.messageId);
                                                                         }
                                                                         if (imgDelegateItem.isGif) {
@@ -515,7 +537,6 @@ import "UIHelpers.js" as UIHelpers
                                                         }
                                                     }
 
-                                                    // Transferring overlay (Uploading / Downloading - Lazy Loaded)
                                                     Loader {
                                                         id: imgTransferOverlayLoader
                                                         anchors.fill: parent
@@ -549,14 +570,12 @@ import "UIHelpers.js" as UIHelpers
                                                                                 var cy = height / 2;
                                                                                 var r = width / 2 - 4;
 
-                                                                                // Background track
                                                                                 ctx.beginPath();
                                                                                 ctx.arc(cx, cy, r, 0, 2 * Math.PI, false);
                                                                                 ctx.lineWidth = 3.5;
                                                                                 ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
                                                                                 ctx.stroke();
 
-                                                                                // Progress arc
                                                                                 var startAngle = -Math.PI / 2;
                                                                                 var endAngle = startAngle + (2 * Math.PI * progressVal);
                                                                                 ctx.beginPath();
@@ -568,7 +587,6 @@ import "UIHelpers.js" as UIHelpers
                                                                             }
                                                                         }
 
-                                                                        // Cancel button in center
                                                                         Rectangle {
                                                                             id: imgCancelCircle
                                                                             anchors.centerIn: parent
@@ -607,7 +625,7 @@ import "UIHelpers.js" as UIHelpers
 
                                                                         Text {
                                                                             Layout.alignment: Qt.AlignHCenter
-                                                                            text: model.status === "downloading" ? "Downloading..." : "Uploading..."
+                                                                            text: (model.status === "downloading" || !delegateRoot.isMe) ? "Downloading..." : "Uploading..."
                                                                             color: ThemeData.textPrimary
                                                                             font.family: "Segoe UI"
                                                                             font.pixelSize: 11
@@ -636,7 +654,7 @@ import "UIHelpers.js" as UIHelpers
                                                         hoverEnabled: true
                                                         visible: ((imgDelegateItem.isGif ? chatGif.status : chatImg.status) === Image.Ready) && model.status !== "sending" && model.status !== "downloading"
                                                         cursorShape: Qt.PointingHandCursor
-                                                        onClicked: delegateRoot.openMediaModalRequested(UIHelpers.formatMediaSource(model.mediaUrl), "image", model.fileName || "Image", 0, false)
+                                                        onClicked: delegateRoot.openMediaModalRequested(imgDelegateItem.resolvedImgSource, "image", model.fileName || "Image", 0, false)
                                                     }
                                                 }
                                             }
@@ -753,7 +771,7 @@ import "UIHelpers.js" as UIHelpers
 
                                                                     Text {
                                                                         Layout.alignment: Qt.AlignHCenter
-                                                                        text: model.status === "downloading" ? "Downloading Video..." : "Uploading Video..."
+                                                                        text: (model.status === "downloading" || !delegateRoot.isMe) ? "Downloading Video..." : "Uploading Video..."
                                                                         color: ThemeData.textPrimary
                                                                         font.family: "Segoe UI"
                                                                         font.pixelSize: 11
@@ -857,7 +875,7 @@ import "UIHelpers.js" as UIHelpers
                                                                     RowLayout {
                                                                         Layout.fillWidth: true
                                                                         Text {
-                                                                            text: model.status === "downloading" ? "Downloading Audio..." : "Uploading Audio..."
+                                                                            text: (model.status === "downloading" || !delegateRoot.isMe) ? "Downloading Audio..." : "Uploading Audio..."
                                                                             color: ThemeData.textPrimary
                                                                             font.family: "Segoe UI"
                                                                             font.pixelSize: 12
@@ -987,16 +1005,15 @@ import "UIHelpers.js" as UIHelpers
                                                                 property real effectiveBytes: Math.min(totalBytes, (model.transferBytes && model.transferBytes > 0) ? model.transferBytes : Math.round(currentProg * totalBytes))
 
                                                                 text: isTransferring ? 
-                                                                    ("•  " + (model.status === "downloading" ? "Downloading " : "Uploading ") + UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)") :
-                                                                    "•  Click to open ↗"
-                                                                color: isTransferring ? ThemeData.accentColor : (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.6) : ThemeData.accentColor)
+                                                                    ("•  " + ((model.status === "downloading" || !delegateRoot.isMe) ? "Downloading " : "Uploading ") + UIHelpers.formatSize(effectiveBytes) + " / " + UIHelpers.formatSize(totalBytes) + " (" + Math.round(currentProg * 100) + "%)") :
+                                                                    (delegateRoot.isFailed ? ("•  " + (delegateRoot.isMe ? "Upload failed — Click to retry" : "Download failed — Click to retry")) : "•  Click to open ↗")
+                                                                color: delegateRoot.isFailed ? "#F23F43" : (isTransferring ? ThemeData.accentColor : (delegateRoot.isMe ? Qt.rgba(255, 255, 255, 0.6) : ThemeData.accentColor))
                                                                 font.family: "Segoe UI"
                                                                 font.pixelSize: 10
                                                             }
                                                         }
                                                     }
 
-                                                    // Open / Cancel Icon
                                                     Rectangle {
                                                         width: 28; height: 28
                                                         radius: 14
@@ -1007,7 +1024,7 @@ import "UIHelpers.js" as UIHelpers
 
                                                         Text {
                                                             anchors.centerIn: parent
-                                                            text: parent.isTransferring ? "✕" : "↗"
+                                                            text: parent.isTransferring ? "✕" : (delegateRoot.isFailed ? "↻" : "↗")
                                                             color: delegateRoot.isMe ? "#FFFFFF" : (parent.isTransferring ? "#FFFFFF" : ThemeData.textSecondary)
                                                             font.family: "Segoe UI"
                                                             font.pixelSize: parent.isTransferring ? 12 : 14
@@ -1029,7 +1046,6 @@ import "UIHelpers.js" as UIHelpers
                                                     }
                                                 }
 
-                                                // Bottom progress bar when transferring (Lazy Loaded)
                                                 Loader {
                                                     id: fileTransferProgressLoader
                                                     anchors.left: parent.left
@@ -1063,7 +1079,13 @@ import "UIHelpers.js" as UIHelpers
                                                     enabled: model.status !== "sending" && model.status !== "downloading"
                                                     hoverEnabled: true
                                                     cursorShape: Qt.PointingHandCursor
-                                                    onClicked: AudioManager.openMediaFile(model.mediaUrl)
+                                                    onClicked: {
+                                                        if (delegateRoot.isFailed || !model.mediaUrl || model.mediaUrl === "") {
+                                                            delegateRoot.retryMessage(model.messageId);
+                                                        } else {
+                                                            AudioManager.openMediaFile(model.mediaUrl);
+                                                        }
+                                                    }
                                                 }
                                             }
 

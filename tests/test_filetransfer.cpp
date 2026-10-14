@@ -3,6 +3,9 @@
 #include <QQuickImageResponse>
 #include <QQuickTextureFactory>
 #include <QEventLoop>
+#include <QImageReader>
+#include "../src/storage/StoragePathResolver.h"
+#include "../src/core/audiomanager.h"
 #include "../src/services/FileTransferManager.h"
 #include "../src/crypto/OpenSSLBackend.h"
 #include "../src/storage/e2ee/ISecureE2EEStore.h"
@@ -10,6 +13,9 @@
 #include "../src/storage/isettingsrepository.h"
 #include "../src/crypto/wire/WireCodec.h"
 #include "../src/crypto/wire/WireTypes.h"
+#include "../src/services/messageservice.h"
+#include "../src/core/chatmessagemodel.h"
+#include "../src/core/messaging/MessageStorage.h"
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QFile>
@@ -72,7 +78,11 @@ public:
     }
     ServiceResult<std::vector<E2EEFileTransfer>> getActiveFileTransfers() override {
         std::vector<E2EEFileTransfer> res;
-        for (const auto& t : m_transfers) res.push_back(t);
+        for (const auto& t : m_transfers) {
+            if (t.status != "completed" && t.status != "cancelled") {
+                res.push_back(t);
+            }
+        }
         return ServiceResult<std::vector<E2EEFileTransfer>>::ok(res);
     }
     ServiceResult<std::monostate> updateFileTransferBitset(const QString& transfer_id, const QString& peer_device_id, const QByteArray& bitset) override {
@@ -95,22 +105,26 @@ public:
     std::optional<qint64> maxHttpBodyBytes() const override { return 1024LL * 1024LL * 1024LL; }
     std::optional<int> maxEnvelopeBytes() const override { return m_envMax; }
     std::optional<int> maxDevicesPerUser() const override { return 10; }
-    CapabilityState capabilityState() const override { return CapabilityState::VALID; }
-    void replace(std::optional<qint64>, std::optional<int>, std::optional<int>, CapabilityState) override {}
+    CapabilityState capabilityState() const override { return m_capState; }
+    void replace(std::optional<qint64>, std::optional<int> e, std::optional<int>, CapabilityState s) override {
+        if (e.has_value()) m_envMax = e.value();
+        m_capState = s;
+    }
     
     int m_envMax = 100 * 1024 * 1024;
+    CapabilityState m_capState = CapabilityState::VALID;
 };
 
 class MockSettingsFT : public ISettingsRepository {
 public:
     void setProfile(const QString &) override {}
     QString profile() const override { return "prof"; }
-    QString serverUrl() const override { return ""; }
-    void setServerUrl(const QString &) override {}
+    QString serverUrl() const override { return m_serverUrl; }
+    void setServerUrl(const QString &s) override { m_serverUrl = s; }
     QString authToken() const override { return ""; }
     void setAuthToken(const QString &) override {}
-    QString username() const override { return "user1"; }
-    void setUsername(const QString &) override {}
+    QString username() const override { return m_username; }
+    void setUsername(const QString &u) override { m_username = u; }
     QString deviceId() const override { return m_deviceId; }
     void setDeviceId(const QString &d) override { m_deviceId = d; }
     QString publicKey() const override { return ""; }
@@ -139,6 +153,8 @@ public:
     void clearSession() override {}
     
     QString m_deviceId = "test_local_device";
+    QString m_serverUrl = "";
+    QString m_username = "user1";
 };
 
 struct EnvelopeInfo {
@@ -1131,4 +1147,921 @@ void TestFileTransfer::testReq27_ImageTransferDecodingFailure() {
 
     QVERIFY(result.isNull());
     QVERIFY(!resp->errorString().isEmpty());
+}
+
+void TestFileTransfer::testReq28_IncomingAndOutgoingAttachmentStatusAndProgress() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+    senderCtx.settings->setDeviceId("aliceDev");
+    receiverCtx.settings->setDeviceId("bobDev");
+    senderCtx.caps->m_envMax = 200 + 42;
+    receiverCtx.caps->m_envMax = 200 + 42;
+
+    auto senderRepo = std::make_shared<Core::Messaging::SqliteMessageStorage>(senderCtx.tempDir.path() + "/sender.db");
+    auto receiverRepo = std::make_shared<Core::Messaging::SqliteMessageStorage>(receiverCtx.tempDir.path() + "/receiver.db");
+    Services::MessageService senderSvc(senderRepo);
+    Services::MessageService receiverSvc(receiverRepo);
+    senderSvc.setCurrentUserId("alice");
+    receiverSvc.setCurrentUserId("bob");
+    senderSvc.setFileTransferManager(std::shared_ptr<FileTransferManager>(senderCtx.ftm.get(), [](FileTransferManager*) {}));
+    receiverSvc.setFileTransferManager(std::shared_ptr<FileTransferManager>(receiverCtx.ftm.get(), [](FileTransferManager*) {}));
+    senderSvc.setDeviceResolverCallback([](const QString&, std::function<void(QString)> cb) { cb(QString("bobDev")); });
+
+    ChatMessageModel senderModel;
+    ChatMessageModel receiverModel;
+    senderModel.setActiveConversation("dms:bob");
+    receiverModel.setActiveConversation("dms:alice");
+
+    QObject::connect(&senderSvc, &Services::MessageService::messageAdded, &senderModel, &ChatMessageModel::onMessageAdded);
+    QObject::connect(&senderSvc, &Services::MessageService::messageUpdated, &senderModel, &ChatMessageModel::onMessageUpdated);
+    QObject::connect(&senderSvc, &Services::MessageService::mediaTransferProgress, &senderModel, &ChatMessageModel::onMediaTransferProgress);
+    QObject::connect(&receiverSvc, &Services::MessageService::messageAdded, &receiverModel, &ChatMessageModel::onMessageAdded);
+    QObject::connect(&receiverSvc, &Services::MessageService::messageUpdated, &receiverModel, &ChatMessageModel::onMessageUpdated);
+    QObject::connect(&receiverSvc, &Services::MessageService::mediaTransferProgress, &receiverModel, &ChatMessageModel::onMediaTransferProgress);
+
+    QString imgPath = senderCtx.tempDir.path() + "/photo.png";
+    QImage img(16, 16, QImage::Format_RGB32);
+    img.fill(Qt::blue);
+    img.save(imgPath, "PNG");
+    qint64 imgSize = QFileInfo(imgPath).size();
+
+    QSignalSpy spyTransmit(&senderSvc, &Services::MessageService::transmitMessage);
+    senderSvc.sendMessage("dms:bob", "", "image", "file://" + imgPath, "photo.png", imgSize, 0, {});
+
+    QCOMPARE(senderModel.rowCount(), 1);
+    QModelIndex sIdx = senderModel.index(0, 0);
+    QCOMPARE(senderModel.data(sIdx, ChatMessageModel::FromMeRole).toBool(), true);
+    QCOMPARE(senderModel.data(sIdx, ChatMessageModel::StatusRole).toString(), QString("sending"));
+    QCOMPARE(senderModel.data(sIdx, ChatMessageModel::MediaWidthRole).toInt(), 16);
+    QCOMPARE(senderModel.data(sIdx, ChatMessageModel::MediaHeightRole).toInt(), 16);
+
+    QTRY_VERIFY_WITH_TIMEOUT(spyTransmit.count() >= 1, 1000);
+    Domain::Message wireMsg = spyTransmit.first().at(0).value<Domain::Message>();
+    wireMsg.conversationId = "dms:alice";
+
+    QVERIFY(!senderCtx.sentChatMsgs.empty());
+    receiverCtx.ftm->handleControlMessage("alice", "aliceDev", senderCtx.sentChatMsgs[0].msg);
+    QSignalSpy spyReceiverAdded(&receiverSvc, &Services::MessageService::messageAdded);
+    receiverSvc.handleIncomingMessages({ wireMsg });
+
+    QCOMPARE(spyReceiverAdded.count(), 1);
+    QCOMPARE(receiverModel.rowCount(), 1);
+    QModelIndex rIdx = receiverModel.index(0, 0);
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::FromMeRole).toBool(), false);
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::StatusRole).toString(), QString("downloading"));
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::MediaWidthRole).toInt(), 16);
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::MediaHeightRole).toInt(), 16);
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "alice";
+    meta.senderDeviceId = "aliceDev";
+    for (size_t i = 0; i < senderCtx.sentEnvelopes.size(); ++i) {
+        receiverCtx.ftm->handleEnvelope(senderCtx.sentEnvelopes[i].env, meta);
+        while (!receiverCtx.sentChatMsgs.empty()) {
+            auto ack = receiverCtx.sentChatMsgs.front();
+            receiverCtx.sentChatMsgs.erase(receiverCtx.sentChatMsgs.begin());
+            senderCtx.ftm->handleControlMessage("bob", "bobDev", ack.msg);
+        }
+    }
+
+    for (int i = 0; i < 20; ++i) QCoreApplication::processEvents();
+
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::TransferProgressRole).toReal(), 1.0);
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::MediaUrlRole).toString(), wireMsg.id);
+    QCOMPARE(spyReceiverAdded.count(), 1);
+
+    QCOMPARE(senderModel.data(sIdx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(senderModel.data(sIdx, ChatMessageModel::TransferProgressRole).toReal(), 1.0);
+
+    receiverModel.onMediaTransferProgress("dms:alice", wireMsg.id, 0.5, imgSize / 2, imgSize);
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::TransferProgressRole).toReal(), 1.0);
+}
+
+void TestFileTransfer::testReq29_CompletionBeforeAndAfterIncomingMessageAndReload() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+    senderCtx.settings->setDeviceId("aliceDev");
+    receiverCtx.settings->setDeviceId("bobDev");
+
+    auto receiverRepo = std::make_shared<Core::Messaging::SqliteMessageStorage>(receiverCtx.tempDir.path() + "/receiver_race.db");
+    Services::MessageService receiverSvc(receiverRepo);
+    receiverSvc.setCurrentUserId("bob");
+    receiverSvc.setFileTransferManager(std::shared_ptr<FileTransferManager>(receiverCtx.ftm.get(), [](FileTransferManager*) {}));
+
+    ChatMessageModel receiverModel;
+    receiverModel.setActiveConversation("dms:alice");
+    QObject::connect(&receiverSvc, &Services::MessageService::messageAdded, &receiverModel, &ChatMessageModel::onMessageAdded);
+    QObject::connect(&receiverSvc, &Services::MessageService::messageUpdated, &receiverModel, &ChatMessageModel::onMessageUpdated);
+    QObject::connect(&receiverSvc, &Services::MessageService::conversationLoaded, &receiverModel, &ChatMessageModel::onConversationLoaded);
+
+    QString imgPath = senderCtx.tempDir.path() + "/early.png";
+    QImage img(10, 10, QImage::Format_RGB32);
+    img.fill(Qt::green);
+    img.save(imgPath, "PNG");
+    qint64 imgSize = QFileInfo(imgPath).size();
+
+    QString earlyMsgId = "88888888-8888-8888-8888-888888888888";
+    senderCtx.ftm->startTransfer("bob", "bobDev", imgPath, earlyMsgId);
+    receiverCtx.ftm->handleControlMessage("alice", "aliceDev", senderCtx.sentChatMsgs[0].msg);
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "alice";
+    meta.senderDeviceId = "aliceDev";
+    for (const auto& env : senderCtx.sentEnvelopes) {
+        receiverCtx.ftm->handleEnvelope(env.env, meta);
+    }
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    Domain::Message earlyMsg;
+    earlyMsg.id = earlyMsgId;
+    earlyMsg.conversationId = "dms:alice";
+    earlyMsg.senderId = "alice";
+    earlyMsg.type = "image";
+    earlyMsg.fileName = "early.png";
+    earlyMsg.fileSize = imgSize;
+    earlyMsg.timestamp = 1000;
+    earlyMsg.mediaWidth = 10;
+    earlyMsg.mediaHeight = 10;
+
+    receiverSvc.handleIncomingMessages({ earlyMsg });
+    QCOMPARE(receiverModel.rowCount(), 1);
+    QModelIndex idx0 = receiverModel.index(0, 0);
+    QCOMPARE(receiverModel.data(idx0, ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(receiverModel.data(idx0, ChatMessageModel::MediaUrlRole).toString(), earlyMsgId);
+
+    QTest::qWait(100);
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    QSignalSpy spyLoaded(&receiverSvc, &Services::MessageService::conversationLoaded);
+    receiverSvc.loadConversation("dms:alice");
+    QTRY_VERIFY_WITH_TIMEOUT(spyLoaded.count() >= 1, 1000);
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    QCOMPARE(receiverModel.rowCount(), 1);
+    idx0 = receiverModel.index(0, 0);
+    QCOMPARE(receiverModel.data(idx0, ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(receiverModel.data(idx0, ChatMessageModel::MediaUrlRole).toString(), earlyMsgId);
+
+    NeoNect::Services::SecureImageProvider provider(receiverCtx.store, receiverCtx.crypto, receiverCtx.settings);
+    auto* resp = provider.requestImageResponse(earlyMsgId, QSize());
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+    QImage decoded = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+    QVERIFY(!decoded.isNull());
+    QCOMPARE(decoded.size(), QSize(10, 10));
+}
+
+void TestFileTransfer::testReq30_MultiDeviceRecipientTransferAndOfflineDeviceIsolation() {
+    FTTestContext senderCtx;
+    FTTestContext recvOnlineCtx;
+    senderCtx.settings->setDeviceId("aliceDev");
+    recvOnlineCtx.settings->setDeviceId("bobDevOnline");
+    senderCtx.caps->m_envMax = 500 + 42;
+    recvOnlineCtx.caps->m_envMax = 500 + 42;
+
+    auto senderRepo = std::make_shared<Core::Messaging::SqliteMessageStorage>(senderCtx.tempDir.path() + "/sender_md.db");
+    Services::MessageService senderSvc(senderRepo);
+    senderSvc.setCurrentUserId("alice");
+    senderSvc.setFileTransferManager(std::shared_ptr<FileTransferManager>(senderCtx.ftm.get(), [](FileTransferManager*) {}));
+    senderSvc.setMultiDeviceResolverCallback([](const QString&, std::function<void(QStringList)> cb) {
+        cb(QStringList{"bobDevOnline", "bobDevOffline"});
+    });
+
+    ChatMessageModel senderModel;
+    senderModel.setActiveConversation("dms:bob");
+    QObject::connect(&senderSvc, &Services::MessageService::messageAdded, &senderModel, &ChatMessageModel::onMessageAdded);
+    QObject::connect(&senderSvc, &Services::MessageService::messageUpdated, &senderModel, &ChatMessageModel::onMessageUpdated);
+
+    QString fp = senderCtx.tempDir.path() + "/multidev.bin";
+    QByteArray payload(1200, 'Q');
+    QFile f(fp);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write(payload);
+    f.close();
+
+    senderSvc.sendMessage("dms:bob", "", "file", "file://" + fp, "multidev.bin", payload.size());
+    QCOMPARE(senderModel.rowCount(), 1);
+    QModelIndex sIdx = senderModel.index(0, 0);
+    QString msgId = senderModel.data(sIdx, ChatMessageModel::MessageIdRole).toString();
+    QTRY_VERIFY_WITH_TIMEOUT(senderCtx.sentChatMsgs.size() >= 2, 1000);
+
+    for (const auto& cm : senderCtx.sentChatMsgs) {
+        if (cm.recipientDevice == "bobDevOnline") {
+            recvOnlineCtx.ftm->handleControlMessage("alice", "aliceDev", cm.msg);
+        }
+    }
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "alice";
+    meta.senderDeviceId = "aliceDev";
+    QSignalSpy recvDoneSpy(recvOnlineCtx.ftm.get(), SIGNAL(transferCompleted(QString,QString)));
+
+    for (const auto& env : senderCtx.sentEnvelopes) {
+        if (env.recipientDevice == "bobDevOnline") {
+            recvOnlineCtx.ftm->handleEnvelope(env.env, meta);
+        }
+    }
+    for (const auto& ack : recvOnlineCtx.sentChatMsgs) {
+        senderCtx.ftm->handleControlMessage("bob", "bobDevOnline", ack.msg);
+    }
+
+    QCOMPARE(recvDoneSpy.count(), 1);
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+    QCOMPARE(senderModel.data(sIdx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+
+    senderCtx.ftm->setRetryParamsForTesting(20, 10);
+    QTest::qWait(150);
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    QCOMPARE(senderModel.data(sIdx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(senderCtx.store->m_transfers[msgId + "_bobDevOnline"].status, QString("completed"));
+}
+
+void TestFileTransfer::testReq31_IncomingRetryAndCancelNeverTransmitFakeOutgoingMessage() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+    senderCtx.settings->setDeviceId("aliceDev");
+    receiverCtx.settings->setDeviceId("bobDev");
+    senderCtx.caps->m_envMax = 500 + 42;
+    receiverCtx.caps->m_envMax = 500 + 42;
+
+    auto receiverRepo = std::make_shared<Core::Messaging::SqliteMessageStorage>(receiverCtx.tempDir.path() + "/receiver_retry.db");
+    Services::MessageService receiverSvc(receiverRepo);
+    receiverSvc.setCurrentUserId("bob");
+    receiverSvc.setFileTransferManager(std::shared_ptr<FileTransferManager>(receiverCtx.ftm.get(), [](FileTransferManager*) {}));
+
+    ChatMessageModel receiverModel;
+    receiverModel.setActiveConversation("dms:alice");
+    QObject::connect(&receiverSvc, &Services::MessageService::messageAdded, &receiverModel, &ChatMessageModel::onMessageAdded);
+    QObject::connect(&receiverSvc, &Services::MessageService::messageUpdated, &receiverModel, &ChatMessageModel::onMessageUpdated);
+
+    QString fp = senderCtx.tempDir.path() + "/doc.bin";
+    QByteArray payload(900, 'R');
+    QFile f(fp);
+    QVERIFY(f.open(QIODevice::WriteOnly));
+    f.write(payload);
+    f.close();
+
+    QString tid = "99999999-9999-9999-9999-999999999999";
+    senderCtx.ftm->startTransfer("bob", "bobDev", fp, tid);
+    receiverCtx.ftm->handleControlMessage("alice", "aliceDev", senderCtx.sentChatMsgs[0].msg);
+
+    Domain::Message inMsg;
+    inMsg.id = tid;
+    inMsg.conversationId = "dms:alice";
+    inMsg.senderId = "alice";
+    inMsg.type = "file";
+    inMsg.fileName = "doc.bin";
+    inMsg.fileSize = payload.size();
+    inMsg.timestamp = 2000;
+    receiverSvc.handleIncomingMessages({ inMsg });
+
+    QCOMPARE(receiverModel.rowCount(), 1);
+    QModelIndex rIdx = receiverModel.index(0, 0);
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::StatusRole).toString(), QString("downloading"));
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "alice";
+    meta.senderDeviceId = "aliceDev";
+    receiverCtx.ftm->handleEnvelope(senderCtx.sentEnvelopes[0].env, meta);
+    receiverCtx.sentChatMsgs.clear();
+
+    QSignalSpy spyTransmit(&receiverSvc, &Services::MessageService::transmitMessage);
+    receiverSvc.cancelMediaTransfer("dms:alice", tid);
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::StatusRole).toString(), QString("failed"));
+    QVERIFY(!receiverCtx.sentChatMsgs.empty());
+    QCOMPARE(receiverCtx.sentChatMsgs[0].msg["type"].toString(), QString("file_cancel"));
+    receiverCtx.sentChatMsgs.clear();
+
+    receiverSvc.retryMessage(tid);
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    QCOMPARE(spyTransmit.count(), 0);
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::StatusRole).toString(), QString("downloading"));
+    QVERIFY(!receiverCtx.sentChatMsgs.empty());
+    QCOMPARE(receiverCtx.sentChatMsgs[0].msg["type"].toString(), QString("file_nack"));
+
+    senderCtx.sentEnvelopes.clear();
+    senderCtx.ftm->handleControlMessage("bob", "bobDev", receiverCtx.sentChatMsgs[0].msg);
+    QVERIFY(!senderCtx.sentEnvelopes.empty());
+
+    for (const auto& env : senderCtx.sentEnvelopes) {
+        receiverCtx.ftm->handleEnvelope(env.env, meta);
+    }
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    QCOMPARE(receiverModel.data(rIdx, ChatMessageModel::StatusRole).toString(), QString("sent"));
+    QCOMPARE(spyTransmit.count(), 0);
+}
+
+void TestFileTransfer::testReq32_SecureImageProviderQueryParamAndSenderSpoolSupport() {
+    FTTestContext senderCtx;
+    senderCtx.settings->setDeviceId("aliceDev");
+
+    QString testDataPath = senderCtx.tempDir.path() + "/sender_img.png";
+    QImage testImg(12, 12, QImage::Format_RGB32);
+    testImg.fill(Qt::yellow);
+    testImg.save(testDataPath, "PNG");
+
+    QString validUuid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    senderCtx.ftm->startTransfer("bob", "bobDev", testDataPath, validUuid);
+
+    NeoNect::Services::SecureImageProvider provider(senderCtx.store, senderCtx.crypto, senderCtx.settings);
+    auto* resp = provider.requestImageResponse(validUuid + "?cacheBust=1", QSize());
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QImage result = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+
+    QVERIFY(!result.isNull());
+    QCOMPARE(result.size(), QSize(12, 12));
+    QCOMPARE(result.pixelColor(6, 6), QColor(Qt::yellow));
+}
+
+void TestFileTransfer::testReq33_ImageReconstructedIntoPlaintextCanonicalStorageAndCached() {
+    FTTestContext senderCtx;
+    FTTestContext receiverCtx;
+    senderCtx.settings->setDeviceId("aliceDev");
+    receiverCtx.settings->setDeviceId("bobDev");
+    receiverCtx.settings->setUsername("bob");
+    receiverCtx.settings->setServerUrl("https://neonect.local");
+
+    QString testImgPath = senderCtx.tempDir.path() + "/canonical_sample.png";
+    QImage originalImg(16, 16, QImage::Format_ARGB32);
+    originalImg.fill(QColor(10, 200, 50));
+    originalImg.save(testImgPath, "PNG");
+
+    QString tid = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+    senderCtx.ftm->startTransfer("bob", "bobDev", testImgPath, tid);
+    receiverCtx.ftm->handleControlMessage("alice", "aliceDev", senderCtx.sentChatMsgs[0].msg);
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "alice";
+    meta.senderDeviceId = "aliceDev";
+    for (const auto& env : senderCtx.sentEnvelopes) {
+        receiverCtx.ftm->handleEnvelope(env.env, meta);
+    }
+    for (int i = 0; i < 10; ++i) QCoreApplication::processEvents();
+
+    QString canonicalDir = StoragePathResolver::mediaImagesDirectory("https://neonect.local", "bob");
+    QString canonicalPath = canonicalDir + "/" + tid + ".png";
+    QVERIFY(QFile::exists(canonicalPath));
+
+    QImageReader reader(canonicalPath);
+    QVERIFY(reader.canRead());
+    QImage loaded = reader.read();
+    QCOMPARE(loaded.size(), QSize(16, 16));
+    QCOMPARE(loaded.pixelColor(0, 0), QColor(10, 200, 50));
+
+    QString spoolPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool/" + tid + ".recv.spool";
+    QVERIFY(!QFile::exists(spoolPath));
+
+    NeoNect::Services::SecureImageProvider provider(receiverCtx.store, receiverCtx.crypto, receiverCtx.settings);
+    auto* resp = provider.requestImageResponse(tid, QSize());
+    QEventLoop loop;
+    QObject::connect(resp, &QQuickImageResponse::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+
+    QImage provImg = resp->property("decodedImage").value<QImage>();
+    resp->deleteLater();
+    QVERIFY(!provImg.isNull());
+    QCOMPARE(provImg.size(), QSize(16, 16));
+    QCOMPARE(provImg.pixelColor(0, 0), QColor(10, 200, 50));
+
+    auto* resp2 = provider.requestImageResponse(tid, QSize());
+    QEventLoop loop2;
+    QObject::connect(resp2, &QQuickImageResponse::finished, &loop2, &QEventLoop::quit);
+    loop2.exec();
+    QImage cachedImg = resp2->property("decodedImage").value<QImage>();
+    resp2->deleteLater();
+    QVERIFY(!cachedImg.isNull());
+    QCOMPARE(cachedImg.pixelColor(0, 0), QColor(10, 200, 50));
+}
+
+void TestFileTransfer::testReq34_VoiceRecordingFinalizationWavValidityAndStorageIsolation() {
+    AudioManager am;
+    am.setStorageBoundary("https://neonect.local", "alice");
+
+    am.startRecording();
+    QVERIFY(am.isRecording());
+
+    QTest::qWait(50);
+
+    QVariantMap recordMeta = am.stopRecording();
+    QVERIFY(!am.isRecording());
+
+    QString audioUrl = recordMeta["audioUrl"].toString();
+    QVERIFY(!audioUrl.isEmpty());
+
+    QString localPath = QUrl(audioUrl).toLocalFile();
+    QVERIFY(QFile::exists(localPath));
+
+    QString expectedVoiceDir = StoragePathResolver::mediaVoiceDirectory("https://neonect.local", "alice");
+    QVERIFY(localPath.startsWith(expectedVoiceDir));
+
+    QFile wavFile(localPath);
+    QVERIFY(wavFile.open(QIODevice::ReadOnly));
+    QByteArray header = wavFile.read(12);
+    wavFile.close();
+    QCOMPARE(header.left(4), QByteArray("RIFF"));
+    QCOMPARE(header.mid(8, 4), QByteArray("WAVE"));
+
+    am.playAudio("test-msg-1", audioUrl, 1);
+    QCOMPARE(am.currentPlayingId(), QString("test-msg-1"));
+
+    am.playAudio("test-msg-bad", "/etc/shadow", 1);
+    QCOMPARE(am.currentPlayingId(), QString("test-msg-1"));
+
+    am.pauseAudio();
+
+    am.cleanupLocalFile(audioUrl);
+    QVERIFY(!QFile::exists(localPath));
+}
+
+void TestFileTransfer::testReq35_AudioPlaybackCompletionAndLifecycleHardening() {
+    AudioManager am;
+    am.setStorageBoundary("https://neonect.local", "alice");
+
+    QString voiceDir = StoragePathResolver::mediaVoiceDirectory("https://neonect.local", "alice");
+    QDir().mkpath(voiceDir);
+    QString filePath = voiceDir + "/voice_note_test_playback.wav";
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QByteArray header(44, 0);
+    char *hdr = header.data();
+    memcpy(hdr + 0, "RIFF", 4);
+    *reinterpret_cast<uint32_t*>(hdr + 4) = 36 + 1600 * 2;
+    memcpy(hdr + 8, "WAVE", 4);
+    memcpy(hdr + 12, "fmt ", 4);
+    *reinterpret_cast<uint32_t*>(hdr + 16) = 16;
+    *reinterpret_cast<uint16_t*>(hdr + 20) = 1;
+    *reinterpret_cast<uint16_t*>(hdr + 22) = 1;
+    *reinterpret_cast<uint32_t*>(hdr + 24) = 16000;
+    *reinterpret_cast<uint32_t*>(hdr + 28) = 32000;
+    *reinterpret_cast<uint16_t*>(hdr + 32) = 2;
+    *reinterpret_cast<uint16_t*>(hdr + 34) = 16;
+    memcpy(hdr + 36, "data", 4);
+    *reinterpret_cast<uint32_t*>(hdr + 40) = 1600 * 2;
+    file.write(header);
+    std::vector<int16_t> samples(1600, 1000);
+    file.write(reinterpret_cast<const char*>(samples.data()), samples.size() * sizeof(int16_t));
+    file.close();
+
+    QString audioUrl = QUrl::fromLocalFile(filePath).toString();
+
+    QSignalSpy spyFinished(&am, &AudioManager::playbackFinished);
+    am.playAudio("test-pcm-track", audioUrl, 1);
+    QVERIFY(am.isPlaying());
+    QCOMPARE(am.currentPlayingId(), QString("test-pcm-track"));
+
+    QVERIFY(spyFinished.wait(3000));
+    QCOMPARE(spyFinished.count(), 1);
+    QCOMPARE(spyFinished.at(0).at(0).toString(), QString("test-pcm-track"));
+    QVERIFY(!am.isPlaying());
+    QCOMPARE(am.playbackProgress(), 1.0);
+    QCOMPARE(am.currentPlayingId(), QString(""));
+
+    am.playAudio("test-seek-track", audioUrl, 1);
+    QVERIFY(am.isPlaying());
+    am.seek("test-seek-track", 0.5);
+    QCOMPARE(am.playbackProgress(), 0.5);
+    am.pauseAudio();
+    QVERIFY(!am.isPlaying());
+    QCOMPARE(am.currentPlayingId(), QString("test-seek-track"));
+
+    am.cleanupLocalFile(audioUrl);
+    QVERIFY(!QFile::exists(filePath));
+}
+
+void TestFileTransfer::testReq36_AudioPlaybackRapidControlCyclesNoDeadlock() {
+    AudioManager am;
+    am.setStorageBoundary("https://neonect.local", "alice");
+
+    QString voiceDir = StoragePathResolver::mediaVoiceDirectory("https://neonect.local", "alice");
+    QDir().mkpath(voiceDir);
+    QString filePath = voiceDir + "/voice_note_rapid.wav";
+
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    QByteArray header(44, 0);
+    char *hdr = header.data();
+    memcpy(hdr + 0, "RIFF", 4);
+    *reinterpret_cast<uint32_t*>(hdr + 4) = 36 + 800 * 2;
+    memcpy(hdr + 8, "WAVE", 4);
+    memcpy(hdr + 12, "fmt ", 4);
+    *reinterpret_cast<uint32_t*>(hdr + 16) = 16;
+    *reinterpret_cast<uint16_t*>(hdr + 20) = 1;
+    *reinterpret_cast<uint16_t*>(hdr + 22) = 1;
+    *reinterpret_cast<uint32_t*>(hdr + 24) = 16000;
+    *reinterpret_cast<uint32_t*>(hdr + 28) = 32000;
+    *reinterpret_cast<uint16_t*>(hdr + 32) = 2;
+    *reinterpret_cast<uint16_t*>(hdr + 34) = 16;
+    memcpy(hdr + 36, "data", 4);
+    *reinterpret_cast<uint32_t*>(hdr + 40) = 800 * 2;
+    file.write(header);
+    std::vector<int16_t> samples(800, 500);
+    file.write(reinterpret_cast<const char*>(samples.data()), samples.size() * sizeof(int16_t));
+    file.close();
+
+    QString audioUrl = QUrl::fromLocalFile(filePath).toString();
+
+    for (int i = 0; i < 30; ++i) {
+        am.playAudio(QString("rapid-%1").arg(i), audioUrl, 1);
+        am.seek(QString("rapid-%1").arg(i), (i % 10) * 0.1);
+        am.setPlaybackSpeed((i % 3 == 0) ? 1.0 : ((i % 3 == 1) ? 1.5 : 2.0));
+        am.setVolume((i % 10) * 0.1);
+        am.toggleMute();
+        if (i % 2 == 0) {
+            am.pauseAudio();
+        }
+    }
+    am.pauseAudio();
+    QVERIFY(!am.isPlaying());
+
+    for (int i = 0; i < 15; ++i) {
+        am.startRecording();
+        am.cancelRecording();
+        QVERIFY(!am.isRecording());
+    }
+
+    am.cleanupLocalFile(audioUrl);
+    QVERIFY(!QFile::exists(filePath));
+}
+
+void TestFileTransfer::testReq37_OversizedChunkAndInvalidCapsRejected() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+
+    ctx.caps->m_envMax = 1000;
+    QJsonObject startOversized;
+    startOversized["type"] = "file_start";
+    startOversized["transfer_id"] = "10000000-0000-0000-0000-000000000001";
+    startOversized["file_size"] = 959;
+    startOversized["chunk_size"] = 959;
+    startOversized["chunk_count"] = 1;
+    startOversized["total_hash"] = QString(QByteArray(32, 'h').toBase64());
+    startOversized["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startOversized);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Chunk size exceeds envelope limit"));
+
+    QJsonObject startExact;
+    startExact["type"] = "file_start";
+    startExact["transfer_id"] = "10000000-0000-0000-0000-000000000002";
+    startExact["file_size"] = 958;
+    startExact["chunk_size"] = 958;
+    startExact["chunk_count"] = 1;
+    startExact["total_hash"] = QString(QByteArray(32, 'h').toBase64());
+    startExact["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startExact);
+    QCOMPARE(spyFailed.count(), 0);
+
+    ctx.caps->m_capState = CapabilityState::UNAVAILABLE;
+    QJsonObject startUnavail;
+    startUnavail["type"] = "file_start";
+    startUnavail["transfer_id"] = "10000000-0000-0000-0000-000000000003";
+    startUnavail["file_size"] = 100;
+    startUnavail["chunk_size"] = 100;
+    startUnavail["chunk_count"] = 1;
+    startUnavail["total_hash"] = QString(QByteArray(32, 'h').toBase64());
+    startUnavail["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startUnavail);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Capabilities unavailable"));
+
+    ctx.caps->m_capState = CapabilityState::INVALID;
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startUnavail);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Capabilities unavailable"));
+
+    ctx.caps->m_capState = CapabilityState::UNSUPPORTED;
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startUnavail);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Capabilities unavailable"));
+
+    ctx.caps->m_capState = CapabilityState::VALID;
+
+    QJsonObject startBadHash;
+    startBadHash["type"] = "file_start";
+    startBadHash["transfer_id"] = "10000000-0000-0000-0000-000000000004";
+    startBadHash["file_size"] = 100;
+    startBadHash["chunk_size"] = 100;
+    startBadHash["chunk_count"] = 1;
+    startBadHash["total_hash"] = QString(QByteArray(16, 'x').toBase64());
+    startBadHash["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startBadHash);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Invalid file hash"));
+
+    QJsonObject startOverflow;
+    startOverflow["type"] = "file_start";
+    startOverflow["transfer_id"] = "10000000-0000-0000-0000-000000000005";
+    startOverflow["file_size"] = QString::number(std::numeric_limits<qint64>::max());
+    startOverflow["chunk_size"] = 100;
+    startOverflow["chunk_count"] = 1;
+    startOverflow["total_hash"] = QString(QByteArray(32, 'h').toBase64());
+    startOverflow["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startOverflow);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Invalid transfer metadata"));
+
+    ctx.caps->m_envMax = 100 * 1024 * 1024;
+    QJsonObject startHuge;
+    startHuge["type"] = "file_start";
+    startHuge["transfer_id"] = "10000000-0000-0000-0000-000000000006";
+    qint64 twoTib = 2LL * 1024 * 1024 * 1024 * 1024;
+    startHuge["file_size"] = QString::number(twoTib);
+    startHuge["chunk_size"] = 1000000;
+    startHuge["chunk_count"] = static_cast<int>((twoTib + 999999) / 1000000);
+    startHuge["total_hash"] = QString(QByteArray(32, 'h').toBase64());
+    startHuge["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startHuge);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Transfer size exceeds limit"));
+}
+
+void TestFileTransfer::testReq38_SpoolCleanupOnCancelAndCompletedProtected() {
+    FTTestContext ctx;
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+
+    QJsonObject startMsg1;
+    startMsg1["type"] = "file_start";
+    startMsg1["transfer_id"] = "20000000-0000-0000-0000-000000000001";
+    startMsg1["file_size"] = 100;
+    startMsg1["chunk_size"] = 100;
+    startMsg1["chunk_count"] = 1;
+    startMsg1["total_hash"] = QString(QByteArray(32, 'a').toBase64());
+    startMsg1["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMsg1);
+    QString spool1 = spoolDir + "/20000000-0000-0000-0000-000000000001.recv.spool";
+    QVERIFY(QFile::exists(spool1));
+
+    QJsonObject cancelMsg1;
+    cancelMsg1["type"] = "file_cancel";
+    cancelMsg1["transfer_id"] = "20000000-0000-0000-0000-000000000001";
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", cancelMsg1);
+    QVERIFY(!QFile::exists(spool1));
+
+    QString fp = ctx.tempDir.path() + "/dummy_send.txt";
+    QFile fSend(fp);
+    QVERIFY(fSend.open(QIODevice::WriteOnly));
+    fSend.write(QByteArray(100, 'Z'));
+    fSend.close();
+
+    QString sendTid = "22222222-2222-2222-2222-222222222222";
+    ctx.ftm->startTransfer("peerUser", "peerDevice", fp, sendTid);
+    QString spool2 = spoolDir + "/" + sendTid + ".spool";
+    QVERIFY(QFile::exists(spool2));
+
+    ctx.ftm->cancelTransfer(sendTid, "peerDevice", "user cancelled");
+    QVERIFY(!QFile::exists(spool2));
+
+    QString completedFile = ctx.tempDir.path() + "/final_completed.txt";
+    QFile fComp(completedFile);
+    QVERIFY(fComp.open(QIODevice::WriteOnly));
+    fComp.write("completed file payload");
+    fComp.close();
+
+    E2EEFileTransfer txCompleted;
+    txCompleted.transfer_id = "20000000-0000-0000-0000-000000000003";
+    txCompleted.peer_device_id = "senderDevice";
+    txCompleted.is_sender = 0;
+    txCompleted.file_size = 22;
+    txCompleted.chunk_size = 100;
+    txCompleted.max_envelope_bytes = 0;
+    txCompleted.max_http_body_bytes = 0;
+    txCompleted.chunk_count = 1;
+    txCompleted.file_hash = QByteArray(32, 'c');
+    txCompleted.spool_path = completedFile;
+    txCompleted.root_file_key = QByteArray(32, 'k');
+    txCompleted.status = "completed";
+    txCompleted.created_at = QDateTime::currentSecsSinceEpoch();
+    ctx.store->saveFileTransfer(txCompleted);
+
+    ctx.ftm->cancelTransfer("20000000-0000-0000-0000-000000000003", "senderDevice", "cancel test");
+    QVERIFY(QFile::exists(completedFile));
+}
+
+void TestFileTransfer::testReq39_StartupSpoolCleanupPreservesActiveTransfers() {
+    FTTestContext ctx;
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+    QDir().mkpath(spoolDir);
+
+    E2EEFileTransfer txActive;
+    txActive.transfer_id = "30000000-0000-0000-0000-000000000004";
+    txActive.peer_device_id = "senderDevice";
+    txActive.is_sender = 0;
+    txActive.file_size = 100;
+    txActive.chunk_size = 100;
+    txActive.max_envelope_bytes = 0;
+    txActive.max_http_body_bytes = 0;
+    txActive.chunk_count = 1;
+    txActive.file_hash = QByteArray(32, 'd');
+    txActive.spool_path = spoolDir + "/30000000-0000-0000-0000-000000000004.recv.spool";
+    txActive.root_file_key = QByteArray(32, 'k');
+    txActive.status = "active";
+    txActive.created_at = QDateTime::currentSecsSinceEpoch();
+    ctx.store->saveFileTransfer(txActive);
+
+    QFile fActive(txActive.spool_path);
+    QVERIFY(fActive.open(QIODevice::WriteOnly));
+    fActive.write("active spool data");
+    fActive.close();
+
+    QString orphanSendPath = spoolDir + "/30000000-0000-0000-0000-000000000005.spool";
+    QFile fOrphanSend(orphanSendPath);
+    QVERIFY(fOrphanSend.open(QIODevice::WriteOnly));
+    fOrphanSend.write("orphan sender");
+    fOrphanSend.close();
+
+    QString orphanRecvPath = spoolDir + "/30000000-0000-0000-0000-000000000006.recv.spool";
+    QFile fOrphanRecv(orphanRecvPath);
+    QVERIFY(fOrphanRecv.open(QIODevice::WriteOnly));
+    fOrphanRecv.write("orphan receiver");
+    fOrphanRecv.close();
+
+    ctx.recreateFtm();
+
+    QVERIFY(QFile::exists(txActive.spool_path));
+    QVERIFY(!QFile::exists(orphanSendPath));
+    QVERIFY(!QFile::exists(orphanRecvPath));
+}
+
+void TestFileTransfer::testReq40_BitsetSafeAtMaxChunkCountAndRejectedAboveMax() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+    ctx.caps->m_envMax = 100 * 1024 * 1024;
+
+    QJsonObject startMax;
+    startMax["type"] = "file_start";
+    startMax["transfer_id"] = "40000000-0000-0000-0000-000000000001";
+    startMax["file_size"] = 128000000LL;
+    startMax["chunk_size"] = 64;
+    startMax["chunk_count"] = 2000000;
+    startMax["total_hash"] = QString(QByteArray(32, 'a').toBase64());
+    startMax["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMax);
+    QCOMPARE(spyFailed.count(), 0);
+
+    QJsonObject startAboveMax;
+    startAboveMax["type"] = "file_start";
+    startAboveMax["transfer_id"] = "40000000-0000-0000-0000-000000000002";
+    startAboveMax["file_size"] = 128000064LL;
+    startAboveMax["chunk_size"] = 64;
+    startAboveMax["chunk_count"] = 2000001;
+    startAboveMax["total_hash"] = QString(QByteArray(32, 'b').toBase64());
+    startAboveMax["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startAboveMax);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Chunk count exceeds limit"));
+
+    QJsonObject startExtreme;
+    startExtreme["type"] = "file_start";
+    startExtreme["transfer_id"] = "40000000-0000-0000-0000-000000000003";
+    startExtreme["file_size"] = 2147483641LL * 64;
+    startExtreme["chunk_size"] = 64;
+    startExtreme["chunk_count"] = 2147483641;
+    startExtreme["total_hash"] = QString(QByteArray(32, 'c').toBase64());
+    startExtreme["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startExtreme);
+    QCOMPARE(spyFailed.count(), 1);
+    QVERIFY(!ctx.store->m_transfers.contains("40000000-0000-0000-0000-000000000003_senderDevice"));
+}
+
+void TestFileTransfer::testReq41_MicroChunkingRejectedAndSmallFilesAllowed() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+    ctx.caps->m_envMax = 1000;
+
+    QJsonObject startTinyChunk;
+    startTinyChunk["type"] = "file_start";
+    startTinyChunk["transfer_id"] = "41000000-0000-0000-0000-000000000001";
+    startTinyChunk["file_size"] = 120;
+    startTinyChunk["chunk_size"] = 60;
+    startTinyChunk["chunk_count"] = 2;
+    startTinyChunk["total_hash"] = QString(QByteArray(32, 'a').toBase64());
+    startTinyChunk["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startTinyChunk);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Chunk size too small"));
+
+    QJsonObject startSmallFile;
+    startSmallFile["type"] = "file_start";
+    startSmallFile["transfer_id"] = "41000000-0000-0000-0000-000000000002";
+    startSmallFile["file_size"] = 10;
+    startSmallFile["chunk_size"] = 10;
+    startSmallFile["chunk_count"] = 1;
+    startSmallFile["total_hash"] = QString(QByteArray(32, 'b').toBase64());
+    startSmallFile["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startSmallFile);
+    QCOMPARE(spyFailed.count(), 0);
+
+    QJsonObject startExact64;
+    startExact64["type"] = "file_start";
+    startExact64["transfer_id"] = "41000000-0000-0000-0000-000000000003";
+    startExact64["file_size"] = 70;
+    startExact64["chunk_size"] = 64;
+    startExact64["chunk_count"] = 2;
+    startExact64["total_hash"] = QString(QByteArray(32, 'c').toBase64());
+    startExact64["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startExact64);
+    QCOMPARE(spyFailed.count(), 0);
+}
+
+void TestFileTransfer::testReq42_MalformedAndTraversalTransferIdsRejected() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+
+    QJsonObject startTraversal;
+    startTraversal["type"] = "file_start";
+    startTraversal["transfer_id"] = "../../../../etc/passwd";
+    startTraversal["file_size"] = 100;
+    startTraversal["chunk_size"] = 100;
+    startTraversal["chunk_count"] = 1;
+    startTraversal["total_hash"] = QString(QByteArray(32, 'a').toBase64());
+    startTraversal["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startTraversal);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Invalid transfer ID"));
+
+    QJsonObject cancelTraversal;
+    cancelTraversal["type"] = "file_cancel";
+    cancelTraversal["transfer_id"] = "../evil";
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", cancelTraversal);
+
+    ctx.ftm->cancelTransfer("99999999-0000-0000-0000-000000000000", "senderDevice", "test");
+
+    QJsonObject startSlash;
+    startSlash["type"] = "file_start";
+    startSlash["transfer_id"] = "42000000-0000/0000-0000-000000000001";
+    startSlash["file_size"] = 100;
+    startSlash["chunk_size"] = 100;
+    startSlash["chunk_count"] = 1;
+    startSlash["total_hash"] = QString(QByteArray(32, 'a').toBase64());
+    startSlash["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startSlash);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Invalid transfer ID"));
+
+    QVERIFY(!QFile::exists(spoolDir + "/../evil.recv.spool"));
+}
+
+void TestFileTransfer::testReq43_CapabilityUnknownFailsClosedUntilValid() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+
+    ctx.caps->m_capState = CapabilityState::UNKNOWN;
+    ctx.caps->m_envMax = 1000;
+
+    QJsonObject startUnknown;
+    startUnknown["type"] = "file_start";
+    startUnknown["transfer_id"] = "43000000-0000-0000-0000-000000000001";
+    startUnknown["file_size"] = 100;
+    startUnknown["chunk_size"] = 100;
+    startUnknown["chunk_count"] = 1;
+    startUnknown["total_hash"] = QString(QByteArray(32, 'a').toBase64());
+    startUnknown["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startUnknown);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Capabilities unavailable"));
+
+    ctx.caps->m_capState = CapabilityState::VALID;
+
+    QJsonObject startValid;
+    startValid["type"] = "file_start";
+    startValid["transfer_id"] = "43000000-0000-0000-0000-000000000002";
+    startValid["file_size"] = 100;
+    startValid["chunk_size"] = 100;
+    startValid["chunk_count"] = 1;
+    startValid["total_hash"] = QString(QByteArray(32, 'b').toBase64());
+    startValid["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startValid);
+    QCOMPARE(spyFailed.count(), 0);
 }

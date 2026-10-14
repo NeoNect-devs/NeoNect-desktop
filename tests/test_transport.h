@@ -39,6 +39,8 @@ private slots:
     void testMalformedFrame();
     void testTlsValidationFailure();
     void testTlsConnectionSuccess();
+    void testAutoReconnectAfterDisconnectAndRefused();
+    void testUpgradeFailureDoesNotLogSensitiveHeaders();
 
 private:
     void setupServer(bool ssl = false);

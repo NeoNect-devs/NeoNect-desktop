@@ -88,6 +88,7 @@ int main(int argc, char *argv[]) {
                 std::cout << f.readAll().toStdString() << std::endl;
             }
         }
+        QFile::remove("storage_log.txt");
         std::cout << "[TestStorage Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
@@ -100,6 +101,7 @@ int main(int argc, char *argv[]) {
                 std::cout << f.readAll().toStdString() << std::endl;
             }
         }
+        QFile::remove("models_log.txt");
         std::cout << "[TestModels Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
@@ -239,10 +241,12 @@ int main(int argc, char *argv[]) {
 
         std::cout << "--> Testing testSelfDirectMessageAndSavedMessagesFlow..." << std::endl;
         int r18 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testSelfDirectMessageAndSavedMessagesFlow" << "-o" << "test_self.txt,txt");
+        QFile::remove("test_self.txt");
         std::cout << "    Result: " << (r18 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testRetryMessageFlow..." << std::endl;
         int r19 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testRetryMessageFlow" << "-o" << "test_retry.txt,txt");
+        QFile::remove("test_retry.txt");
         std::cout << "    Result: " << (r19 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testFunctionalOnlineIdleDndInvisibleStates..." << std::endl;
@@ -261,6 +265,7 @@ int main(int argc, char *argv[]) {
                 std::cout << f.readAll().toStdString() << std::endl;
             }
         }
+        QFile::remove("dn_log.txt");
         std::cout << "    Result: " << (r22 == 0 ? "PASSED" : "FAILED") << std::endl;
 
         std::cout << "--> Testing testAvatarProcessingAndPeerSync..." << std::endl;
@@ -271,6 +276,7 @@ int main(int argc, char *argv[]) {
                 std::cout << f.readAll().toStdString() << std::endl;
             }
         }
+        QFile::remove("av_log.txt");
         std::cout << "    Result: " << (r23 == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= r23;
 
@@ -282,6 +288,7 @@ int main(int argc, char *argv[]) {
                 std::cout << f.readAll().toStdString() << std::endl;
             }
         }
+        QFile::remove("av_iso_log.txt");
         std::cout << "    Result: " << (r23_iso == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= r23_iso;
 
@@ -302,10 +309,21 @@ int main(int argc, char *argv[]) {
                 std::cout << f.readAll().toStdString() << std::endl;
             }
         }
+        QFile::remove("vn_iso_log.txt");
         std::cout << "    Result: " << (r_vn_iso == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= r_vn_iso;
 
-        status |= (r1 | r2 | r3 | 0 | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20 | r21 | r22 | r23 | r23_iso | r_vn_iso);
+        std::cout << "--> Testing testPhase3AuthSessionDeviceHarden..." << std::endl;
+        int r_p3 = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testPhase3AuthSessionDeviceHarden");
+        std::cout << "    Result: " << (r_p3 == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= r_p3;
+
+        std::cout << "--> Testing testNetworkManagerUploadLimitContract..." << std::endl;
+        int r_uplim = QTest::qExec(&ts, QStringList() << "NeoNectTests" << "testNetworkManagerUploadLimitContract");
+        std::cout << "    Result: " << (r_uplim == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= r_uplim;
+
+        status |= (r1 | r2 | r3 | r_adapter | r_decoding | r_upload | r5 | r6 | r6_2 | r7 | r8 | r9 | r10 | r11 | r12 | r13 | r14 | r15 | r16 | r17 | r18 | r19 | r20 | r21 | r22 | r23 | r23_iso | r_vn_iso | r_p3 | r_uplim);
     }
 
     {
@@ -360,6 +378,24 @@ int main(int argc, char *argv[]) {
         TestSecureStorage tss;
         int res = QTest::qExec(&tss);
         std::cout << "[TestSecureStorage Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        NeoNect::Tests::TestStep9Relay tsr;
+        int res = QTest::qExec(&tsr);
+        std::cout << "[TestStep9Relay Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestSessionManager tsm;
+        int res = QTest::qExec(&tsm);
+        std::cout << "[TestSessionManager Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
+        status |= res;
+    }
+    {
+        TestMessagingCore tmc;
+        int res = QTest::qExec(&tmc);
+        std::cout << "[TestMessagingCore Result]: " << (res == 0 ? "PASSED" : "FAILED") << std::endl;
         status |= res;
     }
     {

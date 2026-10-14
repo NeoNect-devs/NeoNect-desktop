@@ -1,6 +1,7 @@
 #include "StorageContext.h"
 #include <QStandardPaths>
 #include <QDir>
+#include <QDebug>
 #include <iostream>
 
 namespace NeoNect {
@@ -15,7 +16,11 @@ public:
 };
 }
 
-StorageContext::StorageContext(const QString& serverUrl, const QString& username, bool isMockMode, const QString& profile)
+StorageContext::StorageContext(const QString& serverUrl,
+                               const QString& username,
+                               bool isMockMode,
+                               const QString& profile,
+                               std::shared_ptr<IOSSecretStore> customSecretStore)
     : m_serverUrl(serverUrl), m_username(username)
 {
     if (m_username.isEmpty()) {
@@ -34,7 +39,9 @@ StorageContext::StorageContext(const QString& serverUrl, const QString& username
     std::shared_ptr<IOSSecretStore> legacySecretStore;
     QString legacyProfileId = profile.isEmpty() ? username : QString("%1_%2").arg(profile, username);
 
-    if (isMockMode) {
+    if (customSecretStore) {
+        m_secretStore = std::move(customSecretStore);
+    } else if (isMockMode) {
         m_secretStore = std::make_shared<StorageContextMockSecretStore>();
     } else {
         m_secretStore = std::make_shared<PlatformSecretStore>(e2eeDir);
@@ -45,7 +52,13 @@ StorageContext::StorageContext(const QString& serverUrl, const QString& username
     
     QString secureDbPath = StoragePathResolver::e2eeDbPath(serverUrl, username);
     QString keyProfileId = StoragePathResolver::serverKey(serverUrl) + "_" + StoragePathResolver::accountKey(username);
-    m_secureStore->initialize(secureDbPath, keyProfileId);
+    auto initRes = m_secureStore->initialize(secureDbPath, keyProfileId);
+    if (!initRes.success) {
+        m_e2eeError = initRes.message;
+        qCritical() << "[StorageContext] CRITICAL: Failed to initialize E2EE store:" << initRes.message;
+        m_secureStore->close();
+        m_secureStore.reset();
+    }
     
     // Instantiate Message Storage
     QString msgDbPath = StoragePathResolver::messageDbPath(serverUrl, username);

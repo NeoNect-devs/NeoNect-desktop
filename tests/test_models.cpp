@@ -180,6 +180,7 @@ void TestModels::testMessageStatusAndRetry() {
 void TestModels::testAudioManagerRecordingAndPlayback() {
     auto *audio = new AudioManager(this);
     QVERIFY(audio != nullptr);
+    audio->setStorageBoundary("https://models-test.local", "alice");
 
     // Test recording start/cancel
     audio->startRecording();
@@ -187,8 +188,15 @@ void TestModels::testAudioManagerRecordingAndPlayback() {
     audio->cancelRecording();
     QVERIFY(!audio->isRecording());
 
+    // Record a real voice note inside the authenticated storage boundary
+    audio->startRecording();
+    QTest::qWait(100);
+    QVariantMap recResult = audio->stopRecording();
+    QString audioUrl = recResult.value("audioUrl").toString();
+    QVERIFY(!audioUrl.isEmpty());
+
     // Test playback controls
-    audio->playAudio("test_msg_99", "file.wav", 10);
+    audio->playAudio("test_msg_99", audioUrl, 10);
     QVERIFY(audio->isPlaying());
     QCOMPARE(audio->currentPlayingId(), "test_msg_99");
 
@@ -200,6 +208,8 @@ void TestModels::testAudioManagerRecordingAndPlayback() {
 
     audio->pauseAudio();
     QVERIFY(!audio->isPlaying());
+
+    audio->cleanupLocalFile(audioUrl);
 }
 
 void TestModels::testAudioManagerVolumePersistence() {

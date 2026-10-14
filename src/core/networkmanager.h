@@ -23,6 +23,7 @@
 #include <QStringList>
 #include <QVariantMap>
 #include <memory>
+#include <mutex>
 
 #include "../transport/ihttptransport.h"
 #include "../storage/isettingsrepository.h"
@@ -75,6 +76,18 @@ class NetworkManager : public QObject {
     Q_PROPERTY(bool isInvisible READ isInvisible NOTIFY isInvisibleChanged)
     /** @brief True if Do-Not-Disturb is active. */
     Q_PROPERTY(bool isDnd READ isDnd NOTIFY isDndChanged)
+    /** @brief Last authentication or E2EE storage initialization error message. */
+    Q_PROPERTY(QString lastAuthError READ lastAuthError NOTIFY lastAuthErrorChanged)
+    /** @brief Maximum single envelope payload size in bytes allowed by server capabilities. */
+    Q_PROPERTY(qint64 maxEnvelopeBytes READ maxEnvelopeBytes NOTIFY capabilitiesChanged)
+    /** @brief Maximum upload / envelope size in bytes (alias for maxEnvelopeBytes). */
+    Q_PROPERTY(qint64 maxUploadBytes READ maxUploadBytes NOTIFY capabilitiesChanged)
+    /** @brief Maximum HTTP body size in bytes allowed by server capabilities. */
+    Q_PROPERTY(qint64 maxHttpBodyBytes READ maxHttpBodyBytes NOTIFY capabilitiesChanged)
+    /** @brief Maximum total file size allowed for chunked attachment transfer (0 = unconstrained by server). */
+    Q_PROPERTY(qint64 maxFileTransferBytes READ maxFileTransferBytes NOTIFY capabilitiesChanged)
+    /** @brief Capabilities availability state ("valid", "unknown", "unavailable", "unsupported", "invalid"). */
+    Q_PROPERTY(QString capabilityState READ capabilityState NOTIFY capabilitiesChanged)
 
 public:
     /**
@@ -86,15 +99,16 @@ public:
      * @param deviceService Shared pointer to device identity service.
      * @param relayService Shared pointer to relay gateway service.
      * @param friendService Shared pointer to friend management service.
+     * @param capabilities Shared pointer to server capabilities repository.
      * @param parent Optional parent QObject for Qt tree ownership.
      */
     explicit NetworkManager(std::shared_ptr<NeoNect::Transport::IHttpTransport> transport,
                             std::shared_ptr<NeoNect::Storage::ISettingsRepository> storage,
-                            
                             std::shared_ptr<NeoNect::Services::AuthService> authService,
                             std::shared_ptr<NeoNect::Services::DeviceService> deviceService,
                             std::shared_ptr<NeoNect::Services::RelayService> relayService,
                             std::shared_ptr<NeoNect::Services::FriendService> friendService,
+                            std::shared_ptr<NeoNect::Storage::ICapabilitiesRepository> capabilities = nullptr,
                             QObject *parent = nullptr);
 
     /**
@@ -118,8 +132,37 @@ public:
     QString displayName() const;
     /** @brief Returns local avatar image URL. */
     QString avatarUrl() const;
+
+    /** @brief Sets capabilities repository. */
+    void setCapabilities(std::shared_ptr<NeoNect::Storage::ICapabilitiesRepository> capabilities);
+    /** @brief Returns capabilities repository. */
+    std::shared_ptr<NeoNect::Storage::ICapabilitiesRepository> capabilities() const { return m_capabilities; }
+
+    /** @brief Returns maximum single envelope payload size in bytes allowed by server capabilities. */
+    qint64 maxEnvelopeBytes() const;
+    /** @brief Returns maximum single envelope payload size in bytes (alias for maxEnvelopeBytes). */
+    qint64 maxUploadBytes() const;
+    /** @brief Returns maximum HTTP body size in bytes allowed by server capabilities. */
+    qint64 maxHttpBodyBytes() const;
+    /** @brief Returns maximum total file size allowed for chunked attachment transfer (0 = unconstrained by server). */
+    qint64 maxFileTransferBytes() const;
+    /** @brief Returns capability state string ("valid", "unknown", "unavailable", "unsupported", "invalid"). */
+    QString capabilityState() const;
+
+    /** @brief Validates if a file of given size is allowed to be attached for chunked transfer under current capabilities. */
+    Q_INVOKABLE bool isFileSizeAllowed(qint64 sizeBytes) const;
+    /** @brief Validates if a single envelope payload of given size is allowed under current capabilities. */
+    Q_INVOKABLE bool isEnvelopeSizeAllowed(qint64 sizeBytes) const;
+    /** @brief Formats byte count into human-readable string. */
+    Q_INVOKABLE QString formatBytes(qint64 bytes) const;
     /** @brief Checks if a background request is in progress. */
     bool isLoading() const { return m_isLoading; }
+    /** @brief Returns last authentication or E2EE initialization error. */
+    QString lastAuthError() const { return m_lastAuthError; }
+    /** @brief Aborts active session locally and surfaces an explicit error without deleting local data. */
+    void abortSessionWithError(const QString &errorMessage);
+    /** @brief Registers a synchronous validator invoked before finalizing login to ensure E2EE storage is ready. */
+    void setSessionValidator(std::function<bool(QString &errorOut)> validator) { m_sessionValidator = std::move(validator); }
     /** @brief Checks if connection to server is active. */
     bool isConnected() const;
     /** @brief Returns cached friends list. */
@@ -214,6 +257,7 @@ public:
      * @brief Logs out current user, invalidates session token, and resets state.
      */
     Q_INVOKABLE void logoutUser();
+    void resumeSavedSession();
 
     /**
      * @brief Alias for @ref logoutUser.
@@ -451,9 +495,13 @@ signals:
     void isInvisibleChanged(bool invisible);
     /** @brief Emitted when Do-Not-Disturb toggles. */
     void isDndChanged(bool dnd);
+    /** @brief Emitted when lastAuthError property changes. */
+    void lastAuthErrorChanged();
 
     /** @brief Emitted with server verification results. */
     void verificationResult(bool success, const QString &message);
+    /** @brief Emitted when server capabilities/upload limits are updated. */
+    void capabilitiesChanged();
     /** @brief Emitted with username availability results. */
     void availabilityResult(const QString &username, bool available, const QString &error);
     /** @brief Emitted with registration outcome. */
@@ -511,9 +559,12 @@ private:
 
     bool m_isLoading{false};
     QString m_sessionToken;
+    QString m_lastAuthError;
+    std::function<bool(QString &)> m_sessionValidator;
     QString m_pendingBookmarkUsername;
     QString m_pendingBookmarkPassword;
     QVariantList m_openConversations;
+    mutable std::recursive_mutex m_openConversationsMutex;
 
     QString m_userStatusPreference{"online"};
     bool m_isAutoIdle{false};

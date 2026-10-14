@@ -16,6 +16,7 @@ AuthService::AuthService(std::shared_ptr<Transport::IHttpTransport> transport,
 }
 
 void AuthService::verifyServer(const QString &address) {
+    const quint64 generation = ++m_verifyGeneration;
     QString cleanUrl = Transport::HttpTransport::cleanUrl(address);
     bool isAllowed = cleanUrl.startsWith("https://");
     if (!isAllowed) {
@@ -40,17 +41,20 @@ void AuthService::verifyServer(const QString &address) {
         m_capabilities->replace(std::nullopt, std::nullopt, std::nullopt, Storage::CapabilityState::UNKNOWN);
     }
 
-    m_transport->get(Constants::EP_HEALTH, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_HEALTH, {}, this, [this, generation](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+        if (generation != m_verifyGeneration) {
+            return;
+        }
         if (error == QNetworkReply::NoError || statusCode == 200) {
             auto doc = QJsonDocument::fromJson(data);
             if (!doc.isNull() && (doc.object().value("status").toString() == "success" ||
                                  doc.object().value("status").toString() == "ok" ||
                                  doc.object().contains("status"))) {
-                fetchCapabilities();
+                fetchCapabilities(generation);
                 return;
             }
             if (statusCode == 200) {
-                fetchCapabilities();
+                fetchCapabilities(generation);
                 return;
             }
         }
@@ -89,6 +93,7 @@ void AuthService::checkUsernameAvailability(const QString &username) {
 }
 
 void AuthService::registerUser(const QString &username, const QString &password) {
+    ++m_verifyGeneration;
     QString trimmedUser = username.trimmed();
     if (trimmedUser.length() < Constants::MIN_USERNAME_LENGTH) {
         emit registrationResult(false, "Username must be at least 3 characters long.");
@@ -139,6 +144,7 @@ void AuthService::registerUser(const QString &username, const QString &password)
 }
 
 void AuthService::loginUser(const QString &username, const QString &password) {
+    ++m_verifyGeneration;
     QJsonObject body;
     body["username"] = username.trimmed();
     body["password"] = password;
@@ -174,6 +180,7 @@ void AuthService::loginUser(const QString &username, const QString &password) {
 }
 
 void AuthService::teardownLocalSession() {
+    ++m_verifyGeneration;
     if (m_onBeforeTeardown) {
         m_onBeforeTeardown(m_storage->username());
     }
@@ -213,8 +220,11 @@ void AuthService::fetchUserProfile() {
     });
 }
 
-void AuthService::fetchCapabilities() {
-    m_transport->get(Constants::EP_CAPABILITIES, {}, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &) {
+void AuthService::fetchCapabilities(quint64 generation) {
+    m_transport->get(Constants::EP_CAPABILITIES, {}, this, [this, generation](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &) {
+        if (generation != m_verifyGeneration) {
+            return;
+        }
         if (!m_capabilities) {
             emit verificationResult(true, "Connected to NeoNect Server");
             return;

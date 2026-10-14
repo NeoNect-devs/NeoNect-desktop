@@ -41,6 +41,7 @@ public:
 };
 
 struct TestContext {
+    QString dbPath;
     std::shared_ptr<OpenSSLBackend> backend;
     std::shared_ptr<XEdDSAAdapter> xeddsa;
     std::shared_ptr<Storage::SecureE2EEStore> store;
@@ -53,8 +54,23 @@ struct TestContext {
     QList<QByteArray> sentEnvelopes;
     QList<QByteArray> receivedPlaintexts;
 
+    ~TestContext() {
+        manager.reset();
+        if (store) {
+            store->close();
+            store.reset();
+        }
+        if (!dbPath.isEmpty()) {
+            QFile::remove(dbPath);
+            QFile::remove(dbPath + "-wal");
+            QFile::remove(dbPath + "-shm");
+        }
+    }
+
     void setup(const QString& name) {
-        QString dbPath = name + QString::number(QDateTime::currentMSecsSinceEpoch()) + ".db";
+        QString cleanName = name;
+        cleanName.replace(':', '_');
+        dbPath = QDir::tempPath() + "/neonect_sm_test_" + cleanName + "_" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".db";
         QFile::remove(dbPath);
         backend = std::make_shared<OpenSSLBackend>();
         xeddsa = std::make_shared<XEdDSAAdapter>();
@@ -404,4 +420,357 @@ void TestSessionManager::testDuplicateDeliveryHandled() {
     alice.sentEnvelopes.takeFirst(); // discard first
     auto aRes = alice.manager->handleEnvelope(bob.sentEnvelopes.takeFirst(), metaB);
     QVERIFY(aRes.success);
+}
+
+void TestSessionManager::testSpoofedSenderRejected() {
+    TestContext eve, bob;
+    eve.setup("eve_spoof");
+    bob.setup("bob_spoof");
+
+    auto bobIdentityRes = bob.store->getIdentity();
+    auto bobSPK = bob.backend->GenerateX25519KeyPair();
+    auto bobOPK = bob.backend->GenerateX25519KeyPair();
+    QByteArray spkEncoded = KeyEncoding::Encode(bobSPK.second);
+    ByteView spkView{reinterpret_cast<const uint8_t*>(spkEncoded.constData()), static_cast<size_t>(spkEncoded.size())};
+    IdentityKeyPair bobIdKp;
+    bobIdKp.privateKey.data.resize(32);
+    std::copy(bobIdentityRes.data.value().private_key.constData(), bobIdentityRes.data.value().private_key.constData() + 32, bobIdKp.privateKey.data.data());
+    bobIdKp.publicKey.data.resize(32);
+    std::copy(bobIdentityRes.data.value().public_key.constData(), bobIdentityRes.data.value().public_key.constData() + 32, bobIdKp.publicKey.data.data());
+    auto sig = bob.xeddsa->sign(bobIdKp.privateKey, spkView);
+
+    X3DH::BobPreKeyBundle bundle;
+    bundle.identityKey = bobIdKp.publicKey;
+    bundle.signedPreKey = bobSPK.second;
+    bundle.signedPreKeyId = 1;
+    bundle.signedPreKeySignature = sig;
+    bundle.oneTimePreKey = bobOPK.second;
+    bundle.oneTimePreKeyId = 7;
+
+    SignedPreKey spkRecord;
+    spkRecord.id = 1;
+    spkRecord.privateKey = std::move(bobSPK.first);
+    spkRecord.publicKey = bobSPK.second;
+    spkRecord.signature = sig;
+    bob.preKeyStore->storeSignedPreKey(std::move(spkRecord));
+
+    OneTimePreKey opkRecord;
+    opkRecord.id = 7;
+    opkRecord.privateKey = std::move(bobOPK.first);
+    opkRecord.publicKey = bobOPK.second;
+    std::vector<OneTimePreKey> opks;
+    opks.push_back(std::move(opkRecord));
+    bob.preKeyStore->storeOneTimePreKeys(std::move(opks));
+
+    const QString eveDeviceId = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+    const QString bobDeviceId = "f47ac10b-58cc-4372-a567-0e02b2c3d479";
+
+    // 1. Eve crafts an InitialEnvelope whose JSON payload claims senderId="alice", sent from UUID device eveDeviceId
+    QByteArray spoofedInitialJson = R"({"messageId":"spoof1","conversationId":"dms:alice","senderId":"alice","receiverId":"bob","plaintext":"fake alice"})";
+    auto createRes = eve.manager->createSession("bob", bobDeviceId, bundle, "spoof1", spoofedInitialJson);
+    QVERIFY(createRes.success);
+    QByteArray spoofedInitialEnv = eve.sentEnvelopes.takeFirst();
+
+    Transport::TransportMetadata eveMeta;
+    eveMeta.senderDeviceId = eveDeviceId;
+    eveMeta.recipientDeviceId = bobDeviceId;
+
+    // 1a. Without senderVerifier configured, handleEnvelope must fail closed when senderUserId is omitted
+    auto unverifiedHandleRes = bob.manager->handleEnvelope(spoofedInitialEnv, eveMeta);
+    QVERIFY(!unverifiedHandleRes.success);
+    QCOMPARE(bob.receivedPlaintexts.size(), 0);
+    QCOMPARE(bob.preKeyStore->availableOneTimePreKeyCount(), static_cast<size_t>(1));
+    QVERIFY(!bob.store->getSession("alice:" + eveDeviceId).success);
+
+    Transport::TransportMetadata unverifiedColonMeta;
+    unverifiedColonMeta.senderDeviceId = "alice:evil_dev";
+    unverifiedColonMeta.recipientDeviceId = bobDeviceId;
+    auto unverifiedColonRes = bob.manager->handleEnvelope(spoofedInitialEnv, unverifiedColonMeta);
+    QVERIFY(!unverifiedColonRes.success);
+    QCOMPARE(bob.receivedPlaintexts.size(), 0);
+    QCOMPARE(bob.preKeyStore->availableOneTimePreKeyCount(), static_cast<size_t>(1));
+    QVERIFY(!bob.store->getSession("alice:evil_dev").success);
+
+    // 1b. With senderVerifier configured against registered directory keys, spoofing "alice" from Eve's UUID device is rejected
+    QByteArray expectedEvePubKey = eve.store->getIdentity().data.value().public_key;
+    bool verifierCalled = false;
+    bob.manager->setSenderVerifier([&](const QString& userId, const QString& deviceId, const QByteArray& identityKey) {
+        verifierCalled = true;
+        return userId == "eve" && deviceId == eveDeviceId && identityKey == expectedEvePubKey;
+    });
+
+    auto spoofHandleRes = bob.manager->handleEnvelope(spoofedInitialEnv, eveMeta);
+    QVERIFY(verifierCalled);
+    QVERIFY(!spoofHandleRes.success);
+    QCOMPARE(bob.receivedPlaintexts.size(), 0);
+    // OPK 7 must NOT have been consumed by the spoofed InitialEnvelope
+    QCOMPARE(bob.preKeyStore->availableOneTimePreKeyCount(), static_cast<size_t>(1));
+    QVERIFY(!bob.store->getSession("alice:" + eveDeviceId).success);
+
+    // 1c. Eve registers a colon-prefixed device ID "alice:evil_dev" to try to trick prefix parsing when senderVerifier is active
+    verifierCalled = false;
+    Transport::TransportMetadata colonSpoofMeta;
+    colonSpoofMeta.senderDeviceId = "alice:evil_dev";
+    colonSpoofMeta.recipientDeviceId = bobDeviceId;
+    auto colonSpoofRes = bob.manager->handleEnvelope(spoofedInitialEnv, colonSpoofMeta);
+    QVERIFY(verifierCalled);
+    QVERIFY(!colonSpoofRes.success);
+    QCOMPARE(bob.receivedPlaintexts.size(), 0);
+    QCOMPARE(bob.preKeyStore->availableOneTimePreKeyCount(), static_cast<size_t>(1));
+    QVERIFY(!bob.store->getSession("alice:evil_dev").success);
+    QVERIFY(!bob.store->getSession("alice:alice:evil_dev").success);
+
+    // 1d. Eve sends an InitialEnvelope omitting "senderId" (extractedSender=="") on both bare UUID and "alice:evil_dev"
+    // to attempt a 2-packet bind bypass or unauthenticated OPK exhaustion
+    QByteArray emptySenderInitialJson = R"({"messageId":"spoof_empty","type":"init"})";
+    eve.store->closeAndWipeDatabase();
+    eve.setup("eve_empty_sender");
+    expectedEvePubKey = eve.store->getIdentity().data.value().public_key;
+    auto emptySenderCreateRes = eve.manager->createSession("bob", bobDeviceId, bundle, "spoof_empty", emptySenderInitialJson);
+    QVERIFY(emptySenderCreateRes.success);
+    QByteArray emptySenderInitialEnv = eve.sentEnvelopes.takeFirst();
+
+    auto emptySenderBareRes = bob.manager->handleEnvelope(emptySenderInitialEnv, eveMeta);
+    QVERIFY(!emptySenderBareRes.success);
+    QCOMPARE(bob.preKeyStore->availableOneTimePreKeyCount(), static_cast<size_t>(1));
+    QVERIFY(!bob.store->getSession(eveDeviceId).success);
+
+    verifierCalled = false;
+    auto emptySenderColonRes = bob.manager->handleEnvelope(emptySenderInitialEnv, colonSpoofMeta);
+    QVERIFY(verifierCalled);
+    QVERIFY(!emptySenderColonRes.success);
+    QCOMPARE(bob.preKeyStore->availableOneTimePreKeyCount(), static_cast<size_t>(1));
+    QVERIFY(!bob.store->getSession("alice:evil_dev").success);
+
+    // 2. Now Eve establishes a legitimate session as "eve" on eveDeviceId, then tries to spoof "alice" in a RatchetEnvelope
+    QByteArray legitInitialJson = R"({"messageId":"legit1","conversationId":"dms:eve","senderId":"eve","receiverId":"bob","plaintext":"hello from eve"})";
+    eve.store->closeAndWipeDatabase();
+    eve.setup("eve_legit");
+    expectedEvePubKey = eve.store->getIdentity().data.value().public_key;
+    auto legitCreateRes = eve.manager->createSession("bob", bobDeviceId, bundle, "legit1", legitInitialJson);
+    QVERIFY(legitCreateRes.success);
+    auto legitHandleRes = bob.manager->handleEnvelope(eve.sentEnvelopes.takeFirst(), eveMeta);
+    QVERIFY2(legitHandleRes.success, legitHandleRes.message.toUtf8().constData());
+    QCOMPARE(bob.receivedPlaintexts.size(), 1);
+    QCOMPARE(bob.preKeyStore->availableOneTimePreKeyCount(), static_cast<size_t>(0));
+
+    // Subsequent RatchetEnvelope from Eve spoofing senderId="alice" must be rejected
+    QByteArray spoofedRatchetJson = R"({"messageId":"spoof2","conversationId":"dms:alice","senderId":"alice","receiverId":"bob","plaintext":"ratchet spoof"})";
+    auto sendSpoofRes = eve.manager->sendMessage("bob:" + bobDeviceId, spoofedRatchetJson, "spoof2", "bob", bobDeviceId);
+    QVERIFY(sendSpoofRes.success);
+    auto ratchetSpoofRes = bob.manager->handleEnvelope(eve.sentEnvelopes.takeFirst(), eveMeta);
+    QVERIFY(!ratchetSpoofRes.success);
+    QCOMPARE(bob.receivedPlaintexts.size(), 1);
+
+    // 3. Another user "alice" whose bare device ID happens to match eveDeviceId must be able to establish "alice:<eveDeviceId>"
+    // without colliding with existing "eve:<eveDeviceId>"
+    TestContext alice;
+    alice.setup("alice_legit_same_dev");
+    QByteArray expectedAlicePubKey = alice.store->getIdentity().data.value().public_key;
+    bob.manager->setSenderVerifier([&](const QString& userId, const QString& deviceId, const QByteArray& identityKey) {
+        if (userId == "eve" && deviceId == eveDeviceId && identityKey == expectedEvePubKey) return true;
+        if (userId == "alice" && deviceId == eveDeviceId && identityKey == expectedAlicePubKey) return true;
+        return false;
+    });
+    X3DH::BobPreKeyBundle bundleNoOpk = bundle;
+    bundleNoOpk.oneTimePreKey = std::nullopt;
+    bundleNoOpk.oneTimePreKeyId = std::nullopt;
+    QByteArray aliceInitialJson = R"({"messageId":"alice1","conversationId":"dms:alice","senderId":"alice","receiverId":"bob","plaintext":"hello from real alice"})";
+    auto aliceCreateRes = alice.manager->createSession("bob", bobDeviceId, bundleNoOpk, "alice1", aliceInitialJson);
+    QVERIFY(aliceCreateRes.success);
+    auto aliceHandleRes = bob.manager->handleEnvelope(alice.sentEnvelopes.takeFirst(), eveMeta);
+    QVERIFY2(aliceHandleRes.success, aliceHandleRes.message.toUtf8().constData());
+    QCOMPARE(bob.receivedPlaintexts.size(), 2);
+    QVERIFY(bob.store->getSession("alice:" + eveDeviceId).success);
+    QVERIFY(bob.store->getSession("eve:" + eveDeviceId).success);
+
+    // 3b. Both "eve:<eveDeviceId>" and "alice:<eveDeviceId>" must be able to send follow-up RatchetEnvelopes
+    // when metadata.senderUserId is omitted, without the newer session shadowing the older one, while
+    // cross-user senderId spoofing inside RatchetEnvelopes remains blocked.
+    QByteArray eveFollowupJson = R"({"messageId":"eve_f1","conversationId":"dms:eve","senderId":"eve","receiverId":"bob","plaintext":"legit followup from eve"})";
+    QVERIFY(eve.manager->sendMessage("bob:" + bobDeviceId, eveFollowupJson, "eve_f1", "bob", bobDeviceId).success);
+    auto eveFollowupRes = bob.manager->handleEnvelope(eve.sentEnvelopes.takeFirst(), eveMeta);
+    QVERIFY2(eveFollowupRes.success, eveFollowupRes.message.toUtf8().constData());
+    QCOMPARE(bob.receivedPlaintexts.size(), 3);
+
+    QByteArray aliceFollowupJson = R"({"messageId":"alice_f1","conversationId":"dms:alice","senderId":"alice","receiverId":"bob","plaintext":"legit followup from alice"})";
+    QVERIFY(alice.manager->sendMessage("bob:" + bobDeviceId, aliceFollowupJson, "alice_f1", "bob", bobDeviceId).success);
+    auto aliceFollowupRes = bob.manager->handleEnvelope(alice.sentEnvelopes.takeFirst(), eveMeta);
+    QVERIFY2(aliceFollowupRes.success, aliceFollowupRes.message.toUtf8().constData());
+    QCOMPARE(bob.receivedPlaintexts.size(), 4);
+
+    // 4. Attacker "eve" registering device_id = "alice:<victimDeviceId>" BEFORE Bob has any session with
+    // Alice on <victimDeviceId> must NOT cause Bob's hasSession/getSession/sendMessage("alice:<victimDeviceId>")
+    // to match "eve:alice:<victimDeviceId>", nor block Alice from establishing "alice:<victimDeviceId>".
+    const QString victimDeviceId = "99999999-8888-4777-a666-555555555555";
+    const QString eveHijackDeviceId = "alice:" + victimDeviceId;
+    TestContext eveHijack;
+    eveHijack.setup("eve_hijack_dev");
+    QByteArray expectedEveHijackPubKey = eveHijack.store->getIdentity().data.value().public_key;
+
+    TestContext aliceVictim;
+    aliceVictim.setup("alice_victim_dev");
+    QByteArray expectedAliceVictimPubKey = aliceVictim.store->getIdentity().data.value().public_key;
+
+    const QString colonDeviceId = "pc:01";
+    TestContext aliceColonDev;
+    aliceColonDev.setup("alice_colon_dev");
+    QByteArray expectedAliceColonPubKey = aliceColonDev.store->getIdentity().data.value().public_key;
+
+    bob.manager->setSenderVerifier([&](const QString& userId, const QString& deviceId, const QByteArray& identityKey) {
+        if (userId == "eve" && deviceId == eveHijackDeviceId && identityKey == expectedEveHijackPubKey) return true;
+        if (userId == "alice" && deviceId == victimDeviceId && identityKey == expectedAliceVictimPubKey) return true;
+        if (userId == "alice" && deviceId == colonDeviceId && identityKey == expectedAliceColonPubKey) return true;
+        return false;
+    });
+
+    QByteArray eveHijackInitJson = R"({"messageId":"eve_hj1","conversationId":"dms:eve","senderId":"eve","receiverId":"bob","plaintext":"eve pre-planting alice:victimDeviceId"})";
+    QVERIFY(eveHijack.manager->createSession("bob", bobDeviceId, bundleNoOpk, "eve_hj1", eveHijackInitJson).success);
+    Transport::TransportMetadata eveHijackMeta;
+    eveHijackMeta.senderDeviceId = eveHijackDeviceId;
+    eveHijackMeta.recipientDeviceId = bobDeviceId;
+    auto eveHijackHandleRes = bob.manager->handleEnvelope(eveHijack.sentEnvelopes.takeFirst(), eveHijackMeta);
+    QVERIFY2(eveHijackHandleRes.success, eveHijackHandleRes.message.toUtf8().constData());
+    QVERIFY(bob.store->getSession("eve:" + eveHijackDeviceId).success);
+
+    // Crucial invariant: "alice:<victimDeviceId>" MUST NOT resolve to "eve:alice:<victimDeviceId>"!
+    QVERIFY(!bob.store->getSession("alice:" + victimDeviceId).success);
+    QVERIFY(!bob.manager->hasSession("alice:" + victimDeviceId));
+    QVERIFY(!bob.manager->sendMessage("alice:" + victimDeviceId, QByteArray("secret for alice"), "msg_leak", "alice", victimDeviceId).success);
+
+    // Real Alice now initiates her session from victimDeviceId and must succeed without identity key mismatch
+    QByteArray aliceVictimInitJson = R"({"messageId":"alice_v1","conversationId":"dms:alice","senderId":"alice","receiverId":"bob","plaintext":"hello from real alice on victimDeviceId"})";
+    QVERIFY(aliceVictim.manager->createSession("bob", bobDeviceId, bundleNoOpk, "alice_v1", aliceVictimInitJson).success);
+    Transport::TransportMetadata aliceVictimMeta;
+    aliceVictimMeta.senderDeviceId = victimDeviceId;
+    aliceVictimMeta.recipientDeviceId = bobDeviceId;
+    auto aliceVictimHandleRes = bob.manager->handleEnvelope(aliceVictim.sentEnvelopes.takeFirst(), aliceVictimMeta);
+    QVERIFY2(aliceVictimHandleRes.success, aliceVictimHandleRes.message.toUtf8().constData());
+    QVERIFY(bob.store->getSession("alice:" + victimDeviceId).success);
+    QCOMPARE(bob.store->getSession("alice:" + victimDeviceId).data.value().remote_identity_key, expectedAliceVictimPubKey);
+
+    // 5. Legitimate colon-bearing device "pc:01" owned by "alice" establishes session and sends follow-up RatchetEnvelope
+    QByteArray aliceColonInitJson = R"({"messageId":"alice_c1","conversationId":"dms:alice","senderId":"alice","receiverId":"bob","plaintext":"init from pc:01"})";
+    auto aliceColonCreateRes = aliceColonDev.manager->createSession("bob", bobDeviceId, bundleNoOpk, "alice_c1", aliceColonInitJson);
+    QVERIFY(aliceColonCreateRes.success);
+    Transport::TransportMetadata aliceColonMeta;
+    aliceColonMeta.senderDeviceId = colonDeviceId;
+    aliceColonMeta.recipientDeviceId = bobDeviceId;
+    auto aliceColonHandleRes = bob.manager->handleEnvelope(aliceColonDev.sentEnvelopes.takeFirst(), aliceColonMeta);
+    QVERIFY2(aliceColonHandleRes.success, aliceColonHandleRes.message.toUtf8().constData());
+    QVERIFY(bob.store->getSession("alice:" + colonDeviceId).success);
+
+    QByteArray aliceColonFollowupJson = R"({"messageId":"alice_c2","conversationId":"dms:alice","senderId":"alice","receiverId":"bob","plaintext":"followup from pc:01"})";
+    auto aliceColonSendRes = aliceColonDev.manager->sendMessage("bob:" + bobDeviceId, aliceColonFollowupJson, "alice_c2", "bob", bobDeviceId);
+    QVERIFY(aliceColonSendRes.success);
+    auto aliceColonFollowupHandleRes = bob.manager->handleEnvelope(aliceColonDev.sentEnvelopes.takeFirst(), aliceColonMeta);
+    QVERIFY2(aliceColonFollowupHandleRes.success, aliceColonFollowupHandleRes.message.toUtf8().constData());
+    QCOMPARE(bob.receivedPlaintexts.size(), 8);
+}
+
+void TestSessionManager::testSessionReinitializationAndDesyncRecovery() {
+    auto makeBundle = [](TestContext& ctx, uint32_t spkId, uint32_t opkId) {
+        auto idRes = ctx.store->getIdentity();
+        auto spkKp = ctx.backend->GenerateX25519KeyPair();
+        QByteArray spkEncoded = KeyEncoding::Encode(spkKp.second);
+        ByteView spkView{reinterpret_cast<const uint8_t*>(spkEncoded.constData()), static_cast<size_t>(spkEncoded.size())};
+        IdentityKeyPair idKp;
+        idKp.privateKey.data.resize(32);
+        std::copy(idRes.data.value().private_key.constData(), idRes.data.value().private_key.constData() + 32, idKp.privateKey.data.data());
+        idKp.publicKey.data.resize(32);
+        std::copy(idRes.data.value().public_key.constData(), idRes.data.value().public_key.constData() + 32, idKp.publicKey.data.data());
+        auto sig = ctx.xeddsa->sign(idKp.privateKey, spkView);
+
+        SignedPreKey spkRecord;
+        spkRecord.id = spkId;
+        spkRecord.privateKey = std::move(spkKp.first);
+        spkRecord.publicKey = spkKp.second;
+        spkRecord.signature = sig;
+        ctx.preKeyStore->storeSignedPreKey(std::move(spkRecord));
+
+        auto opkKp = ctx.backend->GenerateX25519KeyPair();
+        OneTimePreKey opkRecord;
+        opkRecord.id = opkId;
+        opkRecord.privateKey = std::move(opkKp.first);
+        opkRecord.publicKey = opkKp.second;
+        std::vector<OneTimePreKey> opks;
+        opks.push_back(std::move(opkRecord));
+        ctx.preKeyStore->storeOneTimePreKeys(std::move(opks));
+
+        X3DH::BobPreKeyBundle bundle;
+        bundle.identityKey = idKp.publicKey;
+        bundle.signedPreKey = spkKp.second;
+        bundle.signedPreKeyId = spkId;
+        bundle.signedPreKeySignature = sig;
+        bundle.oneTimePreKey = opkKp.second;
+        bundle.oneTimePreKeyId = opkId;
+        return bundle;
+    };
+
+    TestContext alice, bob;
+    alice.setup("alice_reinit");
+    bob.setup("bob_reinit");
+    auto bundle1 = makeBundle(bob, 10, 100);
+
+    QByteArray expectedAliceKey = alice.store->getIdentity().data.value().public_key;
+    bob.manager->setSenderVerifier([&](const QString& userId, const QString& devId, const QByteArray& ik) {
+        return userId == "alice" && devId == "devA" && ik == expectedAliceKey;
+    });
+
+    Transport::TransportMetadata aToBMeta;
+    aToBMeta.senderUserId = "alice";
+    aToBMeta.senderDeviceId = "devA";
+    aToBMeta.recipientDeviceId = "devB";
+
+    Transport::TransportMetadata bToAMeta;
+    bToAMeta.senderUserId = "bob";
+    bToAMeta.senderDeviceId = "devB";
+    bToAMeta.recipientDeviceId = "devA";
+
+    QByteArray msg1 = R"({"messageId":"m1","conversationId":"dms:bob","senderId":"alice","receiverId":"bob","plaintext":"hello 1"})";
+    QVERIFY(alice.manager->createSession("bob", "devB", bundle1, "m1", msg1).success);
+    QVERIFY(bob.manager->handleEnvelope(alice.sentEnvelopes.takeFirst(), aToBMeta).success);
+    QCOMPARE(bob.receivedPlaintexts.size(), 1);
+
+    QByteArray msg2 = R"({"messageId":"m2","conversationId":"dms:alice","senderId":"bob","receiverId":"alice","plaintext":"reply 1"})";
+    QVERIFY(bob.manager->sendMessage("alice:devA", msg2, "m2", "alice", "devA").success);
+    QVERIFY(alice.manager->handleEnvelope(bob.sentEnvelopes.takeFirst(), bToAMeta).success);
+    QCOMPARE(alice.receivedPlaintexts.size(), 1);
+
+    auto bundle2 = makeBundle(bob, 11, 101);
+    QByteArray msg3 = R"({"messageId":"m3","conversationId":"dms:bob","senderId":"alice","receiverId":"bob","plaintext":"reinit from alice"})";
+    QVERIFY(alice.manager->createSession("bob", "devB", bundle2, "m3", msg3).success);
+    QByteArray staleRatchetFromBob;
+    QByteArray msgStale = R"({"messageId":"m_stale","conversationId":"dms:alice","senderId":"bob","receiverId":"alice","plaintext":"stale ratchet"})";
+    QVERIFY(bob.manager->sendMessage("alice:devA", msgStale, "m_stale", "alice", "devA").success);
+    staleRatchetFromBob = bob.sentEnvelopes.takeFirst();
+
+    auto reinitHandleRes = bob.manager->handleEnvelope(alice.sentEnvelopes.takeFirst(), aToBMeta);
+    QVERIFY2(reinitHandleRes.success, reinitHandleRes.message.toUtf8().constData());
+    QCOMPARE(bob.receivedPlaintexts.size(), 2);
+
+    QByteArray msg4 = R"({"messageId":"m4","conversationId":"dms:alice","senderId":"bob","receiverId":"alice","plaintext":"reply on new session"})";
+    QVERIFY(bob.manager->sendMessage("alice:devA", msg4, "m4", "alice", "devA").success);
+    QVERIFY(alice.manager->handleEnvelope(bob.sentEnvelopes.takeFirst(), bToAMeta).success);
+    QCOMPARE(alice.receivedPlaintexts.size(), 2);
+
+    TestContext charlie;
+    charlie.setup("charlie_desync");
+    auto charlieBundle = makeBundle(charlie, 20, 200);
+    QVERIFY(alice.manager->createSession("charlie", "devC", charlieBundle, "mc1", QByteArray("init")).success);
+    Transport::TransportMetadata aToCMeta;
+    aToCMeta.senderUserId = "alice";
+    aToCMeta.senderDeviceId = "devA";
+    aToCMeta.recipientDeviceId = "devC";
+    QVERIFY(charlie.manager->handleEnvelope(alice.sentEnvelopes.takeFirst(), aToCMeta).success);
+    QVERIFY(charlie.manager->hasSession("alice:devA"));
+
+    QByteArray badRatchet = staleRatchetFromBob;
+    if (badRatchet.size() > 10) {
+        badRatchet[badRatchet.size() - 2] = badRatchet[badRatchet.size() - 2] ^ 0xFF;
+    }
+    QVERIFY(!alice.manager->handleEnvelope(badRatchet, bToAMeta).success);
+    QVERIFY(alice.manager->hasSession("bob:devB"));
+    QVERIFY(!alice.manager->handleEnvelope(badRatchet, bToAMeta).success);
+    QVERIFY(!alice.manager->hasSession("bob:devB"));
 }

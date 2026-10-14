@@ -47,6 +47,10 @@ public:
     static QString chatsDirectory(const QString& serverUrl, const QString& username);
     static QString chatDirectory(const QString& serverUrl, const QString& username, const QString& conversationId);
     static QString chatAttachmentsDirectory(const QString& serverUrl, const QString& username, const QString& conversationId);
+    static QString mediaDirectory(const QString& serverUrl, const QString& username);
+    static QString mediaVoiceDirectory(const QString& serverUrl, const QString& username);
+    static QString mediaImagesDirectory(const QString& serverUrl, const QString& username);
+    static QString mediaAttachmentsDirectory(const QString& serverUrl, const QString& username);
 
     // =========================================================================
     // File Paths

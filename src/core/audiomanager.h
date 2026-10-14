@@ -31,6 +31,7 @@
 #pragma once
 #include <QObject>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QVariantList>
 #include <QString>
 #include <memory>
@@ -251,6 +252,7 @@ private slots:
     void onRecordTimerTick();
     /** @brief Tick handler updating playback progress and position. */
     void onPlaybackTimerTick();
+    void handlePlaybackFinished();
 
 private:
     QString m_serverUrl;
@@ -296,6 +298,8 @@ private:
     std::thread m_recordThread;
     std::atomic<bool> m_recordThreadRunning{false};
     std::mutex m_recordMutex;
+    QElapsedTimer m_recordElapsedTimer;
+    std::atomic<int> m_playbackSampleRate{16000};
 
     // Playback state
     QString m_currentPlayingId;

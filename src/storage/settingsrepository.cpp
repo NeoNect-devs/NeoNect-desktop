@@ -357,7 +357,6 @@ QString SettingsRepository::peerAvatarUrl(const QString &username) const {
         return QString();
     }
     QString jsonStr = settings->value(Constants::KEY_PEER_AVATARS).toString();
-    qDebug() << "peerAvatarUrl read:" << jsonStr << "from" << settings->fileName();
     if (jsonStr.trimmed().isEmpty()) return QString();
     QJsonDocument doc = QJsonDocument::fromJson(jsonStr.toUtf8());
     if (!doc.isObject()) return QString();
@@ -385,7 +384,7 @@ void SettingsRepository::setPeerAvatarUrl(const QString &username, const QString
         mapObj[cleanUser] = url.trimmed();
     }
     QString outStr = QString::fromUtf8(QJsonDocument(mapObj).toJson(QJsonDocument::Compact));
-    qDebug() << "setPeerAvatarUrl saving:" << outStr << "to" << settings->fileName();
+    qDebug() << "[SettingsRepository] setPeerAvatarUrl saved";
     settings->setValue(Constants::KEY_PEER_AVATARS, outStr);
     settings->sync();
 }
@@ -393,8 +392,13 @@ void SettingsRepository::setPeerAvatarUrl(const QString &username, const QString
 QVariantList SettingsRepository::bookmarks() const {
     std::lock_guard<std::mutex> lock(m_mutex);
     auto settings = getIsolatedSettings();
-    if (!settings) return QVariantList();
-    QString jsonStr = settings->value(Constants::KEY_BOOKMARKS).toString();
+    QString jsonStr;
+    if (settings) {
+        jsonStr = settings->value(Constants::KEY_BOOKMARKS).toString();
+    } else {
+        QSettings global(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+        jsonStr = global.value(Constants::KEY_BOOKMARKS).toString();
+    }
     if (jsonStr.trimmed().isEmpty()) {
         return QVariantList();
     }
@@ -407,11 +411,16 @@ QVariantList SettingsRepository::bookmarks() const {
 
 void SettingsRepository::setBookmarks(const QVariantList &bookmarks) {
     std::lock_guard<std::mutex> lock(m_mutex);
-    auto settings = getIsolatedSettings();
-    if (!settings) return;
     QJsonArray arr = QJsonArray::fromVariantList(bookmarks);
     QJsonDocument doc(arr);
-    settings->setValue(Constants::KEY_BOOKMARKS, QString::fromUtf8(doc.toJson(QJsonDocument::Compact)));
+    QString jsonStr = QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
+    auto settings = getIsolatedSettings();
+    if (settings) {
+        settings->setValue(Constants::KEY_BOOKMARKS, jsonStr);
+    } else {
+        QSettings global(Constants::SETTINGS_ROOT_GROUP, getGroupName());
+        global.setValue(Constants::KEY_BOOKMARKS, jsonStr);
+    }
 }
 
 void SettingsRepository::addBookmark(const QVariantMap &bookmark) {

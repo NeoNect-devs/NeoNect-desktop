@@ -54,8 +54,11 @@ Item {
                 chatView.handleIncomingMessage(isMsgFromMe, msgId);
             }
         }
-        function onMessageUpdated(convId, msgId, status, errorText) {
-            nativeMessageModel.onMessageUpdated(convId, msgId, status, errorText);
+        function onMessageUpdated(convId, msgId, status, errorText, mediaUrl) {
+            nativeMessageModel.onMessageUpdated(convId, msgId, status, errorText, mediaUrl !== undefined ? mediaUrl : "");
+            if (status === "failed" && errorText && toast) {
+                toast.show("Message delivery failed: " + errorText, "error");
+            }
         }
         function onMediaTransferProgress(convId, msgId, progress, bytesTransferred, totalBytes) {
             nativeMessageModel.onMediaTransferProgress(convId, msgId, progress, bytesTransferred, totalBytes);
@@ -126,6 +129,13 @@ Item {
         function onRemoveFriendResult(success, message, username) {
             if (toast && message) {
                 toast.show(message, success ? "info" : "error");
+            }
+        }
+        function onCurrentUsernameChanged() {
+            nativeMessageModel.clearAllCaches();
+            root.currentChatId = "";
+            if (chatView) {
+                chatView.currentChatId = "";
             }
         }
     }
@@ -205,7 +215,7 @@ Item {
     function sendMessagePayload(itemObj) {
         var chan = root.activeChannel ? root.activeChannel.trim() : "";
         if (!chan || chan === "friends") {
-            console.warn("[MainPanel] Aborting sendMessage: activeChannel is invalid or friends:", chan);
+            console.warn("[MainPanel] Aborting sendMessage: activeChannel is invalid or friends");
             return;
         }
         var key = root.selectedServer + ":" + chan;
@@ -312,6 +322,7 @@ Item {
             onSendMessagePayload: function(itemObj) { root.sendMessagePayload(itemObj); }
             onAcceptMediaRequested: function(convId, reqId) { MessageService.acceptMediaRequest(convId, reqId); }
             onDeclineMediaRequested: function(convId, reqId) { MessageService.declineMediaRequest(convId, reqId); }
+            onFileRejected: function(reason) { if (toast && reason) toast.show(reason, "error"); }
         }
     }
 

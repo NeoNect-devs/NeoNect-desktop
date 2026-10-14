@@ -179,7 +179,7 @@ void NotificationManager::showNotification(const QString &title,
 
     // In DND mode, suppress floating screen toast pill and sound, keeping it in notification center
     if (!m_dndEnabled) {
-        qDebug() << "--> [NotificationManager] showNotification triggered: title=" << notif["title"].toString() << "body=" << notif["body"].toString();
+        qDebug() << "--> [NotificationManager] showNotification triggered";
         emit notificationTriggered(notif);
         playNotificationSound();
     }

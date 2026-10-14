@@ -20,7 +20,10 @@ struct Message {
     qint64 serverId = 0;
     QString conversationId;
     QString senderId;
+    QString senderDeviceId;
+    QString senderDisplayName;
     QString receiverId;
+    QString receiverDeviceId;
     qint64 timestamp = 0;
     QString plaintext;
     QString type = "text"; // plaintext availability only at local application boundary
@@ -31,18 +34,18 @@ struct Message {
     QByteArray waveform;
     int mediaWidth = 0;
     int mediaHeight = 0;
+    QString errorText;
     MessageState state = MessageState::CREATED;
 };
 
 inline bool isValidTransition(MessageState from, MessageState to) {
     if (from == to) return true;
-    if (to == MessageState::FAILED) return true;
     switch(from) {
-        case MessageState::CREATED: return to == MessageState::ENCRYPTING;
-        case MessageState::ENCRYPTING: return to == MessageState::SENT;
-        case MessageState::SENT: return to == MessageState::DELIVERED || to == MessageState::READ;
+        case MessageState::CREATED: return to == MessageState::ENCRYPTING || to == MessageState::FAILED;
+        case MessageState::ENCRYPTING: return to == MessageState::SENT || to == MessageState::FAILED;
+        case MessageState::SENT: return to == MessageState::DELIVERED || to == MessageState::READ || to == MessageState::FAILED;
         case MessageState::DELIVERED: return to == MessageState::READ;
-        case MessageState::FAILED: return false; // terminal
+        case MessageState::FAILED: return to == MessageState::CREATED || to == MessageState::ENCRYPTING;
         case MessageState::READ: return false; // terminal
     }
     return false;

@@ -14,9 +14,28 @@ namespace Testing {
 struct MockQueuedMessage {
     qint64 id{0};
     QString deviceId;
+    QString senderDeviceId;
+    QString messageId;
+    int protocolVersion{2};
     QString toUsername;
     QString ciphertextBase64;
     qint64 timestamp{0};
+};
+
+struct MockSignedPreKey {
+    int keyId{0};
+    QString publicKey;
+    QString signature;
+};
+
+struct MockOneTimePreKey {
+    int keyId{0};
+    QString publicKey;
+};
+
+struct MockDevicePreKeys {
+    MockSignedPreKey signedPreKey;
+    std::vector<MockOneTimePreKey> oneTimePreKeys;
 };
 
 struct MockUser {
@@ -25,6 +44,7 @@ struct MockUser {
     QString password;
     QString sessionToken;
     QMap<QString, QString> devices; // device_id -> public_key
+    QMap<QString, MockDevicePreKeys> devicePreKeys; // device_id -> prekey bundle
 };
 
 /**
@@ -50,6 +70,7 @@ public:
 
     // Test Control Helpers
     void seedUser(const QString &username, const QString &password);
+    void bindToken(const QString &token, const QString &username);
     void seedFriendRequest(const QString &sender, const QString &recipient);
     void seedFriendship(const QString &user1, const QString &user2);
     void setSimulateNetworkError(bool simulate);
@@ -82,6 +103,8 @@ private:
     void handleDeviceKey(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
     void handleDeviceDelete(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleRelayKeys(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
+    void handlePreKeyUpload(const QByteArray &data, Transport::HttpResponseCallback callback);
+    void handlePreKeyClaim(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleRelaySend(const QByteArray &data, Transport::HttpResponseCallback callback);
     void handleRelayPoll(const QMap<QString, QString> &queryParams, Transport::HttpResponseCallback callback);
     void handleRelayAck(const QByteArray &data, Transport::HttpResponseCallback callback);

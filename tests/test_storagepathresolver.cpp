@@ -82,9 +82,17 @@ void TestStoragePathResolver::testPathSafetyAndHierarchy() {
     QString accountRoot = NeoNect::Storage::StoragePathResolver::accountRoot(serverUrl, username);
     QCOMPARE(msgDb, accountRoot + "/messages.db");
     
-    // Chat directory is under user root conceptually
     QVERIFY(chatDir.startsWith(accountRoot + "/chats/"));
     
+    QString mediaDir = NeoNect::Storage::StoragePathResolver::mediaDirectory(serverUrl, username);
+    QString voiceDir = NeoNect::Storage::StoragePathResolver::mediaVoiceDirectory(serverUrl, username);
+    QString imagesDir = NeoNect::Storage::StoragePathResolver::mediaImagesDirectory(serverUrl, username);
+    QString attachDir = NeoNect::Storage::StoragePathResolver::mediaAttachmentsDirectory(serverUrl, username);
+    QCOMPARE(mediaDir, accountRoot + "/media");
+    QCOMPARE(voiceDir, accountRoot + "/media/voice");
+    QCOMPARE(imagesDir, accountRoot + "/media/images");
+    QCOMPARE(attachDir, accountRoot + "/media/attachments");
+
     // No path traversal from external input
     QString maliciousUser = "../../../etc/passwd";
     QString maliciousKey = NeoNect::Storage::StoragePathResolver::accountKey(maliciousUser);

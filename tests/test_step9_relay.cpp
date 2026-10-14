@@ -10,6 +10,7 @@ namespace Tests {
 
 void TestStep9Relay::init() {
     m_transport = std::make_shared<Testing::MockHttpTransport>();
+    m_transport->setAuthToken("test-token");
     m_storage = std::make_shared<Storage::SettingsRepository>("NeoNectTest_Step9");
     m_storage->clearSession();
     m_storage->setAuthToken("test-token");
@@ -43,14 +44,15 @@ void TestStep9Relay::testSendOpaqueEnvelope() {
     QJsonDocument doc = QJsonDocument::fromJson(capturedData);
     QJsonObject obj = doc.object();
 
-    QCOMPARE(obj["to_username"].toString(), QString("alice"));
-    QCOMPARE(obj["to_device_id"].toString(), QString("alice-device-1"));
+    QCOMPARE(obj["from_device_id"].toString(), QString("test-device-id"));
+    QCOMPARE(obj["recipient_device_id"].toString(), QString("alice-device-1"));
     QCOMPARE(obj["message_id"].toString(), QString("msg-uuid-1"));
+    QCOMPARE(obj["protocol_version"].toInt(), 2);
     QCOMPARE(obj["ciphertext"].toString(), QString::fromLatin1(opaqueEnvelope.toBase64()));
 }
 
 void TestStep9Relay::testSendOversizedEnvelopeRejected() {
-    QByteArray hugeEnvelope(4 * 1024 * 1024, 'A'); // 5 MB
+    QByteArray hugeEnvelope(5 * 1024 * 1024, 'A'); // 5 MB
     QSignalSpy spyStatus(m_relay.get(), &Services::RelayService::messageTransmissionStatus);
 
     m_relay->sendEncryptedEnvelope("alice", "alice-device-1", "msg-uuid-2", hugeEnvelope);
@@ -220,6 +222,52 @@ void TestStep9Relay::testDynamicWebSocketIntegration() {
 
     quint64 expectedWsLimit = ((capSize + 2) / 3) * 4 + 512;
     QCOMPARE(wsClient->maxMessageSize(), expectedWsLimit);
+}
+
+void TestStep9Relay::testPermanentlyInvalidEnvelopeEviction() {
+    QList<QByteArray> ackPayloads;
+    connect(m_transport.get(), &Testing::MockHttpTransport::rawRequestData, this, [&](const QByteArray &data) {
+        ackPayloads.append(data);
+    });
+
+    QJsonObject mockResponse1;
+    QJsonArray messages1;
+    QJsonObject msg1;
+    msg1["id"] = 99991;
+    msg1["ciphertext"] = QString::fromLatin1(QByteArray("spoofed_sender_envelope").toBase64());
+    msg1["sender_device_id"] = "bob-device-1";
+    messages1.append(msg1);
+    mockResponse1["messages"] = messages1;
+
+    m_transport->setSimulatedResponse("/api/v1/relay/poll", QJsonDocument(mockResponse1).toJson());
+    m_handler->nextResult = NeoNect::VoidResult::fail("Authenticated session user does not match payload senderId");
+
+    m_relay->pollPendingMessages();
+    QCOMPARE(m_handler->callCount, 1);
+    QCOMPARE(ackPayloads.size(), 1);
+    QVERIFY(ackPayloads.last().contains("99991"));
+
+    ackPayloads.clear();
+    QJsonObject mockResponse2;
+    QJsonArray messages2;
+    QJsonObject msg2;
+    msg2["id"] = 99992;
+    msg2["ciphertext"] = QString::fromLatin1(QByteArray("cancelled_chunk_envelope").toBase64());
+    msg2["sender_device_id"] = "bob-device-1";
+    messages2.append(msg2);
+    mockResponse2["messages"] = messages2;
+
+    m_transport->setSimulatedResponse("/api/v1/relay/poll", QJsonDocument(mockResponse2).toJson());
+    m_handler->nextResult = NeoNect::VoidResult::fail("Transfer not active");
+
+    m_relay->pollPendingMessages();
+    QCOMPARE(m_handler->callCount, 2);
+    QCOMPARE(ackPayloads.size(), 0);
+
+    m_relay->pollPendingMessages();
+    QCOMPARE(m_handler->callCount, 3);
+    QCOMPARE(ackPayloads.size(), 1);
+    QVERIFY(ackPayloads.last().contains("99992"));
 }
 
 } // namespace Tests

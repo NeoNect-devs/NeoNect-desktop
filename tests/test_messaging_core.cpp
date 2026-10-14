@@ -53,10 +53,14 @@ using namespace NeoNect::Core::Messaging;
 
 void TestMessagingCore::initTestCase() {
     QFile::remove("test_messaging_core.db");
+    QFile::remove("test_messaging_core.db-wal");
+    QFile::remove("test_messaging_core.db-shm");
 }
 
 void TestMessagingCore::cleanupTestCase() {
     QFile::remove("test_messaging_core.db");
+    QFile::remove("test_messaging_core.db-wal");
+    QFile::remove("test_messaging_core.db-shm");
 }
 
 void TestMessagingCore::testCreateMessage() {
@@ -153,30 +157,34 @@ void TestMessagingCore::testDatabaseFailureAtomicity() {
     msg1.timestamp = 1000;
     QVERIFY(storage.saveMessage(msg1));
     
-    QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "test_trigger_conn");
-    db.setDatabaseName("test_messaging_core.db");
-    QVERIFY(db.open());
-    QSqlQuery query(db);
-    // Add a trigger that forces an abort on the next insert
-    query.exec("CREATE TRIGGER IF NOT EXISTS fail_insert BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT, 'intentional failure'); END;");
-    
-    // Attempt to save a message that will trigger the duplicate server_id deletion, 
-    // but the insert itself will fail.
-    Message msg2;
-    msg2.messageId = "atomic-test-2";
-    msg2.serverId = 2000;
-    msg2.conversationId = "conv-1";
-    msg2.senderId = "sender";
-    msg2.receiverId = "receiver";
-    msg2.plaintext = "new";
-    msg2.state = MessageState::SENT;
-    msg2.timestamp = 1001;
-    
-    // The insert should fail, so saveMessage should return false
-    QVERIFY(!storage.saveMessage(msg2));
-    
-    // Remove the trigger to allow normal reads/operations again (though reads don't trigger it)
-    query.exec("DROP TRIGGER fail_insert");
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase("QSQLITE", "test_trigger_conn");
+        db.setDatabaseName("test_messaging_core.db");
+        QVERIFY(db.open());
+        QSqlQuery query(db);
+        // Add a trigger that forces an abort on the next insert
+        query.exec("CREATE TRIGGER IF NOT EXISTS fail_insert BEFORE INSERT ON messages BEGIN SELECT RAISE(ABORT, 'intentional failure'); END;");
+
+        // Attempt to save a message that will trigger the duplicate server_id deletion,
+        // but the insert itself will fail.
+        Message msg2;
+        msg2.messageId = "atomic-test-2";
+        msg2.serverId = 2000;
+        msg2.conversationId = "conv-1";
+        msg2.senderId = "sender";
+        msg2.receiverId = "receiver";
+        msg2.plaintext = "new";
+        msg2.state = MessageState::SENT;
+        msg2.timestamp = 1001;
+
+        // The insert should fail, so saveMessage should return false
+        QVERIFY(!storage.saveMessage(msg2));
+
+        // Remove the trigger to allow normal reads/operations again (though reads don't trigger it)
+        query.exec("DROP TRIGGER fail_insert");
+        db.close();
+    }
+    QSqlDatabase::removeDatabase("test_trigger_conn");
     
     // Because of atomicity, the DELETE of msg1 (due to server_id collision) MUST HAVE BEEN ROLLED BACK!
     auto retrieved = storage.getMessage("atomic-test-1");
@@ -632,70 +640,76 @@ void TestMessagingCore::testLegacyRowCompatibility() {
 void TestMessagingCore::testCrudIntegrity() {
     QString dbPath = "test_messaging_core_crud_integrity.db";
     QFile::remove(dbPath);
+    QFile::remove(dbPath + "-wal");
+    QFile::remove(dbPath + "-shm");
 
-    SqliteMessageStorage storage(dbPath);
-    
-    // 1. Save -> Read
-    Message msg1;
-    msg1.messageId = "crud_msg1";
-    msg1.conversationId = "crud_conv";
-    msg1.type = "video";
-    msg1.mediaUrl = "file:///video.mp4";
-    QVERIFY(storage.saveMessage(msg1));
-    
-    auto retrieved1 = storage.getMessage("crud_msg1");
-    QVERIFY(retrieved1.has_value());
-    QCOMPARE(retrieved1->type, QString("video"));
-    
-    // 2. Save -> Read multiple messages (no cross-contamination)
-    Message msg2;
-    msg2.messageId = "crud_msg2";
-    msg2.conversationId = "crud_conv";
-    msg2.type = "text"; // Different metadata
-    QVERIFY(storage.saveMessage(msg2));
-    
-    auto allMsgs = storage.getConversationMessages("crud_conv");
-    QCOMPARE(allMsgs.size(), 2);
-    
-    // Verify specific properties didn't bleed
-    for(const auto& m : allMsgs) {
-        if (m.messageId == "crud_msg1") {
-            QCOMPARE(m.type, QString("video"));
-            QCOMPARE(m.mediaUrl, QString("file:///video.mp4"));
-        } else if (m.messageId == "crud_msg2") {
-            QCOMPARE(m.type, QString("text"));
-            QCOMPARE(m.mediaUrl, QString(""));
-        } else {
-            QFAIL("Unexpected message");
+    {
+        SqliteMessageStorage storage(dbPath);
+
+        // 1. Save -> Read
+        Message msg1;
+        msg1.messageId = "crud_msg1";
+        msg1.conversationId = "crud_conv";
+        msg1.type = "video";
+        msg1.mediaUrl = "file:///video.mp4";
+        QVERIFY(storage.saveMessage(msg1));
+
+        auto retrieved1 = storage.getMessage("crud_msg1");
+        QVERIFY(retrieved1.has_value());
+        QCOMPARE(retrieved1->type, QString("video"));
+
+        // 2. Save -> Read multiple messages (no cross-contamination)
+        Message msg2;
+        msg2.messageId = "crud_msg2";
+        msg2.conversationId = "crud_conv";
+        msg2.type = "text"; // Different metadata
+        QVERIFY(storage.saveMessage(msg2));
+
+        auto allMsgs = storage.getConversationMessages("crud_conv");
+        QCOMPARE(allMsgs.size(), 2);
+
+        // Verify specific properties didn't bleed
+        for(const auto& m : allMsgs) {
+            if (m.messageId == "crud_msg1") {
+                QCOMPARE(m.type, QString("video"));
+                QCOMPARE(m.mediaUrl, QString("file:///video.mp4"));
+            } else if (m.messageId == "crud_msg2") {
+                QCOMPARE(m.type, QString("text"));
+                QCOMPARE(m.mediaUrl, QString(""));
+            } else {
+                QFAIL("Unexpected message");
+            }
         }
+
+        // 3. Duplicate ID (existing semantics unchanged)
+        Message duplicateMsg1 = msg1;
+        duplicateMsg1.type = "image"; // Try to change type
+        QVERIFY(storage.saveMessage(duplicateMsg1)); // Should return true but NOT overwrite
+
+        auto reRetrieved1 = storage.getMessage("crud_msg1");
+        QVERIFY(reRetrieved1.has_value());
+        QCOMPARE(reRetrieved1->type, QString("video")); // Remains video
+
+        // 4. State update (does not erase media metadata)
+        QVERIFY(storage.updateMessageState("crud_msg1", MessageState::DELIVERED));
+        auto stateUpdated1 = storage.getMessage("crud_msg1");
+        QVERIFY(stateUpdated1.has_value());
+        QCOMPARE(stateUpdated1->state, MessageState::DELIVERED);
+        QCOMPARE(stateUpdated1->type, QString("video")); // Media metadata preserved
+        QCOMPARE(stateUpdated1->mediaUrl, QString("file:///video.mp4"));
+
+        // 5. Delete
+        QVERIFY(storage.deleteMessage("crud_msg1"));
+        auto deletedMsg = storage.getMessage("crud_msg1");
+        QVERIFY(!deletedMsg.has_value());
+
+        auto remainingMsg = storage.getMessage("crud_msg2");
+        QVERIFY(remainingMsg.has_value()); // msg2 is untouched
     }
-    
-    // 3. Duplicate ID (existing semantics unchanged)
-    Message duplicateMsg1 = msg1;
-    duplicateMsg1.type = "image"; // Try to change type
-    QVERIFY(storage.saveMessage(duplicateMsg1)); // Should return true but NOT overwrite
-    
-    auto reRetrieved1 = storage.getMessage("crud_msg1");
-    QVERIFY(reRetrieved1.has_value());
-    QCOMPARE(reRetrieved1->type, QString("video")); // Remains video
-    
-    // 4. State update (does not erase media metadata)
-    QVERIFY(storage.updateMessageState("crud_msg1", MessageState::DELIVERED));
-    auto stateUpdated1 = storage.getMessage("crud_msg1");
-    QVERIFY(stateUpdated1.has_value());
-    QCOMPARE(stateUpdated1->state, MessageState::DELIVERED);
-    QCOMPARE(stateUpdated1->type, QString("video")); // Media metadata preserved
-    QCOMPARE(stateUpdated1->mediaUrl, QString("file:///video.mp4"));
-    
-    // 5. Delete
-    QVERIFY(storage.deleteMessage("crud_msg1"));
-    auto deletedMsg = storage.getMessage("crud_msg1");
-    QVERIFY(!deletedMsg.has_value());
-    
-    auto remainingMsg = storage.getMessage("crud_msg2");
-    QVERIFY(remainingMsg.has_value()); // msg2 is untouched
-    
+
     QFile::remove(dbPath);
+    QFile::remove(dbPath + "-wal");
+    QFile::remove(dbPath + "-shm");
 }
 
 void TestMessagingCore::testMediaMetadataSerializationPrivacy() {

@@ -19,4 +19,7 @@ private slots:
     void testPreKeyRestart();
     void testSkippedKeyRestart();
     void testLogoutReloginIntegration();
+    void testIdentityInitializationGuards();
+    void testDeferredRelayAckAndConcurrentSessionCoalescing();
+    void testOfflineDeliveryEndToEndRegressionSuite();
 };

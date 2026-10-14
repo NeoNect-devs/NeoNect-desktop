@@ -49,4 +49,6 @@ private slots:
     void testCapabilitiesValidation();
     void testCapabilitiesServerSwitch();
     void testFriendRequestApiLifecycleAndEdgeCases();
+    void testNodeVerificationReconnectAndRelayStatusHandoff();
+    void testNetworkManagerUploadLimitContract();
 };

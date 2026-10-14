@@ -51,6 +51,7 @@ private slots:
 
     // Error Behavior
     void testErrorBehavior();
+    void testPermanentlyInvalidEnvelopeEviction();
 
 private:
     std::shared_ptr<Testing::MockHttpTransport> m_transport;

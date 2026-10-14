@@ -13,6 +13,7 @@ Item {
     readonly property bool showTitleBackButton: currentScreen !== "server"
     property string currentScreen: "server" // "server", "login", "signup", "bookmarks", "bookmark_edit"
     property bool isServerReady: false
+    property bool isVerifyingServer: false
     property string serverStatusText: ""
 
     // Bookmark states & properties
@@ -300,9 +301,11 @@ Item {
                         onTextChanged: {
                             entryRoot.isServerReady = false;
                             if (text.trim() !== "") {
+                                entryRoot.isVerifyingServer = true;
                                 entryRoot.serverStatusText = "🔍 Resolving node...";
                                 verifyDebounce.restart();
                             } else {
+                                entryRoot.isVerifyingServer = false;
                                 entryRoot.serverStatusText = "";
                             }
                         }
@@ -310,27 +313,30 @@ Item {
                         onAccepted: {
                             if (text.trim() !== "") {
                                 verifyDebounce.stop();
+                                entryRoot.isVerifyingServer = true;
                                 entryRoot.serverStatusText = "🔍 Resolving node...";
                                 NetworkManager.verifyServer(text.trim());
                             }
                         }
                     }
 
-                    // Status Badge Chip
                     Rectangle {
                         width: parent.width
                         height: 32
                         radius: 8
                         color: entryRoot.isServerReady ? Qt.rgba(0.14, 0.65, 0.35, 0.15) :
+                               entryRoot.isVerifyingServer ? Qt.rgba(0.35, 0.42, 0.95, 0.15) :
                                serverInput.text.trim() === "" ? "transparent" : Qt.rgba(0.93, 0.32, 0.32, 0.15)
                         border.color: entryRoot.isServerReady ? "#23a55a" :
+                                      entryRoot.isVerifyingServer ? "#5865F2" :
                                       serverInput.text.trim() === "" ? "transparent" : "#ef5350"
                         border.width: 1
                         visible: entryRoot.serverStatusText !== ""
 
                         Text {
                             text: entryRoot.serverStatusText
-                            color: entryRoot.isServerReady ? "#23a55a" : "#ef5350"
+                            color: entryRoot.isServerReady ? "#23a55a" :
+                                   entryRoot.isVerifyingServer ? "#8EA1E1" : "#ef5350"
                             font.pointSize: ThemeData.fontSizeNormal - 3
                             anchors.centerIn: parent
                         }
@@ -341,6 +347,7 @@ Item {
                             onClicked: {
                                 if (serverInput.text.trim() !== "") {
                                     verifyDebounce.stop();
+                                    entryRoot.isVerifyingServer = true;
                                     entryRoot.serverStatusText = "🔍 Resolving node...";
                                     NetworkManager.verifyServer(serverInput.text.trim());
                                 }
@@ -360,7 +367,10 @@ Item {
                             height: 40
                             enabled: entryRoot.isServerReady && !NetworkManager.isLoading
                             highlighted: true
-                            onClicked: entryRoot.currentScreen = "login"
+                            onClicked: {
+                                entryRoot.loginErrorText = "";
+                                entryRoot.currentScreen = "login";
+                            }
                         }
 
                         NeoNectButton {
@@ -369,7 +379,11 @@ Item {
                             height: 40
                             enabled: entryRoot.isServerReady && !NetworkManager.isLoading
                             highlighted: false
-                            onClicked: entryRoot.currentScreen = "signup"
+                            onClicked: {
+                                entryRoot.regErrorText = "";
+                                entryRoot.regSuccessText = "";
+                                entryRoot.currentScreen = "signup";
+                            }
                         }
                     }
 
@@ -1198,6 +1212,8 @@ Item {
 
         function onVerificationResult(success, message) {
             if (entryRoot) {
+                verifyDebounce.stop();
+                entryRoot.isVerifyingServer = false;
                 entryRoot.isServerReady = success;
                 entryRoot.serverStatusText = success ? "🟢 " + message : "🔴 " + message;
             }
@@ -1233,7 +1249,11 @@ Item {
                 }
                 entryRoot.connectingBookmarkId = "";
             } else {
-                var errStr = tokenOrError ? tokenOrError : "Error occurred";
+                if (!tokenOrError || tokenOrError === "") {
+                    entryRoot.connectingBookmarkId = "";
+                    return;
+                }
+                var errStr = tokenOrError;
                 entryRoot.connectingBookmarkId = "";
                 if (entryRoot.currentScreen === "signup") {
                     entryRoot.regErrorText = errStr;
@@ -1249,6 +1269,9 @@ Item {
     Component.onCompleted: {
         if (typeof root !== "undefined" && typeof root.devDeepLink === "string" && root.devDeepLink !== "") {
             entryRoot.currentScreen = root.devDeepLink;
+        } else if (NetworkManager.lastAuthError && NetworkManager.lastAuthError !== "") {
+            entryRoot.currentScreen = "login";
+            entryRoot.loginErrorText = NetworkManager.lastAuthError;
         }
         if (serverInput.text.trim() !== "") {
             entryRoot.serverStatusText = "🔍 Resolving node...";

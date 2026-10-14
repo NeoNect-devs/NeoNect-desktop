@@ -75,4 +75,71 @@ void TestStorageContext::testResourceCleanup() {
     QVERIFY(ctx == nullptr);
 }
 
+namespace {
+class FixedKeySecretStore : public IOSSecretStore {
+public:
+    explicit FixedKeySecretStore(char fillByte) : m_key(32, fillByte) {}
+    NeoNect::ServiceResult<std::monostate> writeSecret(const QString&, const QByteArray& s) override {
+        m_key = s;
+        return NeoNect::ServiceResult<std::monostate>::ok({});
+    }
+    NeoNect::ServiceResult<QByteArray> readSecret(const QString&) override {
+        return NeoNect::ServiceResult<QByteArray>::ok(m_key);
+    }
+    NeoNect::ServiceResult<std::monostate> deleteSecret(const QString&) override {
+        return NeoNect::ServiceResult<std::monostate>::ok({});
+    }
+private:
+    QByteArray m_key;
+};
+} // namespace
+
+void TestStorageContext::testE2EEInitFailurePropagated() {
+    QStandardPaths::setTestModeEnabled(true);
+    const QString server = "test-server-key-mismatch";
+    const QString user = "charlie";
+    QDir(StoragePathResolver::accountRoot(server, user)).removeRecursively();
+
+    const QByteArray expectedPub(32, 'P');
+    const QByteArray expectedPriv(32, 'S');
+
+    // 1. Create and populate e2ee.db with key 'A'
+    {
+        auto keyA = std::make_shared<FixedKeySecretStore>('A');
+        StorageContext ctx1(server, user, false, "testprof", keyA);
+        QVERIFY(ctx1.isE2EEReady());
+        auto store = ctx1.secureStore().lock();
+        QVERIFY(store != nullptr);
+        QVERIFY(store->isOpen());
+
+        E2EEIdentity id;
+        id.identity_id = 1;
+        id.public_key = expectedPub;
+        id.private_key = expectedPriv;
+        QVERIFY(store->saveIdentity(id).success);
+    }
+
+    // 2. Reopen with wrong key 'B' (simulating keyring backend mismatch)
+    {
+        auto keyB = std::make_shared<FixedKeySecretStore>('B');
+        StorageContext ctx2(server, user, false, "testprof", keyB);
+        QVERIFY(!ctx2.isE2EEReady());
+        QVERIFY(!ctx2.e2eeError().isEmpty());
+        QVERIFY(ctx2.secureStore().lock() == nullptr);
+    }
+
+    // 3. Reopen with original key 'A' and verify e2ee.db and identity are untouched
+    {
+        auto keyA = std::make_shared<FixedKeySecretStore>('A');
+        StorageContext ctx3(server, user, false, "testprof", keyA);
+        QVERIFY(ctx3.isE2EEReady());
+        auto store = ctx3.secureStore().lock();
+        QVERIFY(store != nullptr);
+        auto idRes = store->getIdentity();
+        QVERIFY(idRes.success);
+        QCOMPARE(idRes.data->public_key, expectedPub);
+        QCOMPARE(idRes.data->private_key, expectedPriv);
+    }
+}
+
 QTEST_GUILESS_MAIN(TestStorageContext)

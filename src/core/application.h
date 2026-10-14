@@ -42,8 +42,8 @@ class AudioManager;
 class TestProductionE2EE;
 namespace NeoNect {
 
-namespace Storage { class SettingsRepository; class SecureE2EEStore; class StorageContext; }
-namespace Crypto { class ICryptoService; namespace Session { class SessionManager; } }
+namespace Storage { class SettingsRepository; class ISecureE2EEStore; class SecureE2EEStore; class StorageContext; }
+namespace Crypto { class ICryptoService; class ICryptoBackend; class IXEdDSA; namespace Session { class SessionManager; class SecurePreKeyStoreAdapter; } }
 namespace Transport { class IHttpTransport; }
 namespace Core { 
     class NotificationManager; 
@@ -117,6 +117,18 @@ private:
      *       are valid and interconnected.
      */
     void initializeServices();
+
+    /**
+     * @brief Verifies or initializes the E2EE identity and initial prekeys in the given open store.
+     * @details Generates a new identity ONLY when the store is open and `getIdentity()` explicitly
+     *          returns `"Identity not found"`. Updates `settings.ini` `public_key` ONLY after
+     *          `saveIdentity()` succeeds.
+     */
+    ServiceResult<std::monostate> ensureE2EEIdentity(
+        const std::shared_ptr<Storage::ISecureE2EEStore> &store,
+        const std::shared_ptr<Crypto::ICryptoBackend> &backend,
+        const std::shared_ptr<Crypto::IXEdDSA> &xeddsa,
+        const std::shared_ptr<Crypto::Session::SecurePreKeyStoreAdapter> &preKeyAdapter);
 
     /**
      * @brief Registers custom C++ models and facades with the QML type system.

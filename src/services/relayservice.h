@@ -20,7 +20,9 @@
 #pragma once
 #include <QObject>
 #include <QTimer>
+#include <deque>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include "../transport/ihttptransport.h"
 #include "../transport/websocketclient.h"
@@ -41,6 +43,7 @@ class RelayService : public QObject {
     Q_OBJECT
 public:
     void setEnvelopeHandler(std::shared_ptr<Transport::IIncomingEnvelopeHandler> handler);
+    void setCapabilities(std::shared_ptr<Storage::ICapabilitiesRepository> capabilities);
     /**
      * @brief Constructs the relay gateway service.
      * @param transport Shared pointer to HTTP transport.
@@ -134,15 +137,26 @@ signals:
     void serverDisconnected();
 
 private:
+    enum class RelayItemOutcome {
+        ProcessedOrSkipped,
+        PermanentlyInvalidAcked,
+        TransientFailure,
+        RetryableCryptoFailure
+    };
+
     /** @brief Internal handler for 401 errors, executing exponential backoff or logout signaling. */
     void handle401Error();
     /** @brief Decrypts and processes a base64-encoded encrypted envelope from the server. */
-    void processIncomingRelayItem(const QJsonObject &msgObj);
+    RelayItemOutcome processIncomingRelayItem(const QJsonObject &msgObj);
+    /** @brief Records a processed server message ID with bounded FIFO eviction. */
+    void recordProcessedMessageId(qint64 messageId);
     /** @brief Slot handling incoming text frames from WebSocketClient. */
 private slots:
     void onWebSocketMessageReceived(const QString &text);
 
 private:
+    static constexpr size_t kMaxProcessedMessageIds = 4096;
+
     /** @brief HTTP transport layer. */
     std::shared_ptr<Transport::IHttpTransport> m_transport;
     /** @brief Settings repository. */
@@ -155,14 +169,25 @@ private:
     std::unique_ptr<Transport::WebSocketClient> m_wsClient;
     /** @brief Polling timer for HTTP fallback. */
     QTimer *m_pollTimer;
+    /** @brief Single-shot timer for fast retry after transient poll failure. */
+    QTimer *m_retryPollTimer{nullptr};
     /** @brief Count of consecutive 401 responses. */
     int m_retry401Count{0};
     /** @brief Flag indicating active polling state. */
     bool m_isPollingActive{false};
+    /** @brief Flag indicating a follow-up poll was requested while a poll was in flight. */
+    bool m_repollRequested{false};
+    /** @brief Monotonic generation counter invalidated on stopPolling/logout. */
+    uint64_t m_pollGeneration{0};
     /** @brief Flag tracking WebSocket connectivity state. */
     bool m_isWsConnected{false};
     /** @brief Deduplication set storing processed server message IDs. */
     std::unordered_set<qint64> m_processedMessageIds;
+    /** @brief FIFO order of processed server message IDs for bounded cache eviction. */
+    std::deque<qint64> m_processedMessageOrder;
+    /** @brief Set of server message IDs currently being processed to prevent re-entrancy. */
+    std::unordered_set<qint64> m_inFlightMessageIds;
+    std::unordered_map<qint64, int> m_failedMessageAttempts;
 };
 
 } // namespace Services

@@ -132,7 +132,7 @@ signals:
 private:
     /** @brief Terminates the local session cleanly without server interaction. */
     void teardownLocalSession();
-    void fetchCapabilities();
+    void fetchCapabilities(quint64 generation);
     void parseCapabilities(const QByteArray &data);
 
 
@@ -142,6 +142,7 @@ private:
     std::shared_ptr<Storage::ISettingsRepository> m_storage;
     std::shared_ptr<Storage::ICapabilitiesRepository> m_capabilities;
     std::function<void(const QString&)> m_onBeforeTeardown;
+    quint64 m_verifyGeneration{0};
 };
 
 } // namespace Services

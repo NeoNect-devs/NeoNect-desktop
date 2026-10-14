@@ -62,7 +62,6 @@ private:
 
 
 
-using namespace NeoNect::Storage;
 using namespace NeoNect::Domain;
 
 class BenchmarkSql : public QObject {
@@ -85,19 +84,15 @@ private slots:
     }
 
     void benchmarkSingleInsert() {
-        Message msg;
-        msg.id = "single_msg";
+        NeoNect::Core::Messaging::Message msg;
+        msg.messageId = "single_msg";
         msg.conversationId = "dms:test";
         msg.senderId = "test";
-        msg.text = "Hello world";
+        msg.plaintext = "Hello world";
         msg.timestamp = 1000;
 
-        QEventLoop loop;
         QBENCHMARK {
-            m_repo->saveMessageAsync(msg, this, [&](bool) {
-                loop.quit();
-            });
-            loop.exec();
+            m_repo->saveMessage(msg);
         }
     }
 
@@ -110,53 +105,38 @@ private slots:
 
 private:
     void runBatchInsert(int count) {
-        std::vector<Message> msgs;
+        std::vector<NeoNect::Core::Messaging::Message> msgs;
         for (int i = 0; i < count; ++i) {
-            Message msg;
-            msg.id = QString("msg_%1").arg(i);
+            NeoNect::Core::Messaging::Message msg;
+            msg.messageId = QString("msg_%1").arg(i);
             msg.conversationId = "dms:batch";
             msg.senderId = "user";
-            msg.text = "Batch message";
+            msg.plaintext = "Batch message";
             msg.timestamp = 1000 + i;
             msgs.push_back(msg);
         }
 
-        
         QBENCHMARK {
-            QEventLoop loop;
-            m_repo->saveMessagesAsync(msgs, this, [&](bool) {
-                loop.quit();
-            });
-            loop.exec();
+            for (const auto &msg : msgs) {
+                m_repo->saveMessage(msg);
+            }
         }
-
     }
 
     void runRetrieval(int count) {
-        
-        QEventLoop loop;
-        std::vector<Message> msgs;
         for (int i = 0; i < count; ++i) {
-            Message msg;
-            msg.id = QString("msg_rt_%1").arg(i);
+            NeoNect::Core::Messaging::Message msg;
+            msg.messageId = QString("msg_rt_%1").arg(i);
             msg.conversationId = "dms:retrieve";
             msg.senderId = "user";
-            msg.text = "Retrieve me";
+            msg.plaintext = "Retrieve me";
             msg.timestamp = 1000 + i;
-            msgs.push_back(msg);
+            m_repo->saveMessage(msg);
         }
-        m_repo->saveMessagesAsync(msgs, this, [&](bool) {
-            loop.quit();
-        });
-        if (count > 0) loop.exec();
-
 
         QBENCHMARK {
-            QEventLoop rloop;
-            m_repo->getMessagesAsync("dms:retrieve", count, QDateTime::currentSecsSinceEpoch() * 1000, this, [&](const std::vector<Message>&) {
-                rloop.quit();
-            });
-            rloop.exec();
+            auto res = m_repo->getConversationMessages("dms:retrieve");
+            Q_UNUSED(res);
         }
     }
 };

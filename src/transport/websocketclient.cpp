@@ -210,7 +210,7 @@ void WebSocketClient::processIncomingData() {
             setState(WebSocketState::Connected);
             emit connected();
         } else {
-            qWarning() << "[WebSocketClient] WebSocket upgrade failed:" << firstLine << "\nResponse Headers:\n" << headerStr;
+            qWarning() << "[WebSocketClient] WebSocket upgrade failed:" << firstLine;
             emit errorOccurred("Handshake failed: " + firstLine);
             m_socket->disconnectFromHost();
             return;
@@ -399,6 +399,9 @@ void WebSocketClient::sendTextMessage(const QString &text) {
 }
 
 void WebSocketClient::onSocketDisconnected() {
+    if (m_state == WebSocketState::Disconnected && m_reconnectTimer->isActive()) {
+        return;
+    }
     qDebug() << "[WebSocketClient] Disconnected from server (was" << (m_state == WebSocketState::Connected ? "connected" : "connecting") << ")";
     bool wasConnected = (m_state == WebSocketState::Connected);
     setState(WebSocketState::Disconnected);
@@ -424,6 +427,14 @@ void WebSocketClient::onSocketError(QAbstractSocket::SocketError socketError) {
     QString err = m_socket ? m_socket->errorString() : "Unknown socket error";
     qWarning() << "[WebSocketClient] Socket error:" << err;
     emit errorOccurred(err);
+    if (m_state == WebSocketState::Connecting && m_socket && m_socket->state() != QAbstractSocket::UnconnectedState) {
+        m_socket->abort();
+    }
+    if (m_state != WebSocketState::Disconnected &&
+        (!m_socket || m_socket->state() == QAbstractSocket::UnconnectedState) &&
+        !m_reconnectTimer->isActive()) {
+        onSocketDisconnected();
+    }
 }
 
 void WebSocketClient::onReconnectTimer() {

@@ -31,6 +31,13 @@ class IMessageQueue {
 public:
     virtual ~IMessageQueue() = default;
     virtual bool enqueue(const QString& messageId, const QByteArray& envelopeBytes, const QString& recipientUsername, const QString& recipientDeviceId) = 0;
+    virtual bool resetEntry(const QString& messageId, const QByteArray& envelopeBytes, const QString& recipientUsername, const QString& recipientDeviceId) {
+        Q_UNUSED(messageId);
+        Q_UNUSED(envelopeBytes);
+        Q_UNUSED(recipientUsername);
+        Q_UNUSED(recipientDeviceId);
+        return false;
+    }
     virtual bool updateState(const QString& messageId, QueueState newState) = 0;
     virtual bool incrementRetry(const QString& messageId) = 0;
     virtual std::optional<QueueEntry> getEntry(const QString& messageId) = 0;

@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QImageReader>
 #include <QFile>
+#include <QUrl>
 #include <QSet>
 #include <algorithm>
 
@@ -254,6 +255,22 @@ void ChatMessageModel::clearActiveViewportStore() {
     emit countChanged();
 }
 
+void ChatMessageModel::clearAllCaches() {
+    m_conversationCache.clear();
+    m_canFetchMoreCache.clear();
+    m_scrollPositions.clear();
+    m_isAtBottomMap.clear();
+    m_chatScrollPositions.clear();
+    m_draftTexts.clear();
+    m_draftAttachments.clear();
+    const bool hadActiveConv = !m_activeConversationId.isEmpty();
+    m_activeConversationId.clear();
+    clearActiveViewportStore();
+    if (hadActiveConv) {
+        emit activeConversationIdChanged();
+    }
+}
+
 void ChatMessageModel::setActiveConversation(const QString &conversationId) {
     QString key = conversationId.trimmed().toLower();
     QString oldKey = m_activeConversationId.trimmed().toLower();
@@ -397,6 +414,10 @@ void ChatMessageModel::updateTransferProgress(const QString &messageId, qreal pr
     if (messageId.isEmpty()) return;
     for (size_t i = 0; i < m_items.size(); ++i) {
         if (m_items[i].id == messageId) {
+            if ((m_items[i].status == "sent" || m_items[i].status == "seen" || m_items[i].status == "failed" || m_items[i].status == "declined") &&
+                progress < 1.0 && progress > 0.0) {
+                return;
+            }
             m_items[i].transferProgress = progress;
             m_items[i].transferBytes = bytes;
             QVector<int> roles = {TransferProgressRole, TransferBytesRole};
@@ -412,6 +433,23 @@ void ChatMessageModel::updateTransferProgress(const QString &messageId, qreal pr
 }
 
 void ChatMessageModel::onMediaTransferProgress(const QString &conversationId, const QString &messageId, qreal progress, qint64 bytesTransferred, qint64 totalBytes) {
+    if (!conversationId.isEmpty() && m_conversationCache.contains(conversationId)) {
+        auto &cached = m_conversationCache[conversationId];
+        for (auto &cItem : cached) {
+            if (cItem.id == messageId) {
+                if ((cItem.status == "sent" || cItem.status == "seen" || cItem.status == "failed" || cItem.status == "declined") &&
+                    progress < 1.0 && progress > 0.0) {
+                    break;
+                }
+                cItem.transferProgress = progress;
+                cItem.transferBytes = bytesTransferred;
+                if (totalBytes > 0 && (cItem.fileSize <= 0 || cItem.fileSize != totalBytes)) {
+                    cItem.fileSize = totalBytes;
+                }
+                break;
+            }
+        }
+    }
     if (!conversationId.isEmpty() && conversationId.compare(m_activeConversationId, Qt::CaseInsensitive) != 0) return;
     updateTransferProgress(messageId, progress, bytesTransferred, totalBytes);
 }
@@ -454,8 +492,12 @@ MessageItem ChatMessageModel::parseVariantMap(const QVariantMap &map) const {
     // Fast inspect local image dimensions if not already provided
     if (item.mediaWidth <= 0 && item.messageType == "image" && !item.mediaUrl.isEmpty()) {
         QString localPath = item.mediaUrl;
-        if (localPath.startsWith("file:///")) localPath = localPath.mid(8);
-        else if (localPath.startsWith("file://")) localPath = localPath.mid(7);
+        QUrl url(localPath);
+        if (url.isLocalFile()) {
+            localPath = url.toLocalFile();
+        } else if (localPath.startsWith("file://")) {
+            localPath = localPath.mid(7);
+        }
 #ifdef _WIN32
         if (localPath.startsWith("/") && localPath.length() >= 3 && localPath.at(2) == ':') {
             localPath = localPath.mid(1);
@@ -529,16 +571,19 @@ void ChatMessageModel::mergeMessages(std::vector<MessageItem> &&newItems) {
             bool statusChanged = (m_items[idx].status != item.status || m_items[idx].errorText != item.errorText);
             bool progressChanged = (m_items[idx].transferProgress != item.transferProgress || m_items[idx].transferBytes != item.transferBytes);
             bool textChanged = (m_items[idx].text != item.text);
-            if (statusChanged || progressChanged || textChanged) {
+            bool mediaUrlChanged = (!item.mediaUrl.isEmpty() && m_items[idx].mediaUrl != item.mediaUrl);
+            if (statusChanged || progressChanged || textChanged || mediaUrlChanged) {
                 m_items[idx].status = item.status;
                 m_items[idx].errorText = item.errorText;
                 m_items[idx].transferProgress = item.transferProgress;
                 m_items[idx].transferBytes = item.transferBytes;
                 m_items[idx].text = item.text;
+                if (mediaUrlChanged) m_items[idx].mediaUrl = item.mediaUrl;
                 QVector<int> roles;
                 if (statusChanged) roles << StatusRole << ErrorTextRole;
                 if (progressChanged) roles << TransferProgressRole << TransferBytesRole;
                 if (textChanged) roles << TextRole;
+                if (mediaUrlChanged) roles << MediaUrlRole;
                 QModelIndex modelIdx = index(static_cast<int>(idx), 0);
                 emit dataChanged(modelIdx, modelIdx, roles);
             }
@@ -566,12 +611,20 @@ void ChatMessageModel::mergeMessages(std::vector<MessageItem> &&newItems) {
 void ChatMessageModel::onMessageAdded(const QString &conversationId, const QVariantMap &message) {
     MessageItem newItem = parseVariantMap(message);
 
-    // Keep conversation cache up to date even if not currently focused
     if (!conversationId.isEmpty()) {
         auto &cached = m_conversationCache[conversationId];
         bool foundInCache = false;
         for (auto &cItem : cached) {
             if (cItem.id == newItem.id) {
+                if (newItem.mediaUrl.isEmpty() && !cItem.mediaUrl.isEmpty()) {
+                    newItem.mediaUrl = cItem.mediaUrl;
+                }
+                if (newItem.mediaWidth <= 0 && cItem.mediaWidth > 0) {
+                    newItem.mediaWidth = cItem.mediaWidth;
+                }
+                if (newItem.mediaHeight <= 0 && cItem.mediaHeight > 0) {
+                    newItem.mediaHeight = cItem.mediaHeight;
+                }
                 cItem = newItem;
                 foundInCache = true;
                 break;
@@ -591,13 +644,26 @@ void ChatMessageModel::onMessageAdded(const QString &conversationId, const QVari
     QString msgId = newItem.id;
     for (size_t i = 0; i < m_items.size(); ++i) {
         if (m_items[i].id == msgId) {
+            if (newItem.mediaUrl.isEmpty() && !m_items[i].mediaUrl.isEmpty()) {
+                newItem.mediaUrl = m_items[i].mediaUrl;
+            }
+            if (newItem.mediaWidth <= 0 && m_items[i].mediaWidth > 0) {
+                newItem.mediaWidth = m_items[i].mediaWidth;
+            }
+            if (newItem.mediaHeight <= 0 && m_items[i].mediaHeight > 0) {
+                newItem.mediaHeight = m_items[i].mediaHeight;
+            }
             bool statusChanged = (m_items[i].status != newItem.status || m_items[i].errorText != newItem.errorText);
             bool progressChanged = (m_items[i].transferProgress != newItem.transferProgress || m_items[i].transferBytes != newItem.transferBytes);
+            bool mediaUrlChanged = (m_items[i].mediaUrl != newItem.mediaUrl);
+            bool dimsChanged = (m_items[i].mediaWidth != newItem.mediaWidth || m_items[i].mediaHeight != newItem.mediaHeight);
             m_items[i] = newItem;
             recalculateBlocks();
             QVector<int> roles;
             if (statusChanged) roles << StatusRole << ErrorTextRole;
             if (progressChanged) roles << TransferProgressRole << TransferBytesRole;
+            if (mediaUrlChanged) roles << MediaUrlRole;
+            if (dimsChanged) roles << MediaWidthRole << MediaHeightRole;
             emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), 0), roles);
             return;
         }
@@ -621,7 +687,7 @@ void ChatMessageModel::onMessageAdded(const QString &conversationId, const QVari
     }
 }
 
-void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText) {
+void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText, const QString &mediaUrl) {
     if (!conversationId.isEmpty() && m_conversationCache.contains(conversationId)) {
         auto &cached = m_conversationCache[conversationId];
         for (auto &item : cached) {
@@ -629,10 +695,24 @@ void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QSt
                 if (item.fromMe && item.status != status) {
                     item.status = status;
                     item.errorText = errorText;
+                    if (!mediaUrl.isEmpty()) {
+                        item.mediaUrl = mediaUrl;
+                    }
+                    if (status == "sent" || status == "seen") {
+                        item.transferProgress = 1.0;
+                        item.transferBytes = item.fileSize;
+                    }
                 }
             } else if (item.id == messageId) {
                 item.status = status;
                 item.errorText = errorText;
+                if (!mediaUrl.isEmpty()) {
+                    item.mediaUrl = mediaUrl;
+                }
+                if (status == "sent" || status == "seen") {
+                    item.transferProgress = 1.0;
+                    item.transferBytes = item.fileSize;
+                }
                 break;
             }
         }
@@ -645,7 +725,17 @@ void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QSt
             if (m_items[i].fromMe && m_items[i].status != status) {
                 m_items[i].status = status;
                 m_items[i].errorText = errorText;
-                emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), 0), {StatusRole, ErrorTextRole});
+                QVector<int> roles = {StatusRole, ErrorTextRole};
+                if (!mediaUrl.isEmpty()) {
+                    m_items[i].mediaUrl = mediaUrl;
+                    roles << MediaUrlRole;
+                }
+                if (status == "sent" || status == "seen") {
+                    m_items[i].transferProgress = 1.0;
+                    m_items[i].transferBytes = m_items[i].fileSize;
+                    roles << TransferProgressRole << TransferBytesRole;
+                }
+                emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), 0), roles);
             }
         }
         return;
@@ -655,7 +745,17 @@ void ChatMessageModel::onMessageUpdated(const QString &conversationId, const QSt
         if (m_items[i].id == messageId) {
             m_items[i].status = status;
             m_items[i].errorText = errorText;
-            emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), 0), {StatusRole, ErrorTextRole});
+            QVector<int> roles = {StatusRole, ErrorTextRole};
+            if (!mediaUrl.isEmpty()) {
+                m_items[i].mediaUrl = mediaUrl;
+                roles << MediaUrlRole;
+            }
+            if (status == "sent" || status == "seen") {
+                m_items[i].transferProgress = 1.0;
+                m_items[i].transferBytes = m_items[i].fileSize;
+                roles << TransferProgressRole << TransferBytesRole;
+            }
+            emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), 0), roles);
             break;
         }
     }

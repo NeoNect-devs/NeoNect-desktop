@@ -135,7 +135,7 @@ qt_add_executable(NeoNectApp
     src/storage/StoragePathResolver.h src/storage/StoragePathResolver.cpp
     src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/StoragePathResolver.cpp src/crypto/session/SessionManager.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
     src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
@@ -161,7 +161,6 @@ qt_add_executable(NeoNectApp
 
     # Core & Facade
     src/core/application.h src/core/application.cpp
-    src/themedata.h
     src/core/versioninfo.h src/core/versioninfo.cpp
     src/core/networkmanager.h src/core/networkmanager.cpp
     src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
@@ -400,17 +399,12 @@ add_executable(NeoNectTests
     src/crypto/session/SessionManager.h src/crypto/session/SessionManager.cpp src/crypto/session/SecurePreKeyStoreAdapter.cpp
     src/services/messageservice.h src/services/messageservice.cpp
     src/core/messaging/Message.h
-    src/core/messaging/MessageStorage.h src/core/messaging/MessageStorage.cpp
-    src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
-    src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
-    src/core/messaging/MessageService.h src/core/messaging/MessageService.cpp
-    src/core/messaging/OfflineQueue.h src/core/messaging/OfflineQueue.cpp
 
     # Storage
     src/storage/StoragePathResolver.h src/storage/StoragePathResolver.cpp
     src/storage/StorageContext.h src/storage/StorageContext.cpp
     src/storage/isettingsrepository.h
-    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/StoragePathResolver.cpp src/crypto/session/SessionManager.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
+    src/storage/settingsrepository.h src/storage/settingsrepository.cpp src/storage/SettingsMigrationOrchestrator.h src/storage/SettingsMigrationOrchestrator.cpp
     src/storage/capabilitiesrepository.cpp
 
     src/storage/e2ee/IOSSecretStore.h
@@ -454,7 +448,6 @@ target_link_libraries(NeoNectTests PRIVATE
     Qt6::Quick
     Qt6::Network
     Qt6::Sql
-    Qt6::Concurrent
     Qt6::Test
     OpenSSL::SSL
     OpenSSL::Crypto
@@ -743,6 +736,7 @@ add_executable(TestStoragePathResolver tests/test_storagepathresolver.cpp src/st
 target_include_directories(TestStoragePathResolver PRIVATE src tests)
 target_link_libraries(TestStoragePathResolver PRIVATE Qt6::Core Qt6::Test)
 set_target_properties(TestStoragePathResolver PROPERTIES AUTOMOC ON AUTOMOC_COMPILER_PREDEFS OFF)
+add_test(NAME TestStoragePathResolver COMMAND TestStoragePathResolver)
 
 
 # Phase 2 StorageContext Test Target

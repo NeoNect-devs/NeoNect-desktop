@@ -18,29 +18,37 @@ Rectangle {
     border.color: "#232523"; border.width: 1
 
     property string customStatusPreference: (NetworkManager && NetworkManager.userStatus) ? NetworkManager.userStatus : "online"
-    property string userStatus: (NetworkManager && NetworkManager.token && NetworkManager.token !== "" && NetworkManager.isConnected) ? (NetworkManager.effectiveStatus || "offline") : "offline"
+    property string userStatus: {
+        if (!NetworkManager || !NetworkManager.token || NetworkManager.token === "")
+            return "offline";
+        if (!NetworkManager.isConnected)
+            return "reconnecting";
+        return NetworkManager.effectiveStatus || "offline";
+    }
 
     function getStatusColor(st) {
         switch(st) {
-            case "online": return "#23A55A"; // Emerald Green
+            case "online": return "#23A55A";
+            case "reconnecting":
             case "afk":
-            case "idle": return "#FAA81A";   // Amber Yellow (AFK / Idle)
-            case "dnd": return "#F23F43";    // Crimson Red (Do Not Disturb)
+            case "idle": return "#FAA81A";
+            case "dnd": return "#F23F43";
             case "offline":
             case "invisible":
-            default: return "#80848E";       // Muted Gray (Offline / Invisible)
+            default: return "#80848E";
         }
     }
 
     function getStatusLabel(st) {
         switch(st) {
             case "online": return "Online";
+            case "reconnecting": return "Reconnecting...";
             case "afk":
             case "idle": return "Idle / AFK";
             case "dnd": return "Do Not Disturb";
+            case "invisible": return "Invisible";
             case "offline":
-            case "invisible":
-            default: return "Invisible / Offline";
+            default: return "Offline";
         }
     }
 

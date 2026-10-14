@@ -18,4 +18,6 @@ private slots:
     void testStorageFailureDoesNotCorrupt();
     void testTransportFailureNoStateLoss();
     void testDuplicateDeliveryHandled();
+    void testSpoofedSenderRejected();
+    void testSessionReinitializationAndDesyncRecovery();
 };

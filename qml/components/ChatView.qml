@@ -31,6 +31,7 @@ ColumnLayout {
     signal sendMessagePayload(var itemObj)
     signal acceptMediaRequested(string convId, string reqId)
     signal declineMediaRequested(string convId, string reqId)
+    signal fileRejected(string reason)
 
     visible: !(selectedServer === "dms" && activeChannel === "friends") && activeChannel !== ""
     Layout.fillWidth: true
@@ -653,6 +654,25 @@ ColumnLayout {
                                             fileName = path.substring(path.lastIndexOf('\\') + 1);
                                         }
                                         var detectedType = UIHelpers.detectMediaType(url, fileName);
+                                        var actualSize = (typeof AudioManager !== "undefined" && AudioManager && AudioManager.getFileSize) ? AudioManager.getFileSize(url) : 0;
+                                        if (actualSize <= 0) {
+                                            actualSize = (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000)));
+                                        }
+                                        if (typeof NetworkManager !== "undefined" && NetworkManager && !NetworkManager.isFileSizeAllowed(actualSize)) {
+                                            var limitBytes = NetworkManager.maxFileTransferBytes;
+                                            var reason = "";
+                                            if (NetworkManager.capabilityState === "unavailable" || NetworkManager.capabilityState === "invalid" || NetworkManager.capabilityState === "unsupported") {
+                                                reason = "Cannot attach file: Server capabilities unavailable or unsupported.";
+                                            } else if (limitBytes > 0 && actualSize > limitBytes) {
+                                                var formattedSize = (typeof NetworkManager.formatBytes === "function") ? NetworkManager.formatBytes(actualSize) : (actualSize + " B");
+                                                var formattedLimit = (typeof NetworkManager.formatBytes === "function") ? NetworkManager.formatBytes(limitBytes) : (limitBytes + " B");
+                                                reason = "File \"" + fileName + "\" (" + formattedSize + ") exceeds file transfer limit (" + formattedLimit + ").";
+                                            } else {
+                                                reason = "File \"" + fileName + "\" cannot be attached under current server limits.";
+                                            }
+                                            chatViewRoot.fileRejected(reason);
+                                            continue;
+                                        }
                                         var itemObj = {
                                             messageId: (messageModel && messageModel.generateUuid) ? messageModel.generateUuid() : ("msg_" + Date.now() + "_" + i),
                                             text: "",
@@ -662,7 +682,7 @@ ColumnLayout {
                                             messageType: detectedType,
                                             mediaUrl: url,
                                             fileName: fileName,
-                                            fileSize: (detectedType === "image" ? 1540000 : (detectedType === "video" ? 8500000 : (detectedType === "audio" ? 4200000 : 2500000))),
+                                            fileSize: actualSize,
                                             duration: (detectedType === "video" ? 30 : (detectedType === "audio" ? 180 : 0)),
                                             waveform: (detectedType === "voice" ? [0.3, 0.6, 0.9, 0.5, 0.2] : []),
                                             status: "sending",
@@ -807,6 +827,7 @@ ColumnLayout {
                     isDM: selectedServer === "dms"
                     onTypingStarted: chatViewRoot.typingStarted()
                     onTypingStopped: chatViewRoot.typingStopped()
+                    onFileRejected: function(reason) { chatViewRoot.fileRejected(reason); }
 
                     onMessageSent: function(msgText) {
                         var itemObj = {

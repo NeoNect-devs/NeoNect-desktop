@@ -137,6 +137,10 @@ void TestStorage::testOpenConversationsPersistence() {
 
 void TestStorage::testAccountScopedConversations() {
     NeoNect::Storage::SettingsRepository repo("test_account_scope");
+    repo.clearSession();
+    repo.setUsername("bob");
+    repo.setOpenConversations({});
+    repo.clearSession();
 
     // Alice logs in and adds a conversation
     repo.setUsername("alice");

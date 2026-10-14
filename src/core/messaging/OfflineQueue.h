@@ -20,6 +20,7 @@ public:
     ~MessageQueue() override;
 
     bool enqueue(const QString& messageId, const QByteArray& envelopeBytes, const QString& recipientUsername, const QString& recipientDeviceId) override;
+    bool resetEntry(const QString& messageId, const QByteArray& envelopeBytes, const QString& recipientUsername, const QString& recipientDeviceId) override;
     bool updateState(const QString& messageId, QueueState newState) override;
     bool incrementRetry(const QString& messageId) override;
     std::optional<QueueEntry> getEntry(const QString& messageId) override;

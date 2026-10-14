@@ -83,6 +83,7 @@ QUrl HttpTransport::buildUrl(const QString &endpoint, const QMap<QString, QStrin
 
 QNetworkRequest HttpTransport::createRequest(const QUrl &url, bool includeJsonHeader) const {
     QNetworkRequest req(url);
+    req.setTransferTimeout(10000);
     if (includeJsonHeader) {
         req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     }

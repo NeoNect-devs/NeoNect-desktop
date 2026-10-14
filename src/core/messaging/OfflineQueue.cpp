@@ -1,4 +1,5 @@
 #include "OfflineQueue.h"
+#include <QCoreApplication>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
@@ -31,6 +32,9 @@ namespace {
             pragmaQuery.exec("PRAGMA busy_timeout = 5000;");
         }
         ~DbConnection() {
+            if (!QCoreApplication::instance()) {
+                return;
+            }
             if (QSqlDatabase::contains(name)) {
                 {
                     QSqlDatabase db = QSqlDatabase::database(name, false);
@@ -71,9 +75,8 @@ MessageQueue::MessageQueue(const QString& dbPath) : m_dbPath(dbPath) {
 }
 
 MessageQueue::~MessageQueue() {
-    // m_aliveToken goes out of scope here.
-    // The thread_local ThreadConnections will lazily clean up connections
-    // for this instanceId in getDatabase() or on thread exit.
+    m_aliveToken.reset();
+    t_threadConnections.cleanup();
 }
 
 QSqlDatabase MessageQueue::getDatabase() {
@@ -110,6 +113,7 @@ void MessageQueue::initDatabase() {
                "created_at INTEGER, "
                "updated_at INTEGER"
                ")");
+    query.exec("CREATE INDEX IF NOT EXISTS idx_offline_queue_state_created ON offline_queue (state, created_at ASC, message_id ASC)");
 }
 
 bool MessageQueue::isValidTransition(QueueState from, QueueState to) const {
@@ -132,6 +136,32 @@ bool MessageQueue::enqueue(const QString& messageId, const QByteArray& envelopeB
     qint64 now = QDateTime::currentMSecsSinceEpoch();
     query.bindValue(":created", now);
     query.bindValue(":updated", now);
+
+    return query.exec();
+}
+
+bool MessageQueue::resetEntry(const QString& messageId, const QByteArray& envelopeBytes, const QString& recipientUsername, const QString& recipientDeviceId) {
+    QSqlDatabase db = getDatabase();
+    if (!db.isOpen() && !db.open()) return false;
+
+    auto optEntry = getEntry(messageId);
+    if (!optEntry || optEntry->state == QueueState::DELIVERED) return false;
+    if (!optEntry->envelopeBytes.isEmpty() && !envelopeBytes.isEmpty() && optEntry->envelopeBytes != envelopeBytes) {
+        return false;
+    }
+    const QByteArray& preservedEnvelope = optEntry->envelopeBytes.isEmpty() ? envelopeBytes : optEntry->envelopeBytes;
+    const QString& preservedUser = optEntry->recipientUsername.isEmpty() ? recipientUsername : optEntry->recipientUsername;
+    const QString& preservedDevice = optEntry->recipientDeviceId.isEmpty() ? recipientDeviceId : optEntry->recipientDeviceId;
+
+    QSqlQuery query(db);
+    query.prepare("UPDATE offline_queue SET envelope_bytes = :env, recipient_username = :ru, recipient_device_id = :rd, "
+                  "state = :state, retry_count = 0, updated_at = :updated WHERE message_id = :id");
+    query.bindValue(":env", preservedEnvelope);
+    query.bindValue(":ru", preservedUser);
+    query.bindValue(":rd", preservedDevice);
+    query.bindValue(":state", static_cast<int>(QueueState::QUEUED));
+    query.bindValue(":updated", QDateTime::currentMSecsSinceEpoch());
+    query.bindValue(":id", messageId);
 
     return query.exec();
 }
@@ -243,7 +273,11 @@ bool OfflineQueueService::onEnvelopeReady(const QString& recipientUsername, cons
     auto q = m_queue.lock();
     if (!q) return false;
     if (!q->enqueue(messageId, envelopeBytes, recipientUsername, recipientDeviceId)) {
-        return false; // failed to queue or duplicate
+        auto existing = q->getEntry(messageId);
+        if (!existing || existing->state == QueueState::DELIVERED ||
+            !q->resetEntry(messageId, envelopeBytes, recipientUsername, recipientDeviceId)) {
+            return false; // failed to queue or duplicate already delivered
+        }
     }
 
     auto optEntry = q->getEntry(messageId);
@@ -269,11 +303,14 @@ void OfflineQueueService::processEntry(QueueEntry& entry) {
             success = m_relaySendCb(entry.recipientUsername, entry.recipientDeviceId, entry.messageId, entry.envelopeBytes);
         }
 
-        if (success) {
-            q->updateState(entry.messageId, QueueState::ACK_PENDING);
-        } else {
-            // Transport failed immediately
-            handleTransportFailure(entry.messageId);
+        auto current = q->getEntry(entry.messageId);
+        if (current && current->state == QueueState::SENDING) {
+            if (success) {
+                q->updateState(entry.messageId, QueueState::ACK_PENDING);
+            } else {
+                // Transport failed immediately
+                handleTransportFailure(entry.messageId);
+            }
         }
     }
 }

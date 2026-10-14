@@ -15,29 +15,29 @@ enum class OPKState {
 };
 
 struct E2EEIdentity {
-    qint64 identity_id;
+    qint64 identity_id{0};
     QByteArray public_key;
     QByteArray private_key;
-    qint64 created_at;
-    qint64 version;
+    qint64 created_at{0};
+    qint64 version{0};
 };
 
 struct E2EESignedPreKey {
-    qint64 key_id;
+    qint64 key_id{0};
     QByteArray public_key;
     QByteArray private_key;
     QByteArray signature;
-    qint64 created_at;
-    qint32 status;
+    qint64 created_at{0};
+    qint32 status{0};
 };
 
 struct E2EEOneTimePreKey {
-    qint64 key_id;
+    qint64 key_id{0};
     QByteArray public_key;
     QByteArray private_key;
-    OPKState state;
-    qint64 created_at;
-    qint64 consumed_at;
+    OPKState state{OPKState::AVAILABLE};
+    qint64 created_at{0};
+    qint64 consumed_at{0};
 };
 
 
@@ -48,7 +48,7 @@ struct E2EEFileTransfer {
     qint64 file_size;
     qint32 chunk_size;
     qint32 max_envelope_bytes;
-    qint32 max_http_body_bytes;
+    qint64 max_http_body_bytes;
     qint32 chunk_count;
     QByteArray file_hash;
     QString spool_path;
@@ -94,6 +94,7 @@ public:
     virtual ~ISecureE2EEStore() = default;
 
     virtual ServiceResult<std::monostate> initialize(const QString& dbPath, const QString& profileId) = 0;
+    virtual bool isOpen() const { return true; }
     virtual void close() = 0;
     virtual ServiceResult<std::monostate> closeAndWipeDatabase() = 0;
 
@@ -111,6 +112,13 @@ public:
 
     virtual ServiceResult<std::monostate> saveSession(const E2EESession& session) = 0;
     virtual ServiceResult<E2EESession> getSession(const QString& session_id) = 0;
+    virtual ServiceResult<std::vector<E2EESession>> getSessionsForDevice(const QString& device_id) {
+        auto res = getSession(device_id);
+        if (!res.success || !res.data.has_value()) {
+            return ServiceResult<std::vector<E2EESession>>::fail(res.message);
+        }
+        return ServiceResult<std::vector<E2EESession>>::ok({res.data.value()});
+    }
     
     virtual ServiceResult<std::monostate> updateSessionState(const SessionUpdateTx& tx) = 0;
 

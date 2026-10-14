@@ -11,18 +11,366 @@
 #include "../src/storage/settingsrepository.h"
 #include "../src/storage/capabilitiesrepository.h"
 #include "../src/storage/StoragePathResolver.h"
+#include "../src/storage/e2ee/SecureE2EEStore.h"
+#include "../src/storage/e2ee/MasterKeyProvider.h"
+#include "../src/storage/e2ee/PlatformSecretStore.h"
 #include "../src/crypto/cryptoservice.h"
+#include "../src/crypto/OpenSSLBackend.h"
+#include "../src/crypto/XEdDSAAdapter.h"
+#include "../src/crypto/KeyEncoding.h"
+#include "../src/crypto/KeyGenerationService.h"
+#include "../src/crypto/x3dh/X3DH.h"
+#include "../src/crypto/doubleratchet/DoubleRatchet.h"
+#include "../src/crypto/doubleratchet/AEAD.h"
+#include "../src/crypto/session/SessionManager.h"
+#include "../src/crypto/session/SecurePreKeyStoreAdapter.h"
 #include "../src/services/authservice.h"
 #include "../src/services/deviceservice.h"
+#include "../src/services/prekeyservice.h"
 #include "../src/services/relayservice.h"
 #include "../src/services/friendservice.h"
 #include "../src/services/messageservice.h"
 #include "../src/core/messaging/MessageStorage.h"
+#include "../src/core/messaging/MessageService.h"
+#include "../src/core/messaging/OfflineQueue.h"
 #include "../src/core/audiomanager.h"
 #include "../src/core/networkmanager.h"
 #include <iostream>
 #include "../src/core/notificationmanager.h"
 #include "../src/core/chatmessagemodel.h"
+
+namespace {
+
+struct ScopedLogCapture {
+    QtMessageHandler prevHandler = nullptr;
+    QString capturedLog;
+    static inline ScopedLogCapture* s_active = nullptr;
+
+    ScopedLogCapture() {
+        s_active = this;
+        prevHandler = qInstallMessageHandler([](QtMsgType, const QMessageLogContext&, const QString &msg) {
+            if (s_active) {
+                s_active->capturedLog.append(msg);
+                s_active->capturedLog.append('\n');
+            }
+        });
+    }
+
+    ~ScopedLogCapture() {
+        qInstallMessageHandler(prevHandler);
+        s_active = nullptr;
+    }
+};
+
+class ServicesTestSecretStore : public NeoNect::Storage::IOSSecretStore {
+    QByteArray m_key{QByteArray::fromHex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")};
+public:
+    NeoNect::ServiceResult<QByteArray> readSecret(const QString&) override {
+        return NeoNect::ServiceResult<QByteArray>::ok(m_key);
+    }
+    NeoNect::ServiceResult<std::monostate> writeSecret(const QString&, const QByteArray& secret) override {
+        m_key = secret;
+        return NeoNect::ServiceResult<std::monostate>::ok({});
+    }
+    NeoNect::ServiceResult<std::monostate> deleteSecret(const QString&) override {
+        m_key.clear();
+        return NeoNect::ServiceResult<std::monostate>::ok({});
+    }
+};
+
+struct E2EETestNode {
+    QString username;
+    QString deviceId;
+    QString token;
+    QString dbPath;
+    std::shared_ptr<NeoNect::Testing::MockHttpTransport> transport;
+    std::shared_ptr<NeoNect::Storage::SettingsRepository> storage;
+    std::shared_ptr<NeoNect::Storage::CapabilitiesRepository> capabilities;
+    std::shared_ptr<NeoNect::Storage::IOSSecretStore> secretStore;
+    std::shared_ptr<NeoNect::Storage::MasterKeyProvider> keyProvider;
+    std::shared_ptr<NeoNect::Storage::SecureE2EEStore> secureStore;
+    std::shared_ptr<NeoNect::Crypto::OpenSSLBackend> backend;
+    std::shared_ptr<NeoNect::Crypto::XEdDSAAdapter> xeddsa;
+    std::shared_ptr<NeoNect::Crypto::X3DH::X3DHImpl> x3dh;
+    std::shared_ptr<NeoNect::Crypto::DoubleRatchet::Engine> ratchet;
+    std::shared_ptr<NeoNect::Crypto::DoubleRatchet::AEAD> aead;
+    std::shared_ptr<NeoNect::Crypto::Session::SecurePreKeyStoreAdapter> preKeyAdapter;
+    std::shared_ptr<NeoNect::Services::DeviceService> deviceService;
+    std::shared_ptr<NeoNect::Services::PreKeyService> preKeyService;
+    std::shared_ptr<NeoNect::Services::RelayService> relayService;
+    std::shared_ptr<NeoNect::Core::Messaging::SqliteMessageStorage> messageStorage;
+    std::shared_ptr<NeoNect::Core::Messaging::MessageQueue> messageQueue;
+    std::shared_ptr<NeoNect::Core::Messaging::OfflineQueueService> offlineQueueService;
+    std::shared_ptr<NeoNect::Crypto::Session::SessionManager> sessionManager;
+    std::shared_ptr<NeoNect::Core::Messaging::MessageService> coreMessageService;
+
+    void setup(std::shared_ptr<NeoNect::Testing::MockHttpTransport> sharedTransport,
+               std::shared_ptr<NeoNect::Storage::SettingsRepository> settingsStorage,
+               std::shared_ptr<NeoNect::Services::RelayService> existingRelay = nullptr,
+               NeoNect::Services::MessageService* uiMsgService = nullptr,
+               NetworkManager* netMgr = nullptr) {
+        transport = sharedTransport;
+        storage = settingsStorage;
+        username = storage->username();
+        deviceId = storage->deviceId().isEmpty() ? ("mock-dev-" + username) : storage->deviceId();
+        storage->setDeviceId(deviceId);
+        token = storage->authToken();
+
+        QString prevToken = transport->authToken();
+        transport->seedUser(username, "password123");
+        transport->bindToken(token, username);
+        transport->setAuthToken(token);
+
+        dbPath = QDir::tempPath() + "/neonect_e2ee_test_" + username + "_" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".db";
+        secretStore = std::make_shared<ServicesTestSecretStore>();
+        keyProvider = std::make_shared<NeoNect::Storage::MasterKeyProvider>(secretStore);
+        secureStore = std::make_shared<NeoNect::Storage::SecureE2EEStore>(keyProvider);
+        secureStore->initialize(dbPath, "test_" + username);
+
+        backend = std::make_shared<NeoNect::Crypto::OpenSSLBackend>();
+        xeddsa = std::make_shared<NeoNect::Crypto::XEdDSAAdapter>();
+        x3dh = std::make_shared<NeoNect::Crypto::X3DH::X3DHImpl>();
+        ratchet = std::make_shared<NeoNect::Crypto::DoubleRatchet::Engine>(backend);
+        aead = std::make_shared<NeoNect::Crypto::DoubleRatchet::AEAD>(backend.get());
+
+        NeoNect::Crypto::KeyGenerationService keyGen(backend, xeddsa);
+        auto identityKeyPair = keyGen.generateIdentityKeyPair();
+        NeoNect::Storage::E2EEIdentity id;
+        id.identity_id = 1;
+        id.public_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.publicKey.data.data()), 32);
+        id.private_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.privateKey.data.data()), 32);
+        secureStore->saveIdentity(id);
+
+        preKeyAdapter = std::make_shared<NeoNect::Crypto::Session::SecurePreKeyStoreAdapter>(secureStore);
+        auto spk = keyGen.generateSignedPreKey(identityKeyPair, 1);
+        preKeyAdapter->storeSignedPreKey(std::move(spk));
+        auto opks = keyGen.generateOneTimePreKeys(10, 1);
+        preKeyAdapter->storeOneTimePreKeys(std::move(opks));
+
+        deviceService = std::make_shared<NeoNect::Services::DeviceService>(transport, storage);
+        preKeyService = std::make_shared<NeoNect::Services::PreKeyService>(transport, preKeyAdapter);
+
+        QString pubB64 = QString::fromLatin1(id.public_key.toBase64());
+        deviceService->registerDevice(deviceId, pubB64);
+        preKeyService->uploadPreKeys(deviceId);
+
+        capabilities = std::make_shared<NeoNect::Storage::CapabilitiesRepository>();
+        capabilities->replace(std::nullopt, 4 * 1024 * 1024, std::nullopt, NeoNect::Storage::CapabilityState::VALID);
+
+        if (existingRelay) {
+            relayService = existingRelay;
+            relayService->setCapabilities(capabilities);
+        } else {
+            relayService = std::make_shared<NeoNect::Services::RelayService>(transport, storage, capabilities, nullptr);
+        }
+
+        messageStorage = std::make_shared<NeoNect::Core::Messaging::SqliteMessageStorage>(":memory:");
+        messageQueue = std::make_shared<NeoNect::Core::Messaging::MessageQueue>(":memory:");
+
+        offlineQueueService = std::make_shared<NeoNect::Core::Messaging::OfflineQueueService>(
+            messageQueue,
+            [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) {
+                QString savedToken = transport->authToken();
+                transport->setAuthToken(token);
+                relayService->sendEncryptedEnvelope(rUser, rDev, msgId, env);
+                transport->setAuthToken(savedToken);
+                return true;
+            });
+
+        sessionManager = std::make_shared<NeoNect::Crypto::Session::SessionManager>(
+            secureStore, x3dh, ratchet, aead, backend, preKeyAdapter, xeddsa,
+            [this](const QString& rUser, const QString& rDev, const QString& msgId, const QByteArray& env) -> bool {
+                if (offlineQueueService) {
+                    return offlineQueueService->onEnvelopeReady(rUser, rDev, msgId, env);
+                }
+                return false;
+            },
+            [this](const QString& sessionId, const QByteArray& plaintext) {
+                if (coreMessageService) {
+                    coreMessageService->receiveMessage(sessionId, plaintext);
+                }
+            });
+
+        sessionManager->setSenderVerifier([this](const QString& claimedUser, const QString& senderDev, const QByteArray& senderIdentityKey) -> bool {
+            bool verified = false;
+            auto conn = std::make_shared<QMetaObject::Connection>();
+            *conn = QObject::connect(deviceService.get(), &NeoNect::Services::DeviceService::recipientKeysFetched,
+                [&verified, claimedUser, senderDev, senderIdentityKey, conn](const QString& retUser, const QVariantList& devices) {
+                    if (retUser.compare(claimedUser, Qt::CaseInsensitive) != 0) return;
+                    QObject::disconnect(*conn);
+                    for (const QVariant& v : devices) {
+                        QVariantMap d = v.toMap();
+                        if (d.value("device_id").toString() == senderDev) {
+                            QByteArray pubKey = QByteArray::fromBase64(d.value("public_key").toString().toLatin1());
+                            if (!pubKey.isEmpty() && pubKey == senderIdentityKey) {
+                                verified = true;
+                            }
+                            break;
+                        }
+                    }
+                });
+            QString savedToken = transport->authToken();
+            transport->setAuthToken(token);
+            deviceService->fetchRecipientKeys(claimedUser);
+            transport->setAuthToken(savedToken);
+            QObject::disconnect(*conn);
+            return verified;
+        });
+
+        coreMessageService = std::make_shared<NeoNect::Core::Messaging::MessageService>(
+            messageStorage, sessionManager, messageQueue);
+
+        coreMessageService->setPreKeyClaimRequestCallback([this](const QString& targetUser, const QString& targetDevice, auto resultCb) {
+            auto connection = std::make_shared<QMetaObject::Connection>();
+            *connection = QObject::connect(preKeyService.get(), &NeoNect::Services::PreKeyService::preKeyBundleClaimed,
+                [resultCb, targetUser, targetDevice, connection](const QString& retUser, const QString& retDev, std::optional<NeoNect::Crypto::X3DH::BobPreKeyBundle> bundle) {
+                    if (retUser == targetUser && retDev == targetDevice) {
+                        QObject::disconnect(*connection);
+                        resultCb(bundle);
+                    }
+                });
+            QString savedToken = transport->authToken();
+            transport->setAuthToken(token);
+            preKeyService->claimPreKeys(targetUser, targetDevice);
+            transport->setAuthToken(savedToken);
+        });
+
+        coreMessageService->setDeviceResolverCallback([this](const QString& targetUser, std::function<void(std::optional<QString>)> resultCb) {
+            auto connection = std::make_shared<QMetaObject::Connection>();
+            *connection = QObject::connect(deviceService.get(), &NeoNect::Services::DeviceService::recipientKeysFetched,
+                [resultCb, targetUser, connection](const QString& retUser, const QVariantList& devices) {
+                    if (retUser == targetUser) {
+                        QObject::disconnect(*connection);
+                        if (!devices.isEmpty()) {
+                            QVariantMap deviceMap = devices.first().toMap();
+                            resultCb(deviceMap.value("device_id").toString());
+                        } else {
+                            resultCb(std::nullopt);
+                        }
+                    }
+                });
+            QString savedToken = transport->authToken();
+            transport->setAuthToken(token);
+            deviceService->fetchRecipientKeys(targetUser);
+            transport->setAuthToken(savedToken);
+        });
+
+        coreMessageService->setOnDeliveryStateChanged([uiMsgService](const QString& msgId, NeoNect::Core::Messaging::MessageState state, const QString& reason) {
+            if (state == NeoNect::Core::Messaging::MessageState::FAILED && uiMsgService) {
+                uiMsgService->handleMessageDeliveryStatus(msgId, false, reason);
+            }
+        });
+
+        relayService->setEnvelopeHandler(sessionManager);
+
+        QObject::connect(relayService.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
+                         relayService.get(), [this, uiMsgService](const QString&, const QString& msgId, bool success, const QString& err) {
+            if (offlineQueueService) {
+                if (success) {
+                    offlineQueueService->handleAck(msgId);
+                } else {
+                    offlineQueueService->handleTransportFailure(msgId);
+                }
+            }
+            if (uiMsgService) {
+                uiMsgService->handleMessageDeliveryStatus(msgId, success, err);
+            }
+        });
+
+        coreMessageService->setOnMessageReceived([this, uiMsgService, netMgr](const NeoNect::Core::Messaging::Message& coreMsg) {
+            if (!coreMsg.senderDisplayName.isEmpty() && netMgr) {
+                netMgr->setPeerDisplayName(coreMsg.senderId, coreMsg.senderDisplayName);
+            }
+            NeoNect::Domain::Message domainMsg;
+            domainMsg.id = coreMsg.messageId;
+            domainMsg.serverId = coreMsg.serverId;
+            domainMsg.conversationId = coreMsg.conversationId;
+            domainMsg.senderId = coreMsg.senderId;
+            domainMsg.text = coreMsg.plaintext;
+            domainMsg.timestamp = coreMsg.timestamp;
+            domainMsg.type = coreMsg.type.isEmpty() ? "text" : coreMsg.type;
+            domainMsg.mediaUrl = coreMsg.mediaUrl;
+            domainMsg.fileName = coreMsg.fileName;
+            domainMsg.fileSize = coreMsg.fileSize;
+            domainMsg.duration = coreMsg.duration;
+            domainMsg.waveform = coreMsg.waveform;
+            domainMsg.mediaWidth = coreMsg.mediaWidth;
+            domainMsg.mediaHeight = coreMsg.mediaHeight;
+            domainMsg.errorText = coreMsg.errorText;
+            domainMsg.status = NeoNect::Domain::MessageStatus::Sent;
+            emit relayService->incomingDomainMessagesReceived({domainMsg});
+            if (uiMsgService) {
+                uiMsgService->handleIncomingMessage(domainMsg);
+            }
+        });
+
+        if (uiMsgService) {
+            QObject::connect(uiMsgService, &NeoNect::Services::MessageService::transmitMessage,
+                             relayService.get(), [this](const NeoNect::Domain::Message& domainMsg) {
+                sendDomain(domainMsg);
+            });
+        }
+
+        if (netMgr) {
+            QObject::connect(netMgr, &NetworkManager::systemMessageRequested,
+                             relayService.get(), [this, uiMsgService](const QString& convId, const QString& text, const QString& type) {
+                if (uiMsgService) {
+                    uiMsgService->sendMessage(convId, text, type, QString());
+                } else {
+                    NeoNect::Domain::Message sysMsg;
+                    sysMsg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+                    sysMsg.conversationId = convId;
+                    sysMsg.senderId = username;
+                    sysMsg.text = text;
+                    sysMsg.type = type;
+                    sysMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
+                    sendDomain(sysMsg);
+                }
+            });
+        }
+
+        transport->setAuthToken(prevToken);
+    }
+
+    void sendDomain(const NeoNect::Domain::Message& domainMsg) {
+        QString prevToken = transport->authToken();
+        transport->setAuthToken(token);
+        NeoNect::Core::Messaging::Message coreMsg;
+        coreMsg.messageId = domainMsg.id.isEmpty() ? QUuid::createUuid().toString(QUuid::WithoutBraces) : domainMsg.id;
+        coreMsg.conversationId = domainMsg.conversationId;
+        coreMsg.senderId = domainMsg.senderId.isEmpty() ? username : domainMsg.senderId;
+        if (storage && !storage->displayName().trimmed().isEmpty()) {
+            coreMsg.senderDisplayName = storage->displayName().trimmed();
+        }
+        QString targetUser = domainMsg.conversationId;
+        if (targetUser.startsWith("dms:")) {
+            targetUser = targetUser.mid(4);
+        }
+        coreMsg.receiverId = targetUser;
+        coreMsg.plaintext = domainMsg.text;
+        coreMsg.timestamp = domainMsg.timestamp > 0 ? domainMsg.timestamp : QDateTime::currentMSecsSinceEpoch();
+        coreMsg.type = domainMsg.type.isEmpty() ? "text" : domainMsg.type;
+        coreMsg.mediaUrl = domainMsg.mediaUrl;
+        coreMsg.fileName = domainMsg.fileName;
+        coreMsg.fileSize = domainMsg.fileSize;
+        coreMsg.duration = domainMsg.duration;
+        coreMsg.waveform = domainMsg.waveform;
+        coreMsg.mediaWidth = domainMsg.mediaWidth;
+        coreMsg.mediaHeight = domainMsg.mediaHeight;
+        coreMsg.errorText = domainMsg.errorText;
+        coreMsg.state = NeoNect::Core::Messaging::MessageState::CREATED;
+        coreMessageService->sendMessage(coreMsg);
+        transport->setAuthToken(prevToken);
+    }
+
+    ~E2EETestNode() {
+        if (!dbPath.isEmpty()) {
+            QFile::remove(dbPath);
+        }
+    }
+};
+
+} // namespace
 
 void TestServices::testAuthServiceFlow() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
@@ -103,47 +451,44 @@ void TestServices::testDeviceServiceFlow() {
 
 void TestServices::testRelayServiceFlowAndDeduplication() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
-    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_relay");
-    storage->clearSession();
-    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>(); crypto->setMasterKey(QByteArray(32, 1));
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_relay_alice");
+    storageAlice->clearSession();
+    storageAlice->setAuthToken("token-alice");
+    storageAlice->setUsername("alice");
+    storageAlice->setDeviceId("dev-alice");
 
-    mockTransport->seedUser("alice", "password123");
-    mockTransport->seedUser("bob", "password123");
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("test_service_relay_bob");
+    storageBob->clearSession();
+    storageBob->setAuthToken("token-bob");
+    storageBob->setUsername("bob");
+    storageBob->setDeviceId("mock-dev-bob");
 
-    // Set Alice as active session
-    mockTransport->setAuthToken("token-alice");
-    storage->setAuthToken("token-alice");
-    storage->setUsername("alice");
-    storage->setDeviceId("dev-alice");
-
-    NeoNect::Services::RelayService relayService(mockTransport, storage, nullptr, nullptr);
+    E2EETestNode aliceNode;
+    aliceNode.setup(mockTransport, storageAlice);
+    E2EETestNode bobNode;
+    bobNode.setup(mockTransport, storageBob);
 
     // 1. Send relay message from Alice to Bob
-    QSignalSpy spySend(&relayService, &NeoNect::Services::RelayService::secureMessageTransmitted);
+    QSignalSpy spySend(aliceNode.relayService.get(), &NeoNect::Services::RelayService::secureMessageTransmitted);
     {
         NeoNect::Domain::Message msg;
         msg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
         msg.conversationId = "dms:" + QString("bob");
         msg.type = "text";
         msg.text = "Hello Bob from Alice!";
-        msg.senderId = "alice"; // mock
-        relayService.sendDomainMessage(msg);
+        msg.senderId = "alice";
+        aliceNode.sendDomain(msg);
     }
     QCOMPARE(spySend.count(), 1);
 
     // 2. Verify message was queued for Bob's device
     QCOMPARE(mockTransport->queuedMessageCount("mock-dev-bob"), 1);
 
-    // 3. Switch active user to Bob
+    // 3. Switch active user to Bob and poll
     mockTransport->setAuthToken("token-bob");
-    storage->setAuthToken("token-bob");
-    storage->setUsername("bob");
-    storage->setDeviceId("mock-dev-bob");
+    QSignalSpy spyRecv(bobNode.relayService.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
 
-    QSignalSpy spyRecv(&relayService, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
-
-    // Poll message as Bob
-    relayService.pollPendingMessages();
+    bobNode.relayService->pollPendingMessages();
     QCOMPARE(spyRecv.count(), 1);
     auto recvArgs = spyRecv.takeFirst();
     auto msgs = qvariant_cast<std::vector<NeoNect::Domain::Message>>(recvArgs.at(0));
@@ -153,10 +498,11 @@ void TestServices::testRelayServiceFlowAndDeduplication() {
     QCOMPARE(msg.text, QString("Hello Bob from Alice!"));
 
     // 4. Test Deduplication: second poll immediately should not emit duplicate
-    relayService.pollPendingMessages();
+    bobNode.relayService->pollPendingMessages();
     QCOMPARE(spyRecv.count(), 0);
 
-    storage->clearSession();
+    storageAlice->clearSession();
+    storageBob->clearSession();
 }
 
 void TestServices::testNetworkManagerFacadeIntegration() {
@@ -190,9 +536,6 @@ void TestServices::testTwoClientChatExchange() {
     sharedTransport->seedUser("alice", "pass123");
     sharedTransport->seedUser("bob", "pass123");
 
-    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>(); cryptoAlice->setMasterKey(QByteArray(32, 1));
-    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>(); cryptoBob->setMasterKey(QByteArray(32, 1));
-
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice");
     storageAlice->clearSession();
     storageAlice->setUsername("alice");
@@ -205,11 +548,16 @@ void TestServices::testTwoClientChatExchange() {
     storageBob->setDeviceId("mock-dev-bob");
     storageBob->setAuthToken("mock-token-bob");
 
-    NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, nullptr, nullptr);
-    NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, nullptr, nullptr);
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr, nullptr);
 
-    QSignalSpy spyBobRecv(&relayBob, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
-    QSignalSpy spyAliceRecv(&relayAlice, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
+    E2EETestNode aliceNode;
+    aliceNode.setup(sharedTransport, storageAlice, relayAlice);
+    E2EETestNode bobNode;
+    bobNode.setup(sharedTransport, storageBob, relayBob);
+
+    QSignalSpy spyBobRecv(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
+    QSignalSpy spyAliceRecv(relayAlice.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
 
     // 2. Alice sends a direct message to Bob
     sharedTransport->setAuthToken("mock-token-alice");
@@ -219,15 +567,13 @@ void TestServices::testTwoClientChatExchange() {
         msg.conversationId = "dms:" + QString("bob");
         msg.type = "text";
         msg.text = "Hey Bob, greetings from client Alice!";
-        msg.senderId = "alice"; // mock
-        relayAlice.sendDomainMessage(msg);
-        QSignalSpy spySend(&relayAlice, &NeoNect::Services::RelayService::messageTransmissionStatus);
-        spySend.wait(50);
+        msg.senderId = "alice";
+        aliceNode.sendDomain(msg);
     }
 
     // 3. Bob polls and receives Alice's message
     sharedTransport->setAuthToken("mock-token-bob");
-    relayBob.pollPendingMessages();
+    relayBob->pollPendingMessages();
 
     QCOMPARE(spyBobRecv.count(), 1);
     auto bobMsg = spyBobRecv.takeFirst();
@@ -244,13 +590,13 @@ void TestServices::testTwoClientChatExchange() {
         msg.conversationId = "dms:" + QString("alice");
         msg.type = "text";
         msg.text = "Hey Alice, message received loud and clear!";
-        msg.senderId = "alice"; // mock
-        relayBob.sendDomainMessage(msg);
+        msg.senderId = "bob";
+        bobNode.sendDomain(msg);
     }
 
     // 5. Alice polls and receives Bob's reply
     sharedTransport->setAuthToken("mock-token-alice");
-    relayAlice.pollPendingMessages();
+    relayAlice->pollPendingMessages();
 
     QCOMPARE(spyAliceRecv.count(), 1);
     auto aliceMsg = spyAliceRecv.takeFirst();
@@ -430,11 +776,6 @@ void TestServices::testTwoClientMediaRequestApprovalFlow() {
     sharedTransport->seedUser("alice", "pass123");
     sharedTransport->seedUser("bob", "pass123");
 
-    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoAlice->setMasterKey(QByteArray(32, 1));
-    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoBob->setMasterKey(QByteArray(32, 1));
-
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_mr");
     storageAlice->clearSession();
     storageAlice->setUsername("alice");
@@ -458,17 +799,10 @@ void TestServices::testTwoClientMediaRequestApprovalFlow() {
     auto msgBob = std::make_shared<NeoNect::Services::MessageService>(repoBob);
     msgBob->setCurrentUserId("bob");
 
-    // Wire Relay <-> MessageService for Alice
-    QObject::connect(msgAlice.get(), &NeoNect::Services::MessageService::transmitMessage,
-                     relayAlice.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
-                     msgAlice.get(), &NeoNect::Services::MessageService::handleIncomingMessages);
-
-    // Wire Relay <-> MessageService for Bob
-    QObject::connect(msgBob.get(), &NeoNect::Services::MessageService::transmitMessage,
-                     relayBob.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
-                     msgBob.get(), &NeoNect::Services::MessageService::handleIncomingMessages);
+    E2EETestNode aliceNode;
+    aliceNode.setup(sharedTransport, storageAlice, relayAlice, msgAlice.get());
+    E2EETestNode bobNode;
+    bobNode.setup(sharedTransport, storageBob, relayBob, msgBob.get());
 
     QSignalSpy spyBobMsgAdded(msgBob.get(), &NeoNect::Services::MessageService::messageAdded);
 
@@ -521,9 +855,13 @@ void TestServices::testTwoClientMediaRequestApprovalFlow() {
     QCOMPARE(spyBobRemoved.at(0).at(1).toString(), requestId);
 
     // Alice polls and receives media_accept
+    ScopedLogCapture mediaLogCapture;
     sharedTransport->setAuthToken("mock-token-alice");
     relayAlice->pollPendingMessages();
-    QTest::qWait(60);
+    QTRY_VERIFY_WITH_TIMEOUT(spyAliceUpdated.count() >= 1, 3000);
+
+    QVERIFY(!mediaLogCapture.capturedLog.contains("sunset.jpg"));
+    QVERIFY(mediaLogCapture.capturedLog.contains("Auto-sending media payload type:"));
 
     // Verify Alice's message updated and removed
     QVERIFY(spyAliceUpdated.count() >= 1);
@@ -534,15 +872,17 @@ void TestServices::testTwoClientMediaRequestApprovalFlow() {
 
     // 6. Verify Alice automatically transmitted the actual image payload to Bob upon acceptance
     sharedTransport->setAuthToken("mock-token-bob");
-    relayBob->pollPendingMessages();
-    QTest::qWait(60);
+    for (int i = 0; i < 20 && spyBobMsgAdded.count() == 0; ++i) {
+        relayBob->pollPendingMessages();
+        QTest::qWait(50);
+    }
 
     QCOMPARE(spyBobMsgAdded.count(), 1);
     auto payloadMap = spyBobMsgAdded.takeFirst().at(1).toMap();
     QCOMPARE(payloadMap.value("type").toString(), QString("image"));
     QCOMPARE(payloadMap.value("fileName").toString(), QString("sunset.jpg"));
     QCOMPARE(payloadMap.value("fileSize").toLongLong(), 4500000LL);
-    QCOMPARE(payloadMap.value("mediaUrl").toString(), QString("file:///sunset.jpg"));
+    QCOMPARE(payloadMap.value("mediaUrl").toString(), QString("")); // Local path stripped over E2EE network
     QCOMPARE(payloadMap.value("text").toString(), QString("Check out the sunset!"));
 
     storageAlice->clearSession();
@@ -612,12 +952,20 @@ void TestServices::testNotificationManagerFlow() {
 
     // 1. Test showNotification
     QSignalSpy spyTrigger(notifMgr, &NeoNect::Core::NotificationManager::notificationTriggered);
-    notifMgr->showNotification("Alex", "Hello from Alex!", "message", "alex", "A", 3000);
+    const QString canary = QStringLiteral("SYNTHETIC-CANARY-BODY-7F9B1E");
+    {
+        ScopedLogCapture logCapture;
+        notifMgr->showNotification("Alex", canary, "message", "alex", "A", 3000);
+
+        QVERIFY(!logCapture.capturedLog.contains(canary));
+        QVERIFY(!logCapture.capturedLog.contains("Alex"));
+        QVERIFY(logCapture.capturedLog.contains("showNotification triggered"));
+    }
 
     QCOMPARE(spyTrigger.count(), 1);
     auto notif = spyTrigger.takeFirst().at(0).toMap();
     QCOMPARE(notif.value("title").toString(), "Alex");
-    QCOMPARE(notif.value("body").toString(), "Hello from Alex!");
+    QCOMPARE(notif.value("body").toString(), canary);
     QCOMPARE(notif.value("channel").toString(), "alex");
     QCOMPARE(notifMgr->unreadCount(), 1);
     QCOMPARE(notifMgr->activeNotifications().size(), 1);
@@ -674,13 +1022,22 @@ void TestServices::testNotificationManagerFlow() {
 
 void TestServices::testCiphertextDoesNotContainPlaintext() {
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
-    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_crypto_plain");
-    storage->setAuthToken("token");
-    storage->setUsername("alice");
-    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
-    crypto->setMasterKey(QByteArray(32, 1));
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("test_crypto_plain_alice");
+    storageAlice->clearSession();
+    storageAlice->setAuthToken("token-alice");
+    storageAlice->setUsername("alice");
+    storageAlice->setDeviceId("mock-dev-alice");
 
-    NeoNect::Services::RelayService relay(mockTransport, storage, nullptr, nullptr);
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("test_crypto_plain_bob");
+    storageBob->clearSession();
+    storageBob->setAuthToken("token-bob");
+    storageBob->setUsername("bob");
+    storageBob->setDeviceId("mock-dev-bob");
+
+    E2EETestNode aliceNode;
+    aliceNode.setup(mockTransport, storageAlice);
+    E2EETestNode bobNode;
+    bobNode.setup(mockTransport, storageBob);
 
     QSignalSpy spyRaw(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
 
@@ -692,12 +1049,13 @@ void TestServices::testCiphertextDoesNotContainPlaintext() {
     msg.text = "SUPER_SECRET_PLAINTEXT_999";
     msg.senderId = "alice";
 
-    relay.sendDomainMessage(msg);
+    aliceNode.sendDomain(msg);
 
-    QCOMPARE(spyRaw.count(), 1);
-    QByteArray rawJson = spyRaw.takeFirst().at(0).toByteArray();
+    QVERIFY(spyRaw.count() >= 1);
+    QByteArray rawJson = spyRaw.last().at(0).toByteArray();
     QVERIFY(!rawJson.contains("SUPER_SECRET_PLAINTEXT_999"));
     QVERIFY(rawJson.contains("ciphertext"));
+    spyRaw.clear();
 
     // 2. Media message encryption test (Image / Audio / Video / Voice binary stream)
     QString tempMediaDir = QDir::tempPath() + "/neonect_crypto_test/";
@@ -720,10 +1078,10 @@ void TestServices::testCiphertextDoesNotContainPlaintext() {
     mediaMsg.duration = 10;
     mediaMsg.senderId = "alice";
 
-    relay.sendDomainMessage(mediaMsg);
+    aliceNode.sendDomain(mediaMsg);
 
-    QCOMPARE(spyRaw.count(), 1);
-    QByteArray rawMediaJson = spyRaw.takeFirst().at(0).toByteArray();
+    QVERIFY(spyRaw.count() >= 1);
+    QByteArray rawMediaJson = spyRaw.last().at(0).toByteArray();
 
     // Verify raw JSON on wire contains ZERO plaintext of the media stream or base64 file data
     QVERIFY(!rawMediaJson.contains("CONFIDENTIAL_MEDIA_STREAM_PAYLOAD_E2EE_ABCXYZ_987654321"));
@@ -732,30 +1090,33 @@ void TestServices::testCiphertextDoesNotContainPlaintext() {
 
     // Clean up temporary test file
     QFile::remove(tempMediaPath);
+    storageAlice->clearSession();
+    storageBob->clearSession();
 }
 
 
 void TestServices::testRelayServiceTamperedMessageRejection() {
     auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false, false);
 
-    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice");
+    auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_tamper");
+    storageAlice->clearSession();
     storageAlice->setUsername("alice");
+    storageAlice->setDeviceId("mock-dev-alice");
     storageAlice->setAuthToken("token-alice");
-    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoAlice->setMasterKey(QByteArray(32, 1));
 
-    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob");
+    auto storageBob = std::make_shared<NeoNect::Storage::SettingsRepository>("client_bob_tamper");
+    storageBob->clearSession();
     storageBob->setUsername("bob");
     storageBob->setDeviceId("mock-dev-bob");
     storageBob->setAuthToken("token-bob");
-    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoBob->setMasterKey(QByteArray(32, 1));
 
-    sharedTransport->seedUser("alice", "pass");
-    sharedTransport->seedUser("bob", "pass");
+    auto relayAlice = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageAlice, nullptr, nullptr);
+    auto relayBob = std::make_shared<NeoNect::Services::RelayService>(sharedTransport, storageBob, nullptr, nullptr);
 
-    NeoNect::Services::RelayService relayAlice(sharedTransport, storageAlice, nullptr, nullptr);
-    NeoNect::Services::RelayService relayBob(sharedTransport, storageBob, nullptr, nullptr);
+    E2EETestNode aliceNode;
+    aliceNode.setup(sharedTransport, storageAlice, relayAlice);
+    E2EETestNode bobNode;
+    bobNode.setup(sharedTransport, storageBob, relayBob);
 
     sharedTransport->setAuthToken("token-alice");
     NeoNect::Domain::Message msg;
@@ -764,15 +1125,17 @@ void TestServices::testRelayServiceTamperedMessageRejection() {
     msg.type = "text";
     msg.text = "Hello Bob!";
     msg.senderId = "alice";
-    relayAlice.sendDomainMessage(msg);
+    aliceNode.sendDomain(msg);
 
     sharedTransport->tamperLastMessageCiphertext("mock-dev-bob");
 
-    QSignalSpy spyBobRecv(&relayBob, &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
+    QSignalSpy spyBobRecv(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived);
     sharedTransport->setAuthToken("token-bob");
-    relayBob.pollPendingMessages();
+    relayBob->pollPendingMessages();
 
     QCOMPARE(spyBobRecv.count(), 0);
+    storageAlice->clearSession();
+    storageBob->clearSession();
 }
 
 void TestServices::testCallbackCannotReachDestroyedService() {
@@ -810,26 +1173,23 @@ void TestServices::testRequestCancellationOnServiceDestruction() {
 
 void TestServices::testPhase10ABackendProtocolCompliance() {
     auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>();
-    auto crypto = std::make_shared<NeoNect::Crypto::CryptoService>();
-    crypto->setMasterKey(QByteArray(32, 1));
     auto mockTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>();
+    auto caps = std::make_shared<NeoNect::Storage::CapabilitiesRepository>();
+    caps->replace(std::nullopt, 4 * 1024 * 1024, std::nullopt, NeoNect::Storage::CapabilityState::VALID);
 
     NeoNect::Services::AuthService authService(mockTransport, storage, nullptr);
     NeoNect::Services::DeviceService deviceService(mockTransport, storage);
-    NeoNect::Services::RelayService relayService(mockTransport, storage, nullptr, nullptr);
+    NeoNect::Services::RelayService relayService(mockTransport, storage, caps, nullptr);
     NeoNect::Services::FriendService friendService(mockTransport, storage);
 
+    mockTransport->setAuthToken("test_token");
     storage->setAuthToken("test_token");
     storage->setDeviceId("dev_123");
 
     QSignalSpy spyRequests(mockTransport.get(), &NeoNect::Testing::MockHttpTransport::rawRequestData);
 
-    // 1. Correct send request envelope
-    NeoNect::Domain::Message msg;
-    msg.id = "msg_abc";
-    msg.text = "Hello backend";
-    msg.conversationId = "dms:bob";
-    relayService.sendDomainMessage(msg);
+    // 1. Correct send request envelope (Protocol v2)
+    relayService.sendEncryptedEnvelope("bob", "mock-dev-bob", "msg_abc", QByteArray("opaque_e2ee_envelope"));
     QTest::qWait(50);
 
     QCOMPARE(spyRequests.count(), 1);
@@ -837,7 +1197,9 @@ void TestServices::testPhase10ABackendProtocolCompliance() {
     QJsonDocument sendDoc = QJsonDocument::fromJson(sendPayload);
     QVERIFY(!sendDoc.isNull());
     QVERIFY(sendDoc.object().contains("from_device_id"));
-    QVERIFY(sendDoc.object().contains("to_username"));
+    QVERIFY(sendDoc.object().contains("recipient_device_id"));
+    QVERIFY(sendDoc.object().contains("message_id"));
+    QCOMPARE(sendDoc.object().value("protocol_version").toInt(), 2);
     QVERIFY(sendDoc.object().contains("ciphertext"));
     QVERIFY(sendDoc.object().contains("timestamp"));
     QVERIFY(!sendDoc.object().contains("messages")); // Must NOT be an array wrapper
@@ -1439,11 +1801,6 @@ void TestServices::testSeenReceiptsAndUpdateCheckmark() {
     sharedTransport->seedUser("alice", "pass123");
     sharedTransport->seedUser("bob", "pass123");
 
-    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoAlice->setMasterKey(QByteArray(32, 1));
-    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoBob->setMasterKey(QByteArray(32, 1));
-
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_seen");
     storageAlice->clearSession();
     storageAlice->setUsername("alice");
@@ -1467,23 +1824,10 @@ void TestServices::testSeenReceiptsAndUpdateCheckmark() {
     auto msgBob = std::make_shared<NeoNect::Services::MessageService>(repoBob);
     msgBob->setCurrentUserId("bob");
 
-    QObject::connect(msgAlice.get(), &NeoNect::Services::MessageService::transmitMessage,
-                     relayAlice.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
-                     msgAlice.get(), &NeoNect::Services::MessageService::handleIncomingMessages);
-    QObject::connect(relayAlice.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
-                     msgAlice.get(), [&msgAlice](const QString &, const QString &messageId, bool success, const QString &errorMessage) {
-        msgAlice->handleMessageDeliveryStatus(messageId, success, errorMessage);
-    });
-
-    QObject::connect(msgBob.get(), &NeoNect::Services::MessageService::transmitMessage,
-                     relayBob.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
-                     msgBob.get(), &NeoNect::Services::MessageService::handleIncomingMessages);
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::messageTransmissionStatus,
-                     msgBob.get(), [&msgBob](const QString &, const QString &messageId, bool success, const QString &errorMessage) {
-        msgBob->handleMessageDeliveryStatus(messageId, success, errorMessage);
-    });
+    E2EETestNode aliceNode;
+    aliceNode.setup(sharedTransport, storageAlice, relayAlice, msgAlice.get());
+    E2EETestNode bobNode;
+    bobNode.setup(sharedTransport, storageBob, relayBob, msgBob.get());
 
     ChatMessageModel modelAlice;
     modelAlice.setActiveConversation("dms:bob");
@@ -1648,19 +1992,20 @@ void TestServices::testRetryMessageFlow() {
     QCOMPARE(retriedMsg.id, msgId);
     QCOMPARE(retriedMsg.text, QString("Hello Bob!"));
 
-    // 4. Simulate transmission success
+    // 4. Simulate transmission success (with default null QString() as emitted by RelayService)
     spyUpdated.clear();
-    msgService->handleMessageDeliveryStatus(msgId, true, "");
+    msgService->handleMessageDeliveryStatus(msgId, true, QString());
     QCOMPARE(spyUpdated.count(), 1);
     QCOMPARE(spyUpdated.last().at(2).toString(), QString("sent"));
 
-    // Verify persisted status in DB is "sent"
+    // Verify persisted status and cleared errorText in DB
     QSignalSpy spyLoaded(msgService.get(), &NeoNect::Services::MessageService::conversationLoaded);
     msgService->loadConversation("dms:bob");
     QVERIFY(spyLoaded.wait(500));
     auto loaded = spyLoaded.first().at(1).toList();
     QCOMPARE(loaded.size(), 1);
     QCOMPARE(loaded.at(0).toMap().value("status").toString(), QString("sent"));
+    QCOMPARE(loaded.at(0).toMap().value("errorText").toString(), QString(""));
 
     // 5. Test Media Request failure & retry
     spyAdded.clear();
@@ -1707,6 +2052,12 @@ void TestServices::testRetryMessageFlow() {
     cmCold.messageId = coldMsg.id;
     cmCold.conversationId = coldMsg.conversationId;
     cmCold.senderId = coldMsg.senderId;
+    cmCold.plaintext = coldMsg.text;
+    cmCold.type = coldMsg.type;
+    cmCold.mediaUrl = coldMsg.mediaUrl;
+    cmCold.fileName = coldMsg.fileName;
+    cmCold.fileSize = coldMsg.fileSize;
+    cmCold.errorText = coldMsg.errorText;
     cmCold.timestamp = coldMsg.timestamp;
     cmCold.state = NeoNect::Core::Messaging::MessageState::FAILED;
     repo->saveMessage(cmCold);
@@ -1744,6 +2095,8 @@ void TestServices::testRetryMessageFlow() {
     cmSaved.messageId = savedMsg.id;
     cmSaved.conversationId = savedMsg.conversationId;
     cmSaved.senderId = savedMsg.senderId;
+    cmSaved.plaintext = savedMsg.text;
+    cmSaved.type = savedMsg.type;
     cmSaved.timestamp = savedMsg.timestamp;
     cmSaved.state = NeoNect::Core::Messaging::MessageState::FAILED;
     repo->saveMessage(cmSaved);
@@ -1878,9 +2231,6 @@ void TestServices::testRealtimeChatPresenceExchange() {
     sharedTransport->seedUser("alice", "password123");
     sharedTransport->seedUser("bob", "password123");
 
-    auto cryptoAlice = std::make_shared<NeoNect::Crypto::CryptoService>(); cryptoAlice->setMasterKey(QByteArray(32, 1));
-    auto cryptoBob = std::make_shared<NeoNect::Crypto::CryptoService>(); cryptoBob->setMasterKey(QByteArray(32, 1));
-
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_pres");
     storageAlice->clearSession();
     storageAlice->setUsername("alice");
@@ -1912,10 +2262,10 @@ void TestServices::testRealtimeChatPresenceExchange() {
     msgAlice.setCurrentUserId("alice");
     msgBob.setCurrentUserId("bob");
 
-    QObject::connect(&msgAlice, &NeoNect::Services::MessageService::transmitMessage,
-                     relayAlice.get(), &NeoNect::Services::RelayService::sendDomainMessage);
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
-                     &msgBob, &NeoNect::Services::MessageService::handleIncomingMessages);
+    E2EETestNode aliceNode;
+    aliceNode.setup(sharedTransport, storageAlice, relayAlice, &msgAlice, &netMgrAlice);
+    E2EETestNode bobNode;
+    bobNode.setup(sharedTransport, storageBob, relayBob, &msgBob, &netMgrBob);
 
     QSignalSpy spyBobPresence(&netMgrBob, &NetworkManager::friendStatusUpdated);
 
@@ -1971,9 +2321,6 @@ void TestServices::testDisplayNameResolutionAndSync() {
     sharedTransport->seedUser("alice", "password123");
     sharedTransport->seedUser("bob", "password123");
 
-    auto cryptoService = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoService->setMasterKey(QByteArray(32, 1));
-
     // Client Alice
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_dn");
     storageAlice->clearSession();
@@ -2002,6 +2349,11 @@ void TestServices::testDisplayNameResolutionAndSync() {
     auto friendBob = std::make_shared<NeoNect::Services::FriendService>(sharedTransport, storageBob, nullptr);
     NetworkManager netMgrBob(sharedTransport, storageBob, authBob, deviceBob, relayBob, friendBob);
 
+    E2EETestNode aliceNode;
+    aliceNode.setup(sharedTransport, storageAlice, relayAlice, nullptr, &netMgrAlice);
+    E2EETestNode bobNode;
+    bobNode.setup(sharedTransport, storageBob, relayBob, nullptr, &netMgrBob);
+
     // Set Alice display name
     netMgrAlice.setDisplayName("Alice in Wonderland");
     QCOMPARE(netMgrAlice.displayName(), QString("Alice in Wonderland"));
@@ -2024,7 +2376,7 @@ void TestServices::testDisplayNameResolutionAndSync() {
     msg1.type = "text";
     msg1.text = "Hello Bob!";
     msg1.senderId = "alice";
-    relayAlice->sendDomainMessage(msg1);
+    aliceNode.sendDomain(msg1);
     QTest::qWait(50);
 
     // Bob polls relay
@@ -2042,7 +2394,7 @@ void TestServices::testDisplayNameResolutionAndSync() {
     msg2.type = "text";
     msg2.text = "Hey Alice!";
     msg2.senderId = "bob";
-    relayBob->sendDomainMessage(msg2);
+    bobNode.sendDomain(msg2);
     QTest::qWait(50);
 
     // Alice polls relay
@@ -2060,9 +2412,6 @@ void TestServices::testDisplayNameResolutionAndSync() {
 
 void TestServices::testAvatarProcessingAndPeerSync() {
     auto sharedTransport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
-
-    auto cryptoService = std::make_shared<NeoNect::Crypto::CryptoService>();
-    cryptoService->setMasterKey(QByteArray(32, 1));
 
     // Client Alice
     auto storageAlice = std::make_shared<NeoNect::Storage::SettingsRepository>("client_alice_avatar");
@@ -2114,20 +2463,20 @@ void TestServices::testAvatarProcessingAndPeerSync() {
     QObject::connect(&msgBob, &NeoNect::Services::MessageService::peerAvatarDataReceived,
                      &netMgrBob, &NetworkManager::setPeerAvatarData);
 
-    QObject::connect(relayBob.get(), &NeoNect::Services::RelayService::incomingDomainMessagesReceived,
-                     &msgBob, &NeoNect::Services::MessageService::handleIncomingMessages);
+    E2EETestNode aliceNode;
+    aliceNode.setup(sharedTransport, storageAlice, relayAlice, nullptr, &netMgrAlice);
+    E2EETestNode bobNode;
+    bobNode.setup(sharedTransport, storageBob, relayBob, &msgBob, &netMgrBob);
 
-    // Wire up Alice's broadcast to the established mock transport pattern
-    QObject::connect(&netMgrAlice, &NetworkManager::systemMessageRequested, relayAlice.get(), [relayAlice](const QString &convId, const QString &text, const QString &type) {
-        NeoNect::Domain::Message avMsg;
-        avMsg.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        avMsg.conversationId = convId;
-        avMsg.senderId = "alice_avatar";
-        avMsg.type = type;
-        avMsg.text = text;
-        avMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
-        relayAlice->sendDomainMessage(avMsg);
-    });
+    {
+        ScopedLogCapture avatarLogCap;
+        QString bogusPath = tempDir.path() + "/private_personal_folder/secret_file.xyz";
+        bool badSetOk = netMgrAlice.setAvatar(bogusPath);
+        QVERIFY(!badSetOk);
+        QVERIFY(!avatarLogCap.capturedLog.contains(bogusPath));
+        QVERIFY(!avatarLogCap.capturedLog.contains("secret_file.xyz"));
+        QVERIFY(avatarLogCap.capturedLog.contains("[NetworkManager] setAvatar failed to load image"));
+    }
 
     // 2. Set profile picture on Alice
     sharedTransport->setAuthToken("mock-token-alice");
@@ -2349,6 +2698,8 @@ opks.push_back(std::move(opk));
     auto consumedAgain = adapter.consumeOneTimePreKey(100);
     QVERIFY(!consumedAgain.has_value());
     QCOMPARE(adapter.availableOneTimePreKeyCount(), (size_t)0);
+    store->close();
+    QFile::remove("test_prekey_adapter.db");
 }
 
 void TestServices::testPreKeyServiceDecoding() {
@@ -2393,6 +2744,8 @@ void TestServices::testPreKeyServiceDecoding() {
     service.claimPreKeys("bob", "dev1");
     QCOMPARE(spy.count(), 1);
     QVERIFY(!spy.takeFirst()[2].value<std::optional<NeoNect::Crypto::X3DH::BobPreKeyBundle>>().has_value());
+    store->close();
+    QFile::remove("test_prekey_decoding.db");
 }
 
 void TestServices::testPreKeyServiceUploadPayload() {
@@ -2431,6 +2784,8 @@ void TestServices::testPreKeyServiceUploadPayload() {
     QVERIFY(!lastReq.contains("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")); // Private key must not be present!
     QCOMPARE(spkReq["public_key"].toString(), QString::fromLatin1(QByteArray(32, 'y').toBase64()));
     QCOMPARE(spkReq["signature"].toString(), QString::fromLatin1(QByteArray(64, 'z').toBase64()));
+    store->close();
+    QFile::remove("test_prekey_upload.db");
 }
 
 
@@ -2621,6 +2976,15 @@ void TestServices::testVoiceNoteIsolation() {
     // If it was playing url1, it might just keep playing, but we check if it accepted msg4
     QVERIFY(amAlice1.currentPlayingId() != "msg4");
 
+    {
+        ScopedLogCapture audioLogCap;
+        QString nonExistentAudio = "file:///tmp/user_secret_recording_test_123.wav";
+        amAlice1.playAudio("msg_non_existent", nonExistentAudio, 1);
+        QVERIFY(!audioLogCap.capturedLog.contains(nonExistentAudio));
+        QVERIFY(!audioLogCap.capturedLog.contains("user_secret_recording_test_123.wav"));
+        QVERIFY(audioLogCap.capturedLog.contains("[AudioManager] Audio file does not exist"));
+    }
+
     // 7. Cleanup success
     amAlice1.cleanupLocalFile(url1);
     QVERIFY(!QFile::exists(cleanUrl1));
@@ -2628,7 +2992,7 @@ void TestServices::testVoiceNoteIsolation() {
     // 8. Cleanup rejection out-of-bounds
     QString testOut = QDir::temp().filePath("test_out.wav");
     QFile outF(testOut);
-    outF.open(QIODevice::WriteOnly);
+    QVERIFY(outF.open(QIODevice::WriteOnly));
     outF.write("dummy");
     outF.close();
     amAlice1.cleanupLocalFile("file://" + testOut);
@@ -3129,4 +3493,262 @@ void TestServices::testFriendRequestApiLifecycleAndEdgeCases() {
     storage->setOutgoingRequests({});
     storage->clearSession();
     deferredStorage->clearSession();
+}
+
+namespace {
+class ControllableVerifyTransport : public NeoNect::Transport::IHttpTransport {
+public:
+    QString m_baseUrl;
+    QString m_authToken;
+    QList<NeoNect::Transport::HttpResponseCallback> m_healthCallbacks;
+    QList<NeoNect::Transport::HttpResponseCallback> m_capsCallbacks;
+    int m_relayPollCalls{0};
+    int m_relayAckCalls{0};
+
+    void setBaseUrl(const QString &url) override { m_baseUrl = url; }
+    QString baseUrl() const override { return m_baseUrl; }
+    void setAuthToken(const QString &token) override { m_authToken = token; }
+    QString authToken() const override { return m_authToken; }
+
+    QNetworkReply* get(const QString &endpoint, const QMap<QString, QString> &, const QObject*, NeoNect::Transport::HttpResponseCallback callback) override {
+        if (endpoint == NeoNect::Constants::EP_HEALTH) {
+            m_healthCallbacks.append(callback);
+        } else if (endpoint == NeoNect::Constants::EP_CAPABILITIES) {
+            m_capsCallbacks.append(callback);
+        } else if (endpoint == NeoNect::Constants::EP_RELAY_POLL) {
+            ++m_relayPollCalls;
+            QJsonObject msg;
+            msg["id"] = 777;
+            msg["ciphertext"] = QString::fromLatin1(QByteArray("corrupt_cipher").toBase64());
+            msg["sender_device_id"] = "peer_dev";
+            QJsonArray arr;
+            arr.append(msg);
+            QJsonObject root;
+            root["messages"] = arr;
+            callback(200, QJsonDocument(root).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+        } else {
+            callback(200, QByteArray(R"({"status":"success","friends":[],"username":"saved_user"})"), QNetworkReply::NoError, QString());
+        }
+        return nullptr;
+    }
+
+    QNetworkReply* post(const QString &endpoint, const QByteArray &, const QObject*, NeoNect::Transport::HttpResponseCallback callback) override {
+        if (endpoint == NeoNect::Constants::EP_RELAY_SEND) {
+            callback(500, QByteArray(R"({"error":"Internal relay error"})"), QNetworkReply::NoError, QString());
+        } else if (endpoint == NeoNect::Constants::EP_RELAY_ACK) {
+            ++m_relayAckCalls;
+            callback(200, QByteArray(R"({"status":"success"})"), QNetworkReply::NoError, QString());
+        } else {
+            callback(200, QByteArray(R"({"status":"success","token":"tok123"})"), QNetworkReply::NoError, QString());
+        }
+        return nullptr;
+    }
+
+    QNetworkReply* deleteResource(const QString &, const QObject*, NeoNect::Transport::HttpResponseCallback callback, const QByteArray &) override {
+        callback(200, QByteArray(R"({"status":"success"})"), QNetworkReply::NoError, QString());
+        return nullptr;
+    }
+};
+
+class FailingEnvelopeHandler : public NeoNect::Transport::IIncomingEnvelopeHandler {
+public:
+    int calls{0};
+    NeoNect::VoidResult handleEnvelope(const QByteArray &, const NeoNect::Transport::TransportMetadata &) override {
+        ++calls;
+        return NeoNect::VoidResult::fail("DoubleRatchet Receive failed");
+    }
+};
+}
+
+void TestServices::testNodeVerificationReconnectAndRelayStatusHandoff() {
+    auto transport = std::make_shared<ControllableVerifyTransport>();
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_verify_reconnect");
+    auto caps = std::make_shared<NeoNect::Storage::CapabilitiesRepository>();
+    NeoNect::Services::AuthService auth(transport, storage, caps);
+
+    QSignalSpy verifySpy(&auth, &NeoNect::Services::AuthService::verificationResult);
+
+    auth.verifyServer("http://127.0.0.1:9999");
+    auth.verifyServer("http://localhost:8080");
+    QCOMPARE(transport->m_healthCallbacks.size(), 2);
+
+    transport->m_healthCallbacks[0](0, QByteArray(), QNetworkReply::ConnectionRefusedError, "Connection refused");
+    QCOMPARE(verifySpy.count(), 0);
+
+    transport->m_healthCallbacks[1](200, QByteArray(R"({"status":"ok"})"), QNetworkReply::NoError, QString());
+    QCOMPARE(transport->m_capsCallbacks.size(), 1);
+    transport->m_capsCallbacks[0](200, QByteArray(R"({"version":1,"limits":{"max_http_body_bytes":4194304,"max_envelope_bytes":65536,"max_devices_per_user":5}})"), QNetworkReply::NoError, QString());
+
+    QCOMPARE(verifySpy.count(), 1);
+    QVERIFY(verifySpy.first().at(0).toBool());
+
+    verifySpy.clear();
+    transport->m_healthCallbacks.clear();
+    transport->m_capsCallbacks.clear();
+
+    auth.verifyServer("http://127.0.0.1:9998");
+    QCOMPARE(transport->m_healthCallbacks.size(), 1);
+    transport->m_healthCallbacks[0](0, QByteArray(), QNetworkReply::ConnectionRefusedError, "Connection refused");
+    QCOMPARE(verifySpy.count(), 1);
+    QVERIFY(!verifySpy.first().at(0).toBool());
+
+    verifySpy.clear();
+    transport->m_healthCallbacks.clear();
+    auth.verifyServer("http://localhost:8080");
+    transport->m_healthCallbacks[0](200, QByteArray(R"({"status":"ok"})"), QNetworkReply::NoError, QString());
+    transport->m_capsCallbacks[0](200, QByteArray(R"({"version":1,"limits":{"max_http_body_bytes":4194304,"max_envelope_bytes":65536,"max_devices_per_user":5}})"), QNetworkReply::NoError, QString());
+    QCOMPARE(verifySpy.count(), 1);
+    QVERIFY(verifySpy.first().at(0).toBool());
+
+    auto handler = std::make_shared<FailingEnvelopeHandler>();
+    auto relay = std::make_shared<NeoNect::Services::RelayService>(transport, storage, caps, handler);
+    storage->setAuthToken("saved_token");
+    storage->setUsername("saved_user");
+    storage->setDeviceId("saved_dev");
+
+    QSignalSpy txSpy(relay.get(), &NeoNect::Services::RelayService::messageTransmissionStatus);
+    relay->sendEncryptedEnvelope("bob", "devB", "msg-fail-500", QByteArray("cipher"));
+    QCOMPARE(txSpy.count(), 1);
+    QVERIFY(!txSpy.first().at(2).toBool());
+
+    relay->pollPendingMessages();
+    QCOMPARE(handler->calls, 1);
+    QCOMPARE(transport->m_relayAckCalls, 0);
+
+    relay->pollPendingMessages();
+    QCOMPARE(handler->calls, 2);
+    QCOMPARE(transport->m_relayAckCalls, 1);
+
+    auto devSvc = std::make_shared<NeoNect::Services::DeviceService>(transport, storage);
+    auto friendSvc = std::make_shared<NeoNect::Services::FriendService>(transport, storage);
+    auto authSvc = std::make_shared<NeoNect::Services::AuthService>(transport, storage, caps);
+    storage->setServerUrl("http://localhost:8080");
+    storage->setPublicKey(QString::fromLatin1(QByteArray(32, 'P').toBase64()));
+    NetworkManager nm(transport, storage, authSvc, devSvc, relay, friendSvc);
+    QCOMPARE(nm.token(), QString("saved_token"));
+    transport->setAuthToken(QString());
+    nm.resumeSavedSession();
+    QCOMPARE(transport->authToken(), QString("saved_token"));
+
+    storage->clearSession();
+}
+
+void TestServices::testNetworkManagerUploadLimitContract() {
+    auto transport = std::make_shared<NeoNect::Testing::MockHttpTransport>(false);
+    auto storage = std::make_shared<NeoNect::Storage::SettingsRepository>("test_upload_limits");
+    storage->clearSession();
+    auto capRepo = std::make_shared<NeoNect::Storage::CapabilitiesRepository>();
+
+    auto authService = std::make_shared<NeoNect::Services::AuthService>(transport, storage, capRepo);
+    auto devService = std::make_shared<NeoNect::Services::DeviceService>(transport, storage);
+    auto relayService = std::make_shared<NeoNect::Services::RelayService>(transport, storage, capRepo, nullptr);
+    auto friendService = std::make_shared<NeoNect::Services::FriendService>(transport, storage);
+
+    // 1. Initial state with injected capabilities repository
+    NetworkManager nm(transport, storage, authService, devService, relayService, friendService, capRepo);
+
+    QCOMPARE(nm.capabilityState(), QString("unknown"));
+    QCOMPARE(nm.maxEnvelopeBytes(), 1048576LL);
+    QCOMPARE(nm.maxUploadBytes(), 1048576LL);
+    QCOMPARE(nm.maxHttpBodyBytes(), 4194304LL);
+    QCOMPARE(nm.maxFileTransferBytes(), 0LL);
+
+    // 2. Fetch server capabilities with custom limits (2 MiB envelope, 8 MiB HTTP)
+    QSignalSpy spyCaps(&nm, &NetworkManager::capabilitiesChanged);
+    transport->setSimulatedResponse("/api/v1/health", R"({"status":"ok"})", 200);
+    QByteArray capsJson = R"({"version": 1, "limits": {"max_http_body_bytes": 8388608, "max_envelope_bytes": 2097152, "max_devices_per_user": 5}})";
+    transport->setSimulatedResponse("/api/v1/capabilities", capsJson, 200);
+
+    nm.verifyServer("http://localhost:8080");
+    QCoreApplication::processEvents();
+
+    QVERIFY(spyCaps.count() >= 1);
+    QCOMPARE(nm.capabilityState(), QString("valid"));
+    QCOMPARE(nm.maxEnvelopeBytes(), 2097152LL);
+    QCOMPARE(nm.maxUploadBytes(), 2097152LL);
+    QCOMPARE(nm.maxHttpBodyBytes(), 8388608LL);
+    QCOMPARE(nm.maxFileTransferBytes(), 0LL);
+
+    // 3. Single-envelope vs. Chunked file transfer validation
+    // A. Single-envelope validation: strictly enforces maxEnvelopeBytes (2 MiB)
+    QVERIFY(nm.isEnvelopeSizeAllowed(1));               // Minimal valid envelope
+    QVERIFY(nm.isEnvelopeSizeAllowed(2097151));         // 1 byte below envelope limit
+    QVERIFY(nm.isEnvelopeSizeAllowed(2097152));         // Exact envelope limit
+    QVERIFY(!nm.isEnvelopeSizeAllowed(2097153));        // 1 byte above envelope limit rejected for single envelope
+    QVERIFY(!nm.isEnvelopeSizeAllowed(10 * 1024 * 1024)); // Significantly oversized for single envelope
+    QVERIFY(!nm.isEnvelopeSizeAllowed(0));              // Zero bytes invalid
+    QVERIFY(!nm.isEnvelopeSizeAllowed(-100));           // Negative bytes invalid
+
+    // B. Chunked file transfer validation: files exceeding single envelope limit are permitted
+    // because FileTransferManager splits them into envelopes <= maxEnvelopeBytes
+    QVERIFY(nm.isFileSizeAllowed(1));                   // 1 byte file
+    QVERIFY(nm.isFileSizeAllowed(2097151));             // Below envelope limit
+    QVERIFY(nm.isFileSizeAllowed(2097152));             // Equal to envelope limit
+    QVERIFY(nm.isFileSizeAllowed(2097153));             // 1 byte above envelope limit (allowed for chunked transfer)
+    QVERIFY(nm.isFileSizeAllowed(5 * 1024 * 1024));     // 5 MiB file (allowed for chunked transfer)
+    QVERIFY(nm.isFileSizeAllowed(50 * 1024 * 1024));    // 50 MiB file (allowed for chunked transfer)
+    QVERIFY(!nm.isFileSizeAllowed(0));                  // Zero bytes invalid
+    QVERIFY(!nm.isFileSizeAllowed(-100));               // Negative bytes invalid
+
+    // 4. Dynamic limit reconfiguration (e.g. server reduces envelope limit to 512 KiB)
+    capRepo->replace(4194304LL, 524288, 5, NeoNect::Storage::CapabilityState::VALID);
+    QCOMPARE(nm.maxEnvelopeBytes(), 524288LL);
+    QCOMPARE(nm.maxUploadBytes(), 524288LL);
+    QVERIFY(nm.isEnvelopeSizeAllowed(500 * 1024));
+    QVERIFY(nm.isEnvelopeSizeAllowed(524288));
+    QVERIFY(!nm.isEnvelopeSizeAllowed(524289));
+    // File transfer remains allowed for files > 512 KiB because FileTransferManager chunks them
+    QVERIFY(nm.isFileSizeAllowed(524289));
+    QVERIFY(nm.isFileSizeAllowed(5 * 1024 * 1024));
+
+    // 5. Unavailable / Invalid / Unsupported server states block both single-envelope and chunked transfers
+    capRepo->replace(std::nullopt, std::nullopt, std::nullopt, NeoNect::Storage::CapabilityState::UNAVAILABLE);
+    QCOMPARE(nm.capabilityState(), QString("unavailable"));
+    QVERIFY(!nm.isEnvelopeSizeAllowed(1024));
+    QVERIFY(!nm.isFileSizeAllowed(1024));
+
+    capRepo->replace(std::nullopt, std::nullopt, std::nullopt, NeoNect::Storage::CapabilityState::INVALID);
+    QCOMPARE(nm.capabilityState(), QString("invalid"));
+    QVERIFY(!nm.isEnvelopeSizeAllowed(1024));
+    QVERIFY(!nm.isFileSizeAllowed(1024));
+
+    capRepo->replace(std::nullopt, std::nullopt, std::nullopt, NeoNect::Storage::CapabilityState::UNSUPPORTED);
+    QCOMPARE(nm.capabilityState(), QString("unsupported"));
+    QVERIFY(!nm.isEnvelopeSizeAllowed(1024));
+    QVERIFY(!nm.isFileSizeAllowed(1024));
+
+    // 6. formatBytes utility helper
+    QCOMPARE(nm.formatBytes(0), QString("0 B"));
+    QCOMPARE(nm.formatBytes(512), QString("512 B"));
+    QCOMPARE(nm.formatBytes(1024), QString("1.0 KB"));
+    QCOMPARE(nm.formatBytes(1536), QString("1.5 KB"));
+    QCOMPARE(nm.formatBytes(1048576), QString("1.0 MB"));
+    QCOMPARE(nm.formatBytes(2097152), QString("2.0 MB"));
+
+    // 7. Avatar budget respects envelope size
+    capRepo->replace(4194304LL, 1048576, 5, NeoNect::Storage::CapabilityState::VALID);
+    storage->setUsername("testuser");
+    storage->setAuthToken("mock_session_token");
+    storage->setServerUrl("http://localhost:8080");
+    NetworkManager nmAvatar(transport, storage, authService, devService, relayService, friendService, capRepo);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    QString avatarImgPath = tempDir.path() + "/large_avatar.png";
+    QImage largeImg(2000, 2000, QImage::Format_RGB32);
+    largeImg.fill(QColor("#5865F2"));
+    QVERIFY(largeImg.save(avatarImgPath, "PNG"));
+
+    QVERIFY(nmAvatar.setAvatar(avatarImgPath));
+    QString savedAvatarPath = storage->avatarUrl();
+    if (savedAvatarPath.startsWith("file://")) {
+        savedAvatarPath = QUrl(savedAvatarPath).toLocalFile();
+    }
+    QFileInfo avatarFi(savedAvatarPath);
+    QVERIFY(avatarFi.exists());
+    // Avatar must be compressed to <= 512 KiB so Base64 representation (<= 683 KiB) fits safely in 1 MiB envelope
+    QVERIFY(avatarFi.size() <= 512 * 1024);
+    QVERIFY(avatarFi.size() * 4 / 3 < nmAvatar.maxEnvelopeBytes());
+
+    storage->clearSession();
 }

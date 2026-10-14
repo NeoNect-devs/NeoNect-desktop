@@ -680,3 +680,67 @@ void TestSecureStorage::testMasterKey_MigrationReadBackFailureSafety() {
     auto newRead = newStore->store.contains("e2ee_master_key_server1_alice");
     QVERIFY(!newRead);
 }
+
+void TestSecureStorage::testDatabase_UnopenedStoreMethodsFailClosed() {
+    auto secretStore = std::make_shared<MockSecretStore>();
+    auto provider = std::make_shared<MasterKeyProvider>(secretStore);
+    SecureE2EEStore store(provider);
+
+    QVERIFY(!store.isOpen());
+
+    auto idRes = store.getIdentity();
+    QVERIFY(!idRes.success);
+    QCOMPARE(idRes.message, QStringLiteral("Database not open"));
+
+    E2EEIdentity validId;
+    validId.public_key = QByteArray(32, 'P');
+    validId.private_key = QByteArray(32, 'S');
+    auto saveIdRes = store.saveIdentity(validId);
+    QVERIFY(!saveIdRes.success);
+    QCOMPARE(saveIdRes.message, QStringLiteral("Database not open"));
+
+    E2EESignedPreKey spk;
+    spk.key_id = 1;
+    spk.public_key = QByteArray(32, 'A');
+    spk.private_key = QByteArray(32, 'B');
+    spk.signature = QByteArray(64, 'C');
+    QCOMPARE(store.saveSignedPreKey(spk).message, QStringLiteral("Database not open"));
+    QCOMPARE(store.getSignedPreKey(1).message, QStringLiteral("Database not open"));
+    QCOMPARE(store.getAllSignedPreKeys().message, QStringLiteral("Database not open"));
+
+    E2EEOneTimePreKey opk;
+    opk.key_id = 1;
+    opk.public_key = QByteArray(32, 'D');
+    opk.private_key = QByteArray(32, 'E');
+    QCOMPARE(store.saveOneTimePreKeys({opk}).message, QStringLiteral("Database not open"));
+    QCOMPARE(store.getAvailableOneTimePreKeys().message, QStringLiteral("Database not open"));
+    QCOMPARE(store.consumeOneTimePreKeyAtomically(1).message, QStringLiteral("Database not open"));
+    QCOMPARE(store.getOneTimePreKey(1).message, QStringLiteral("Database not open"));
+
+    E2EESession sess;
+    sess.session_id = "peer:dev";
+    sess.remote_identity_key = QByteArray(32, 'R');
+    sess.RK = QByteArray(32, 'K');
+    QCOMPARE(store.saveSession(sess).message, QStringLiteral("Database not open"));
+    QCOMPARE(store.getSession("peer:dev").message, QStringLiteral("Database not open"));
+    QCOMPARE(store.getSessionsForDevice("dev").message, QStringLiteral("Database not open"));
+
+    SessionUpdateTx tx;
+    tx.session = sess;
+    QCOMPARE(store.updateSessionState(tx).message, QStringLiteral("Database not open"));
+    QCOMPARE(store.getSkippedKey("peer:dev", QByteArray(32, 'R'), 0).message, QStringLiteral("Database not open"));
+
+    // Now open a fresh DB and verify getIdentity returns "Identity not found" specifically
+    QString dbPath = QDir::temp().filePath("test_unopened_vs_missing_id.db");
+    QFile::remove(dbPath);
+    QVERIFY(store.initialize(dbPath, "test_unopened_profile").success);
+    QVERIFY(store.isOpen());
+
+    auto missingIdRes = store.getIdentity();
+    QVERIFY(!missingIdRes.success);
+    QCOMPARE(missingIdRes.message, QStringLiteral("Identity not found"));
+
+    store.close();
+    QVERIFY(!store.isOpen());
+    QFile::remove(dbPath);
+}

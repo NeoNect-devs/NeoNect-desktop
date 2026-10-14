@@ -87,6 +87,15 @@ void TestMessages::testMessageOrdering() {
     // Should be returned in chronological order by getMessagesAsync because of prepend
     QCOMPARE(fetched[0].id, QString("msg1"));
     QCOMPARE(fetched[2].id, QString("msg3"));
+
+    // Verify Services::MessageService pagination (beforeTimestamp + limit)
+    Services::MessageService svc(repo);
+    svc.setCurrentUserId("me");
+    QSignalSpy spyLoaded(&svc, &Services::MessageService::conversationLoaded);
+    svc.loadConversation("dms:bob");
+    QVERIFY(spyLoaded.count() >= 1 || spyLoaded.wait(1000));
+    QVariantList allLoaded = spyLoaded.takeFirst().at(1).toList();
+    QCOMPARE(allLoaded.size(), 3);
 }
 
 void TestMessages::testDuplicateServerIdHandling() {
@@ -152,26 +161,28 @@ void TestMessages::testRepositoryReopenPersistence() {
         msg.conversationId = "dms:dave";
         msg.senderId = "dave";
         NeoNect::Core::Messaging::Message cm;
-    cm.messageId = msg.id;
-    cm.conversationId = msg.conversationId;
-    cm.senderId = msg.senderId;
-    cm.timestamp = msg.timestamp;
-    cm.plaintext = msg.text;
-    bool successResult = repo->saveMessage(cm);
+        cm.messageId = msg.id;
+        cm.conversationId = msg.conversationId;
+        cm.senderId = msg.senderId;
+        cm.timestamp = msg.timestamp;
+        cm.plaintext = msg.text;
+        cm.state = NeoNect::Core::Messaging::MessageState::FAILED;
+        cm.errorText = "Relay timeout 504";
+        bool successResult = repo->saveMessage(cm);
+        QVERIFY(successResult);
     } // repo destroyed
     
     {
         auto repo = std::make_shared<Core::Messaging::SqliteMessageStorage>(dbPath);
-        std::vector<Domain::Message> fetched;
         auto coreMsgs = repo->getConversationMessages("dms:dave");
-    for (const auto& cm : coreMsgs) {
-        Domain::Message dm;
-        dm.id = cm.messageId;
-        dm.text = cm.plaintext;
-        fetched.push_back(dm);
-    }
-        QCOMPARE(fetched.size(), 1);
-        QCOMPARE(fetched[0].id, QString("persist1"));
+        QCOMPARE(coreMsgs.size(), static_cast<size_t>(1));
+        QCOMPARE(coreMsgs[0].messageId, QString("persist1"));
+        QCOMPARE(coreMsgs[0].state, NeoNect::Core::Messaging::MessageState::FAILED);
+        QCOMPARE(coreMsgs[0].errorText, QString("Relay timeout 504"));
+
+        auto singleMsg = repo->getMessage("persist1");
+        QVERIFY(singleMsg.has_value());
+        QCOMPARE(singleMsg->errorText, QString("Relay timeout 504"));
     }
 }
 

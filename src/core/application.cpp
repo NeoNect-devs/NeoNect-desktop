@@ -34,12 +34,15 @@
 #include "../crypto/session/SessionManager.h"
 #include "../crypto/session/SecurePreKeyStoreAdapter.h"
 #include "../services/prekeyservice.h"
+#include "../transport/EnvelopeRouter.h"
 
 #include <QQmlContext>
 #include <QQuickWindow>
 #include <QIcon>
 #include <QCommandLineParser>
 #include <QCommandLineOption>
+#include <QEventLoop>
+#include <QTimer>
 #include <iostream>
 #include <fstream>
 
@@ -96,12 +99,18 @@ public:
 namespace NeoNect {
 
 static void customLogHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg) {
-    Q_UNUSED(type);
     Q_UNUSED(context);
+#if defined(NDEBUG)
+    if (type == QtDebugMsg) {
+        return;
+    }
+#endif
     std::cout << msg.toStdString() << std::endl;
-    std::ofstream log("qml_error.log", std::ios::app);
-    if (log.is_open()) {
-        log << msg.toStdString() << std::endl;
+    if (type != QtDebugMsg) {
+        std::ofstream log("qml_error.log", std::ios::app);
+        if (log.is_open()) {
+            log << msg.toStdString() << std::endl;
+        }
     }
 }
 
@@ -214,7 +223,7 @@ void Application::initializeServices() {
     m_relayService = std::make_shared<Services::RelayService>(m_transport, m_storage, capabilitiesRepo, nullptr);
     auto friendService = std::make_shared<Services::FriendService>(m_transport, m_storage);
 
-    m_networkManager = std::make_unique<NetworkManager>(m_transport, m_storage, authService, deviceService, m_relayService, friendService);
+    m_networkManager = std::make_unique<NetworkManager>(m_transport, m_storage, authService, deviceService, m_relayService, friendService, capabilitiesRepo);
 
     // Phase 2: StorageContext and E2EE Services Integration
     m_messageService = std::make_unique<Services::MessageService>(std::weak_ptr<Core::Messaging::IMessageStorage>());
@@ -253,9 +262,67 @@ void Application::initializeServices() {
             }
         }
     );
-    m_relayService->setEnvelopeHandler(m_sessionManager);
-
-
+    m_sessionManager->setSenderVerifier([this](const QString& claimedUser, const QString& senderDev, const QByteArray& senderIdentityKey) -> bool {
+        if (!m_networkManager || !m_networkManager->deviceService()) return false;
+        if (m_isMockMode && senderDev.compare(claimedUser + ":default_device", Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+        QPointer<NetworkManager> netGuard(m_networkManager.get());
+        std::weak_ptr<Storage::ISecureE2EEStore> weakStore = m_secureStore;
+        const bool isMockMode = m_isMockMode;
+        bool done = false;
+        bool verified = false;
+        auto conn = std::make_shared<QMetaObject::Connection>();
+        *conn = QObject::connect(m_networkManager->deviceService().get(), &Services::DeviceService::recipientKeysFetched,
+            [&done, &verified, claimedUser, senderDev, senderIdentityKey, conn, netGuard, isMockMode](const QString& retUser, const QVariantList& devices) {
+                if (!netGuard || retUser.compare(claimedUser, Qt::CaseInsensitive) != 0) return;
+                QObject::disconnect(*conn);
+                done = true;
+                for (const QVariant& v : devices) {
+                    QVariantMap d = v.toMap();
+                    if (d.value("device_id").toString() == senderDev) {
+                        QString pubKeyStr = d.value("public_key").toString();
+                        if (isMockMode && pubKeyStr == "mock_key") {
+                            verified = true;
+                            break;
+                        }
+                        QByteArray pubKey = QByteArray::fromBase64(pubKeyStr.toLatin1());
+                        if (!pubKey.isEmpty() && pubKey == senderIdentityKey) {
+                            verified = true;
+                        }
+                        break;
+                    }
+                }
+            });
+        m_networkManager->deviceService()->fetchRecipientKeys(claimedUser);
+        if (!done && netGuard && netGuard->deviceService()) {
+            QEventLoop loop;
+            QTimer timer;
+            timer.setSingleShot(true);
+            QObject::connect(&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+            auto loopConn = QObject::connect(netGuard->deviceService().get(), &Services::DeviceService::recipientKeysFetched, &loop,
+                [&loop, claimedUser](const QString& retUser, const QVariantList&) {
+                    if (retUser.compare(claimedUser, Qt::CaseInsensitive) == 0) {
+                        loop.quit();
+                    }
+                });
+            auto logoutConn = QObject::connect(netGuard.data(), &NetworkManager::loginResult, &loop,
+                [&loop](bool success, const QString&) {
+                    if (!success) {
+                        loop.quit();
+                    }
+                });
+            timer.start(3000);
+            loop.exec();
+            QObject::disconnect(loopConn);
+            QObject::disconnect(logoutConn);
+        }
+        QObject::disconnect(*conn);
+        if (!netGuard || weakStore.expired()) {
+            return false;
+        }
+        return verified;
+    });
     m_fileTransferManager = std::make_shared<Services::FileTransferManager>(
         std::weak_ptr<Storage::ISecureE2EEStore>(),
         backend,
@@ -274,27 +341,41 @@ void Application::initializeServices() {
             coreMsg.conversationId = "dms:" + ru;
             coreMsg.senderId = m_storage->username();
             coreMsg.receiverId = ru;
+            coreMsg.receiverDeviceId = rd;
             coreMsg.timestamp = QDateTime::currentMSecsSinceEpoch();
             coreMsg.plaintext = QJsonDocument(obj).toJson(QJsonDocument::Compact);
-            coreMsg.type = "file_start";
+            coreMsg.type = obj.value("type").toString("file_start");
             coreMsg.state = Core::Messaging::MessageState::CREATED;
             if (m_coreMessageService) m_coreMessageService->sendMessage(coreMsg);
         }
     );
     m_messageService->setFileTransferManager(m_fileTransferManager);
 
+    auto envelopeRouter = std::make_shared<Transport::EnvelopeRouter>();
+    envelopeRouter->setSessionManagerHandler(m_sessionManager);
+    envelopeRouter->setFileTransferHandler(m_fileTransferManager);
+    m_relayService->setEnvelopeHandler(envelopeRouter);
+
     m_secureImageProvider = new Services::SecureImageProvider(std::weak_ptr<Storage::ISecureE2EEStore>(), backend, m_storage);
 
     m_coreMessageService = std::make_shared<Core::Messaging::MessageService>(std::weak_ptr<Core::Messaging::IMessageStorage>(), m_sessionManager, std::weak_ptr<Core::Messaging::IMessageQueue>());
 
+    m_coreMessageService->setOnDeliveryStateChanged([this](const QString& msgId, Core::Messaging::MessageState state, const QString& reason) {
+        if (state == Core::Messaging::MessageState::FAILED && m_messageService) {
+            m_messageService->handleMessageDeliveryStatus(msgId, false, reason);
+        }
+    });
 
     m_coreMessageService->setOnMessageReceived([this](const Core::Messaging::Message& coreMsg) {
+        if (!coreMsg.senderDisplayName.isEmpty() && m_networkManager) {
+            m_networkManager->setPeerDisplayName(coreMsg.senderId, coreMsg.senderDisplayName);
+        }
         if (coreMsg.type == "file_start" || coreMsg.type == "file_ack" || coreMsg.type == "file_nack" || coreMsg.type == "file_cancel") {
-            if (m_fileTransferManager) {
+            if (m_fileTransferManager && !coreMsg.senderDeviceId.isEmpty()) {
                 QJsonParseError err;
                 QJsonDocument doc = QJsonDocument::fromJson(coreMsg.plaintext.toUtf8(), &err);
                 if (err.error == QJsonParseError::NoError && doc.isObject()) {
-                    m_fileTransferManager->handleControlMessage(coreMsg.senderId, "deviceA", doc.object());
+                    m_fileTransferManager->handleControlMessage(coreMsg.senderId, coreMsg.senderDeviceId, doc.object());
                 }
             }
             return;
@@ -304,10 +385,12 @@ void Application::initializeServices() {
             domainMsg.id = coreMsg.messageId;
             domainMsg.serverId = coreMsg.serverId;
             domainMsg.conversationId = coreMsg.conversationId;
+            if (domainMsg.conversationId.startsWith("dms:", Qt::CaseInsensitive) &&
+                domainMsg.conversationId.compare("dms:saved-messages", Qt::CaseInsensitive) != 0 &&
+                !coreMsg.senderId.trimmed().isEmpty()) {
+                domainMsg.conversationId = "dms:" + coreMsg.senderId.trimmed().toLower();
+            }
             domainMsg.senderId = coreMsg.senderId;
-
-
-
             domainMsg.timestamp = coreMsg.timestamp;
             domainMsg.text = coreMsg.plaintext;
             domainMsg.type = coreMsg.type;
@@ -318,8 +401,12 @@ void Application::initializeServices() {
             domainMsg.waveform = coreMsg.waveform;
             domainMsg.mediaWidth = coreMsg.mediaWidth;
             domainMsg.mediaHeight = coreMsg.mediaHeight;
+            domainMsg.errorText = coreMsg.errorText;
             domainMsg.status = NeoNect::Domain::MessageStatus::Sent;
 
+            if (m_relayService) {
+                emit m_relayService->incomingDomainMessagesReceived({domainMsg});
+            }
             m_messageService->handleIncomingMessage(domainMsg);
         }
     });
@@ -327,7 +414,7 @@ void Application::initializeServices() {
         auto connection = std::make_shared<QMetaObject::Connection>();
         *connection = QObject::connect(preKeyService.get(), &Services::PreKeyService::preKeyBundleClaimed,
             [resultCb, targetUser, targetDevice, connection](const QString& retUser, const QString& retDev, std::optional<Crypto::X3DH::BobPreKeyBundle> bundle) {
-                if (retUser == targetUser && retDev == targetDevice) {
+                if (retUser.compare(targetUser.trimmed(), Qt::CaseInsensitive) == 0 && retDev == targetDevice) {
                     QObject::disconnect(*connection);
                     resultCb(bundle);
                 }
@@ -336,7 +423,7 @@ void Application::initializeServices() {
         preKeyService->claimPreKeys(targetUser, targetDevice);
     });
 
-    m_coreMessageService->setDeviceResolverCallback([this](const QString& targetUser, std::function<void(std::optional<QString>)> resultCb) {
+    auto deviceResolver = [this](const QString& targetUser, std::function<void(std::optional<QString>)> resultCb) {
         if (!m_networkManager || !m_networkManager->deviceService()) {
             resultCb(std::nullopt);
             return;
@@ -345,24 +432,63 @@ void Application::initializeServices() {
         auto connection = std::make_shared<QMetaObject::Connection>();
         *connection = QObject::connect(m_networkManager->deviceService().get(), &Services::DeviceService::recipientKeysFetched,
             [resultCb, targetUser, connection](const QString& retUser, const QVariantList& devices) {
-                if (retUser == targetUser) {
+                if (retUser.compare(targetUser.trimmed(), Qt::CaseInsensitive) == 0) {
                     QObject::disconnect(*connection);
-                    if (!devices.isEmpty()) {
-                        QVariantMap deviceMap = devices.first().toMap();
-                        resultCb(deviceMap.value("device_id").toString());
-                    } else {
-                        resultCb(std::nullopt);
+                    for (const QVariant& v : devices) {
+                        QVariantMap deviceMap = v.toMap();
+                        if (!deviceMap.value("revoked_at").toString().isEmpty()) {
+                            continue;
+                        }
+                        QString devId = deviceMap.value("device_id").toString().trimmed();
+                        if (!devId.isEmpty()) {
+                            resultCb(devId);
+                            return;
+                        }
                     }
+                    resultCb(std::nullopt);
                 }
             });
 
         m_networkManager->deviceService()->fetchRecipientKeys(targetUser);
-    });
+    };
 
+    auto multiDeviceResolver = [this](const QString& targetUser, std::function<void(QStringList)> resultCb) {
+        if (!m_networkManager || !m_networkManager->deviceService()) {
+            resultCb({});
+            return;
+        }
+
+        auto connection = std::make_shared<QMetaObject::Connection>();
+        *connection = QObject::connect(m_networkManager->deviceService().get(), &Services::DeviceService::recipientKeysFetched,
+            [resultCb, targetUser, connection](const QString& retUser, const QVariantList& devices) {
+                if (retUser.compare(targetUser.trimmed(), Qt::CaseInsensitive) == 0) {
+                    QObject::disconnect(*connection);
+                    QStringList deviceIds;
+                    for (const QVariant& v : devices) {
+                        QVariantMap deviceMap = v.toMap();
+                        if (!deviceMap.value("revoked_at").toString().isEmpty()) {
+                            continue;
+                        }
+                        QString devId = deviceMap.value("device_id").toString().trimmed();
+                        if (!devId.isEmpty() && !deviceIds.contains(devId)) {
+                            deviceIds.append(devId);
+                        }
+                    }
+                    resultCb(deviceIds);
+                }
+            });
+
+        m_networkManager->deviceService()->fetchRecipientKeys(targetUser);
+    };
+
+    m_coreMessageService->setDeviceResolverCallback(deviceResolver);
+    m_coreMessageService->setMultiDeviceResolverCallback(multiDeviceResolver);
+    m_messageService->setDeviceResolverCallback(deviceResolver);
+    m_messageService->setMultiDeviceResolverCallback(multiDeviceResolver);
 
     m_networkManager->deviceService()->setIdentityKeyProvider([this]() {
         if (auto store = m_secureStore.lock()) {
-            auto res = m_secureStore.lock()->getIdentity();
+            auto res = store->getIdentity();
             if (res.success) {
                 return QString::fromLatin1(res.data.value().public_key.toBase64());
             }
@@ -375,88 +501,143 @@ void Application::initializeServices() {
             if (success && m_secureStore.lock()) {
                 preKeyService->uploadPreKeys(m_storage->deviceId());
             }
+            if (success && m_offlineQueueService) {
+                m_offlineQueueService->resume();
+            }
         });
 
-    auto onLoginChanged = [this, backend, xeddsa, preKeyAdapter](bool success, const QString& token) {
-        if (success) {
-            QString user = m_networkManager->currentUsername().trimmed().toLower();
-            QString server = m_storage->serverUrl();
-            if (user.isEmpty()) return; // Must have authenticated user
-
-            if (m_audioManager) m_audioManager->setStorageBoundary(server, user);
-
-            m_storageContext = std::make_unique<Storage::StorageContext>(server, user, m_isMockMode, m_profile);
-
-            m_messageStorage = m_storageContext->messageStorage();
-            m_messageQueue = m_storageContext->messageQueue();
-            m_secureStore = m_storageContext->secureStore();
-
-            m_messageService->setStorage(m_messageStorage);
-            m_offlineQueueService->setQueue(m_messageQueue);
-            m_coreMessageService->setStorage(m_messageStorage);
-            m_coreMessageService->setOfflineQueue(m_messageQueue);
-            preKeyAdapter->setStore(m_secureStore);
-            m_sessionManager->setStore(m_secureStore);
-            if (m_fileTransferManager) {
-                m_fileTransferManager->setStore(m_secureStore);
-                m_fileTransferManager->setIsImageTransferCb([this](const QString& transferId) -> bool {
-                    auto lockedStorage = m_messageStorage.lock();
-                    if (!lockedStorage) return false;
-                    auto msgOpt = lockedStorage->getMessage(transferId);
-                    if (msgOpt) return msgOpt->type == "image";
-                    return false;
-                });
+    QObject::connect(m_relayService.get(), &Services::RelayService::serverConnected, m_relayService.get(),
+        [this]() {
+            if (m_offlineQueueService) {
+                m_offlineQueueService->resume();
             }
-            if (m_secureImageProvider) m_secureImageProvider->setStore(m_secureStore);
+        });
 
-            m_messageService->setCurrentUserId(user);
-            m_messageService->setServerUrl(m_storageContext->serverUrl());
+    auto teardownUserServices = [this, preKeyAdapter]() {
+        if (m_audioManager) m_audioManager->setStorageBoundary("", "");
 
-            auto idRes = m_secureStore.lock()->getIdentity();
-            if (!idRes.success) {
-                Crypto::KeyGenerationService keyGen(backend, xeddsa);
-                auto identityKeyPair = keyGen.generateIdentityKeyPair();
-                Storage::E2EEIdentity newId;
-                newId.identity_id = 1;
-                newId.public_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.publicKey.data.data()), 32);
-                newId.private_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.privateKey.data.data()), 32);
-                m_secureStore.lock()->saveIdentity(newId);
+        m_storageContext.reset();
+        m_messageStorage.reset();
+        m_messageQueue.reset();
+        m_secureStore.reset();
 
-                auto spk = keyGen.generateSignedPreKey(identityKeyPair, 1);
-                preKeyAdapter->storeSignedPreKey(std::move(spk));
+        m_messageService->setStorage(std::weak_ptr<Core::Messaging::IMessageStorage>());
+        m_messageService->setCurrentUserId(QString());
+        m_messageService->setServerUrl(QString());
+        m_offlineQueueService->setQueue(std::weak_ptr<Core::Messaging::IMessageQueue>());
+        m_coreMessageService->setStorage(std::weak_ptr<Core::Messaging::IMessageStorage>());
+        m_coreMessageService->setOfflineQueue(std::weak_ptr<Core::Messaging::IMessageQueue>());
+        preKeyAdapter->setStore(std::weak_ptr<Storage::ISecureE2EEStore>());
+        m_sessionManager->setStore(std::weak_ptr<Storage::ISecureE2EEStore>());
+        if (m_fileTransferManager) m_fileTransferManager->setStore(std::weak_ptr<Storage::ISecureE2EEStore>());
+        if (m_secureImageProvider) m_secureImageProvider->setStore(std::weak_ptr<Storage::ISecureE2EEStore>());
+    };
 
-                auto opks = keyGen.generateOneTimePreKeys(100, 1);
-                preKeyAdapter->storeOneTimePreKeys(std::move(opks));
+    auto initUserServices = [this, backend, xeddsa, preKeyAdapter, teardownUserServices](QString& errorOut) -> bool {
+        QString user = m_networkManager->currentUsername().trimmed().toLower();
+        QString server = m_storage->serverUrl();
+        if (user.isEmpty()) {
+            errorOut = QStringLiteral("Authenticated username is missing.");
+            return false;
+        }
+
+        if (m_storageContext && m_storageContext->isE2EEReady() &&
+            m_storageContext->serverUrl() == server && m_storageContext->username() == user) {
+            return true;
+        }
+
+        if (m_audioManager) m_audioManager->setStorageBoundary(server, user);
+
+        m_storageContext = std::make_unique<Storage::StorageContext>(server, user, m_isMockMode, m_profile);
+        if (!m_storageContext->isE2EEReady()) {
+            errorOut = QStringLiteral("E2EE storage could not be unlocked (%1). Verify your OS keyring/secret-service environment.")
+                           .arg(m_storageContext->e2eeError());
+            qCritical() << "[Application] CRITICAL:" << errorOut;
+            teardownUserServices();
+            return false;
+        }
+
+        m_secureStore = m_storageContext->secureStore();
+        preKeyAdapter->setStore(m_secureStore);
+
+        auto idCheck = ensureE2EEIdentity(m_secureStore.lock(), backend, xeddsa, preKeyAdapter);
+        if (!idCheck.success) {
+            errorOut = idCheck.message;
+            qCritical() << "[Application] CRITICAL: E2EE identity initialization failed:" << errorOut;
+            teardownUserServices();
+            return false;
+        }
+
+        m_messageStorage = m_storageContext->messageStorage();
+        m_messageQueue = m_storageContext->messageQueue();
+
+        m_messageService->setStorage(m_messageStorage);
+        m_offlineQueueService->setQueue(m_messageQueue);
+        m_coreMessageService->setStorage(m_messageStorage);
+        m_coreMessageService->setOfflineQueue(m_messageQueue);
+        m_sessionManager->setStore(m_secureStore);
+        if (m_fileTransferManager) {
+            m_fileTransferManager->setStore(m_secureStore);
+            m_fileTransferManager->setIsImageTransferCb([this](const QString& transferId) -> bool {
+                auto lockedStorage = m_messageStorage.lock();
+                if (!lockedStorage) return false;
+                auto msgOpt = lockedStorage->getMessage(transferId);
+                if (msgOpt) return msgOpt->type == "image";
+                return false;
+            });
+        }
+        if (m_secureImageProvider) m_secureImageProvider->setStore(m_secureStore);
+
+        m_messageService->setCurrentUserId(user);
+        m_messageService->setServerUrl(m_storageContext->serverUrl());
+        return true;
+    };
+
+    m_networkManager->setSessionValidator(initUserServices);
+
+    auto onLoginChanged = [this, initUserServices, teardownUserServices](bool success, const QString& token) {
+        Q_UNUSED(token);
+        if (success) {
+            QString initError;
+            if (!initUserServices(initError)) {
+                if (m_networkManager) {
+                    m_networkManager->abortSessionWithError(initError);
+                }
             }
         } else {
-            // Logout
-            if (m_audioManager) m_audioManager->setStorageBoundary("", "");
-
-            m_storageContext.reset();
-            m_messageStorage.reset();
-            m_messageQueue.reset();
-            m_secureStore.reset();
-
-            m_messageService->setStorage(std::weak_ptr<Core::Messaging::IMessageStorage>());
-            m_offlineQueueService->setQueue(std::weak_ptr<Core::Messaging::IMessageQueue>());
-            m_coreMessageService->setStorage(std::weak_ptr<Core::Messaging::IMessageStorage>());
-            m_coreMessageService->setOfflineQueue(std::weak_ptr<Core::Messaging::IMessageQueue>());
-            preKeyAdapter->setStore(std::weak_ptr<Storage::ISecureE2EEStore>());
-            m_sessionManager->setStore(std::weak_ptr<Storage::ISecureE2EEStore>());
+            teardownUserServices();
         }
     };
 
-    QObject::connect(m_networkManager.get(), &NetworkManager::loginResult, onLoginChanged);
+    auto announcedPresencePeers = std::make_shared<QSet<QString>>();
 
-    // Initial load check
+    QObject::connect(m_networkManager.get(), &NetworkManager::loginResult, [onLoginChanged, announcedPresencePeers](bool success, const QString &tokenOrError) {
+        if (!success) {
+            announcedPresencePeers->clear();
+        }
+        onLoginChanged(success, tokenOrError);
+    });
+
     if (!m_storage->authToken().isEmpty() && !m_storage->username().isEmpty()) {
         onLoginChanged(true, m_storage->authToken());
+        if (!m_isMockMode && !m_networkManager->token().isEmpty()) {
+            m_networkManager->resumeSavedSession();
+        }
     }
 
-    // RelayService -> MessageService (Incoming)
-    // Legacy plaintext path disabled in A8.3
     QObject::connect(m_relayService.get(), &Services::RelayService::messageTransmissionStatus, m_messageService.get(), [this](const QString &, const QString &messageId, bool success, const QString &errorMessage) {
-        m_messageService->handleMessageDeliveryStatus(messageId, success, errorMessage);
+        if (!messageId.contains('#')) {
+            if (auto s = m_messageStorage.lock()) {
+                s->updateMessageState(messageId, success ? Core::Messaging::MessageState::SENT : Core::Messaging::MessageState::FAILED);
+            }
+            m_messageService->handleMessageDeliveryStatus(messageId, success, errorMessage);
+        } else if (success) {
+            const QString baseMessageId = messageId.section('#', 0, 0);
+            if (auto s = m_messageStorage.lock()) {
+                s->updateMessageState(baseMessageId, Core::Messaging::MessageState::SENT);
+            }
+            m_messageService->handleMessageDeliveryStatus(baseMessageId, true, QString());
+        }
         if (m_offlineQueueService) {
             if (success) {
                 m_offlineQueueService->handleAck(messageId);
@@ -466,18 +647,19 @@ void Application::initializeServices() {
         }
     });
 
-    // MessageService -> RelayService (Outgoing E2EE Adapter)
     QObject::connect(m_messageService.get(), &Services::MessageService::transmitMessage, m_relayService.get(), [this](const NeoNect::Domain::Message& msg) {
         Core::Messaging::Message coreMsg;
         coreMsg.messageId = msg.id;
         coreMsg.conversationId = msg.conversationId;
         coreMsg.senderId = msg.senderId;
+        if (m_storage && !m_storage->displayName().trimmed().isEmpty()) {
+            coreMsg.senderDisplayName = m_storage->displayName().trimmed();
+        }
 
-        // Extract plain username if it's a DM prefix
         if (msg.conversationId.startsWith("dms:")) {
             coreMsg.receiverId = msg.conversationId.mid(4);
         } else {
-            coreMsg.receiverId = msg.conversationId; // fallback
+            coreMsg.receiverId = msg.conversationId;
         }
 
         coreMsg.timestamp = msg.timestamp;
@@ -490,14 +672,20 @@ void Application::initializeServices() {
         coreMsg.waveform = msg.waveform;
         coreMsg.mediaWidth = msg.mediaWidth;
         coreMsg.mediaHeight = msg.mediaHeight;
+        coreMsg.errorText = msg.errorText;
         coreMsg.state = Core::Messaging::MessageState::CREATED;
 
         m_coreMessageService->sendMessage(coreMsg);
     });
 
-    // Broadcast presence status changes to active chat peers and friends
-    auto broadcastPresence = [this]() {
-        if (!m_networkManager->isConnected()) return;
+    auto broadcastPresence = [this, announcedPresencePeers](bool forceAll) {
+        if (!m_networkManager->isConnected()) {
+            announcedPresencePeers->clear();
+            return;
+        }
+        if (forceAll) {
+            announcedPresencePeers->clear();
+        }
         QString st = m_networkManager->effectiveStatus();
         QSet<QString> targets;
         for (const QString &f : m_networkManager->friends()) {
@@ -511,18 +699,30 @@ void Application::initializeServices() {
             }
         }
         for (const QString &target : targets) {
-            m_messageService->sendPresenceStatus(target, st);
+            if (!announcedPresencePeers->contains(target)) {
+                announcedPresencePeers->insert(target);
+                m_messageService->sendPresenceStatus(target, st);
+            }
         }
     };
 
-    QObject::connect(m_networkManager.get(), &NetworkManager::effectiveStatusChanged, m_networkManager.get(), broadcastPresence);
-    QObject::connect(m_networkManager.get(), &NetworkManager::friendsChanged, m_networkManager.get(), broadcastPresence);
-    QObject::connect(m_networkManager.get(), &NetworkManager::displayNameChanged, m_networkManager.get(), broadcastPresence);
+    QObject::connect(m_networkManager.get(), &NetworkManager::effectiveStatusChanged, m_networkManager.get(), [broadcastPresence]() {
+        broadcastPresence(true);
+    });
+    QObject::connect(m_networkManager.get(), &NetworkManager::friendsChanged, m_networkManager.get(), [broadcastPresence]() {
+        broadcastPresence(false);
+    });
+    QObject::connect(m_networkManager.get(), &NetworkManager::displayNameChanged, m_networkManager.get(), [broadcastPresence]() {
+        broadcastPresence(true);
+    });
+
+    QObject::connect(m_messageService.get(), &Services::MessageService::peerAvatarDataReceived, m_networkManager.get(), &NetworkManager::setPeerAvatarData);
+    QObject::connect(m_networkManager.get(), &NetworkManager::systemMessageRequested, m_messageService.get(), [this](const QString &convId, const QString &text, const QString &type) {
+        m_messageService->sendMessage(convId, text, type, QString());
+    });
 
     m_audioManager = std::make_unique<AudioManager>();
-    if (!m_storage->username().isEmpty() && !m_storage->serverUrl().isEmpty()) {
-        m_audioManager->setStorageBoundary(m_storage->serverUrl(), m_storage->username().trimmed().toLower());
-    }
+    m_audioManager->setStorageBoundary(m_storage->serverUrl(), m_storage->username().trimmed().toLower());
     
     QObject::connect(m_messageService.get(), &Services::MessageService::localMediaAbandoned,
                      m_audioManager.get(), &AudioManager::cleanupLocalFile);
@@ -611,6 +811,66 @@ void Application::initializeServices() {
     }
 }
 
+ServiceResult<std::monostate> Application::ensureE2EEIdentity(
+    const std::shared_ptr<Storage::ISecureE2EEStore> &store,
+    const std::shared_ptr<Crypto::ICryptoBackend> &backend,
+    const std::shared_ptr<Crypto::IXEdDSA> &xeddsa,
+    const std::shared_ptr<Crypto::Session::SecurePreKeyStoreAdapter> &preKeyAdapter)
+{
+    if (!store || !store->isOpen()) {
+        qCritical() << "[Application] CRITICAL: E2EE secure store is not open; refusing to initialize or overwrite identity.";
+        return ServiceResult<std::monostate>::fail("E2EE secure storage could not be opened or unlocked.");
+    }
+
+    auto idRes = store->getIdentity();
+    if (idRes.success) {
+        if (!idRes.data.has_value() || idRes.data->public_key.size() != 32 || idRes.data->private_key.size() != 32) {
+            qCritical() << "[Application] CRITICAL: Stored E2EE identity has invalid key lengths; refusing to overwrite.";
+            return ServiceResult<std::monostate>::fail("Stored E2EE identity is invalid or corrupted.");
+        }
+        if (m_storage) {
+            m_storage->setPublicKey(QString::fromLatin1(idRes.data->public_key.toBase64()));
+        }
+        return ServiceResult<std::monostate>::ok({});
+    }
+
+    if (idRes.message != "Identity not found") {
+        qCritical() << "[Application] CRITICAL: E2EE identity lookup failed (" << idRes.message
+                    << "); refusing to generate replacement identity.";
+        return ServiceResult<std::monostate>::fail(QString("E2EE identity lookup failed: %1").arg(idRes.message));
+    }
+
+    if (!backend || !xeddsa) {
+        return ServiceResult<std::monostate>::fail("Cryptographic backend unavailable for E2EE identity generation.");
+    }
+
+    Crypto::KeyGenerationService keyGen(backend, xeddsa);
+    auto identityKeyPair = keyGen.generateIdentityKeyPair();
+    Storage::E2EEIdentity newId;
+    newId.identity_id = 1;
+    newId.public_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.publicKey.data.data()), 32);
+    newId.private_key = QByteArray(reinterpret_cast<const char*>(identityKeyPair.privateKey.data.data()), 32);
+
+    auto saveRes = store->saveIdentity(newId);
+    if (!saveRes.success) {
+        qCritical() << "[Application] CRITICAL: Failed to save generated E2EE identity (" << saveRes.message
+                    << "); refusing to update public_key setting.";
+        return ServiceResult<std::monostate>::fail(QString("Failed to persist E2EE identity: %1").arg(saveRes.message));
+    }
+
+    if (preKeyAdapter) {
+        auto spk = keyGen.generateSignedPreKey(identityKeyPair, 1);
+        preKeyAdapter->storeSignedPreKey(std::move(spk));
+        auto opks = keyGen.generateOneTimePreKeys(100, 1);
+        preKeyAdapter->storeOneTimePreKeys(std::move(opks));
+    }
+
+    if (m_storage) {
+        m_storage->setPublicKey(QString::fromLatin1(newId.public_key.toBase64()));
+    }
+    return ServiceResult<std::monostate>::ok({});
+}
+
 bool Application::loadMainUi() {
     m_engine = std::make_unique<QQmlApplicationEngine>();
 
@@ -651,10 +911,6 @@ void Application::registerQmlTypes() {
     m_engine->rootContext()->setContextProperty("ThemeData", ThemeData::instance());
     m_engine->rootContext()->setContextProperty("appProfile", m_profile);
 
-    QObject::connect(m_messageService.get(), &Services::MessageService::peerAvatarDataReceived, m_networkManager.get(), &NetworkManager::setPeerAvatarData);
-    QObject::connect(m_networkManager.get(), &NetworkManager::systemMessageRequested, m_messageService.get(), [this](const QString &convId, const QString &text, const QString &type) {
-        m_messageService->sendMessage(convId, text, type, QString());
-    });
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NetworkManager", m_networkManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "AudioManager", m_audioManager.get());
     qmlRegisterSingletonInstance("NeoNect.Core", 1, 0, "NotificationManager", m_notificationManager.get());

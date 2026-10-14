@@ -1,6 +1,8 @@
 #pragma once
 #include <QString>
 #include <QByteArray>
+#include <QHash>
+#include <QSet>
 #include <memory>
 #include <functional>
 #include "../../transport/IIncomingEnvelopeHandler.h"
@@ -20,7 +22,9 @@ namespace Session {
 class SessionManager : public Transport::IIncomingEnvelopeHandler {
 public:
     using MessageReceivedCallback = std::function<void(const QString& sessionId, const QByteArray& plaintext)>;
+    using MessageCommitVerifierCallback = std::function<bool(const QString& sessionId, const QByteArray& plaintext)>;
     using EnvelopeSendCallback = std::function<bool(const QString& recipientUsername, const QString& recipientDeviceId, const QString& messageId, const QByteArray& envelopeBytes)>;
+    using SenderVerifierCallback = std::function<bool(const QString& claimedUsername, const QString& senderDeviceId, const QByteArray& senderIdentityKey)>;
 
     SessionManager(
         std::weak_ptr<Storage::ISecureE2EEStore> store,
@@ -39,6 +43,8 @@ public:
 
     // Temporary compatibility bridge for Phase 2 StorageContext
     void setStore(std::weak_ptr<Storage::ISecureE2EEStore> store) { m_store = store; }
+    void setSenderVerifier(SenderVerifierCallback verifier) { m_senderVerifier = std::move(verifier); }
+    void setMessageCommitVerifier(MessageCommitVerifierCallback verifier) { m_commitVerifier = std::move(verifier); }
 
     ServiceResult<std::monostate> createSession(
         const QString& recipientUsername,
@@ -57,6 +63,13 @@ public:
         const QString& recipientDeviceId
     );
 
+    bool dispatchEnvelope(
+        const QString& recipientUsername,
+        const QString& recipientDeviceId,
+        const QString& messageId,
+        const QByteArray& envelopeBytes
+    );
+
     // Receive flow (implements IIncomingEnvelopeHandler)
     VoidResult handleEnvelope(
         const QByteArray &envelopeBytes,
@@ -72,6 +85,10 @@ private:
     std::shared_ptr<IXEdDSA> m_xeddsa;
     EnvelopeSendCallback m_sendCb;
     MessageReceivedCallback m_receiveCb;
+    MessageCommitVerifierCallback m_commitVerifier;
+    SenderVerifierCallback m_senderVerifier;
+    QSet<QString> m_sessionsNeedingReinit;
+    QHash<QString, int> m_consecutiveDecryptFailures;
 
     QString generateSessionId(const QString& username, const QString& deviceId);
 

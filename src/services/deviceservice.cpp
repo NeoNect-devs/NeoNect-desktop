@@ -6,6 +6,7 @@
 #include <QJsonArray>
 #include <QUuid>
 #include <QRandomGenerator>
+#include <QTimer>
 
 namespace NeoNect {
 namespace Services {
@@ -35,18 +36,24 @@ void DeviceService::registerDeviceInternal(const QString &deviceId, const QStrin
         return;
     }
 
+    QString user = m_storage->username().trimmed().toLower();
     QString effectiveDevId = deviceId.trimmed();
     if (effectiveDevId.isEmpty()) {
-        effectiveDevId = m_storage->deviceId();
-        if (effectiveDevId.isEmpty()) {
-            QString prof = m_storage->profile();
-            QString user = m_storage->username().trimmed().toLower();
-            QString prefix = prof.isEmpty() ? "" : prof + "-";
-            if (!user.isEmpty()) prefix += user + "-";
-            effectiveDevId = QString("neonect-dev-%1%2").arg(prefix,
-                                                            QUuid::createUuid().toString(QUuid::WithoutBraces));
-            m_storage->setDeviceId(effectiveDevId);
-        }
+        effectiveDevId = m_storage->deviceId().trimmed();
+    }
+    if (effectiveDevId.isEmpty() ||
+        (!user.isEmpty() &&
+         effectiveDevId == m_storage->deviceId().trimmed() &&
+         effectiveDevId.startsWith("neonect-dev-", Qt::CaseInsensitive) &&
+         !effectiveDevId.contains("-" + user + "-", Qt::CaseInsensitive))) {
+        QString prof = m_storage->profile().trimmed();
+        QString prefix = prof.isEmpty() ? "" : prof + "-";
+        if (!user.isEmpty()) prefix += user + "-";
+        effectiveDevId = QString("neonect-dev-%1%2").arg(prefix,
+                                                        QUuid::createUuid().toString(QUuid::WithoutBraces));
+        m_storage->setDeviceId(effectiveDevId);
+    } else if (m_storage->deviceId().trimmed() != effectiveDevId) {
+        m_storage->setDeviceId(effectiveDevId);
     }
 
     QString effectivePubKey = publicKey.trimmed();
@@ -197,14 +204,21 @@ void DeviceService::fetchRecipientKeys(const QString &username) {
         return;
     }
 
+    if (m_inFlightRecipientKeyQueries.contains(target)) {
+        return;
+    }
+    m_inFlightRecipientKeyQueries.insert(target);
+    fetchRecipientKeysInternal(target, 0);
+}
+
+void DeviceService::fetchRecipientKeysInternal(const QString &target, int attempt) {
     QMap<QString, QString> params;
     params["u"] = target;
 
-    m_transport->get(Constants::EP_RELAY_KEYS, params, this, [this, target](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-        Q_UNUSED(statusCode);
+    m_transport->get(Constants::EP_RELAY_KEYS, params, this, [this, target, attempt](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
         QVariantList devicesList;
-        if (error == QNetworkReply::NoError) {
+        if (error == QNetworkReply::NoError && (statusCode == 0 || statusCode == 200)) {
             auto doc = QJsonDocument::fromJson(data);
             if (!doc.isNull()) {
                 QJsonArray devicesArr;
@@ -216,13 +230,32 @@ void DeviceService::fetchRecipientKeys(const QString &username) {
 
                 for (const auto &v : devicesArr) {
                     QJsonObject dObj = v.toObject();
+                    if (dObj.contains("revoked_at") && !dObj.value("revoked_at").isNull() &&
+                        !dObj.value("revoked_at").toVariant().toString().trimmed().isEmpty()) {
+                        continue;
+                    }
                     QVariantMap devMap;
                     devMap["device_id"] = dObj.value("device_id").toString();
                     devMap["public_key"] = dObj.value("public_key").toString();
                     devicesList.append(devMap);
                 }
             }
+            if (!devicesList.isEmpty()) {
+                m_recipientKeysCache.insert(target, devicesList);
+            } else {
+                m_recipientKeysCache.remove(target);
+            }
+        } else if (m_recipientKeysCache.contains(target)) {
+            devicesList = m_recipientKeysCache.value(target);
+        } else if (attempt < 2 &&
+                   (statusCode == 429 || statusCode >= 500 || error != QNetworkReply::NoError) &&
+                   statusCode != 400 && statusCode != 401 && statusCode != 403 && statusCode != 404) {
+            QTimer::singleShot(50 * (attempt + 1), this, [this, target, attempt]() {
+                fetchRecipientKeysInternal(target, attempt + 1);
+            });
+            return;
         }
+        m_inFlightRecipientKeyQueries.remove(target);
         emit recipientKeysFetched(target, devicesList);
     });
 }

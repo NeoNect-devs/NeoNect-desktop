@@ -45,10 +45,15 @@ RelayService::RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
       m_capabilities(std::move(capabilities)),
       m_envelopeHandler(std::move(envelopeHandler)),
       m_wsClient(std::make_unique<Transport::WebSocketClient>(this)),
-      m_pollTimer(new QTimer(this)) {
+      m_pollTimer(new QTimer(this)),
+      m_retryPollTimer(new QTimer(this)) {
 
     m_pollTimer->setInterval(Constants::RELAY_POLL_INTERVAL_MS);
     connect(m_pollTimer, &QTimer::timeout, this, &RelayService::pollPendingMessages);
+
+    m_retryPollTimer->setSingleShot(true);
+    m_retryPollTimer->setInterval(250);
+    connect(m_retryPollTimer, &QTimer::timeout, this, &RelayService::pollPendingMessages);
 
     connect(this, &RelayService::serverConnected, this, [this]() {
         m_isWsConnected = true;
@@ -61,6 +66,7 @@ RelayService::RelayService(std::shared_ptr<Transport::IHttpTransport> transport,
     connect(m_wsClient.get(), &Transport::WebSocketClient::connected, this, [this]() {
         qDebug() << "[RelayService] Connected to server WebSocket relay. Online status active.";
         emit serverConnected();
+        pollPendingMessages();
     });
 
     connect(m_wsClient.get(), &Transport::WebSocketClient::disconnected, this, [this]() {
@@ -84,6 +90,16 @@ void RelayService::startPolling() {
         m_pollTimer->start();
     }
 
+    if (m_wsClient && m_capabilities) {
+        auto cap = m_capabilities->maxEnvelopeBytes();
+        if (cap.has_value()) {
+            // Reconcile transport limit with payload: Base64 expansion is exactly 4/3 of the raw bytes.
+            // We add a 512-byte margin for the JSON wrapper overhead (DeliveryMessage fields).
+            quint64 requiredWsSize = ((static_cast<quint64>(cap.value()) + 2) / 3) * 4 + 512;
+            m_wsClient->setMaxMessageSize(qMax(Constants::WS_MAX_MESSAGE_SIZE, requiredWsSize));
+        }
+    }
+
     bool isMock = m_transport && m_transport->baseUrl().contains("mock.neonect.local");
     if (isMock) {
         m_isWsConnected = true;
@@ -94,15 +110,6 @@ void RelayService::startPolling() {
         if (!devId.isEmpty() && !token.isEmpty()) {
             if (!m_wsClient->isConnected() || m_wsClient->deviceId() != devId || m_wsClient->token() != token) {
                 qDebug() << "[RelayService] Opening WebSocket connection for presence & delivery:" << devId;
-                if (m_capabilities) {
-                    auto cap = m_capabilities->maxEnvelopeBytes();
-                    if (cap.has_value()) {
-                        // Reconcile transport limit with payload: Base64 expansion is exactly 4/3 of the raw bytes.
-                        // We add a 512-byte margin for the JSON wrapper overhead (DeliveryMessage fields).
-                        quint64 requiredWsSize = ((static_cast<quint64>(cap.value()) + 2) / 3) * 4 + 512;
-                        m_wsClient->setMaxMessageSize(qMax(Constants::WS_MAX_MESSAGE_SIZE, requiredWsSize));
-                    }
-                }
                 m_wsClient->open(m_transport->baseUrl(), devId, token);
             }
         }
@@ -112,14 +119,40 @@ void RelayService::startPolling() {
 }
 
 void RelayService::stopPolling() {
+    ++m_pollGeneration;
+    m_isPollingActive = false;
+    m_repollRequested = false;
     if (m_pollTimer->isActive()) {
         m_pollTimer->stop();
+    }
+    if (m_retryPollTimer && m_retryPollTimer->isActive()) {
+        m_retryPollTimer->stop();
     }
     if (m_wsClient) {
         m_wsClient->close();
     }
     m_isWsConnected = false;
+    m_inFlightMessageIds.clear();
+    m_processedMessageIds.clear();
+    m_processedMessageOrder.clear();
+    m_failedMessageAttempts.clear();
     emit serverDisconnected();
+}
+
+void RelayService::recordProcessedMessageId(qint64 messageId) {
+    if (messageId <= 0) {
+        return;
+    }
+    auto [it, inserted] = m_processedMessageIds.insert(messageId);
+    if (!inserted) {
+        return;
+    }
+    m_processedMessageOrder.push_back(messageId);
+    while (m_processedMessageOrder.size() > kMaxProcessedMessageIds) {
+        const qint64 oldest = m_processedMessageOrder.front();
+        m_processedMessageOrder.pop_front();
+        m_processedMessageIds.erase(oldest);
+    }
 }
 
 bool RelayService::isPolling() const {
@@ -156,6 +189,11 @@ void RelayService::handle401Error() {
 }
 
 void RelayService::sendDomainMessage(const Domain::Message &msg) {
+    if (msg.conversationId == "dms:saved-messages" || msg.conversationId == "saved-messages") {
+        emit secureMessageTransmitted(msg.conversationId, true);
+        emit messageTransmissionStatus(msg.conversationId, msg.id, true, QString());
+        return;
+    }
     qWarning() << "[RelayService] sendDomainMessage is deprecated and disconnected in Step 9. Use sendEncryptedEnvelope.";
     emit secureMessageTransmitted(msg.conversationId, false);
 }
@@ -164,6 +202,12 @@ void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
                                          const QString &recipientDeviceId,
                                          const QString &messageId,
                                          const QByteArray &envelopeBytes) {
+    if (recipientUsername == "saved-messages" || recipientUsername == "dms:saved-messages") {
+        emit secureMessageTransmitted(recipientUsername, true);
+        emit messageTransmissionStatus(recipientUsername, messageId, true, QString());
+        return;
+    }
+
     QString token = m_storage->authToken();
     QString deviceId = m_storage->deviceId().trimmed();
 
@@ -216,7 +260,7 @@ void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
     qDebug() << "[RelayService] Transmitting opaque envelope to:" << recipientUsername << "deviceId:" << recipientDeviceId << "msgId:" << messageId;
 
     m_transport->post(Constants::EP_RELAY_SEND, postData, this, [this, recipientUsername, messageId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
-        bool ok = (error == QNetworkReply::NoError || statusCode == 200 || statusCode == 201);
+        bool ok = (error == QNetworkReply::NoError && (statusCode == 200 || statusCode == 201));
         QString errorMsg = ok ? "" : (errStr.isEmpty() ? "Network relay transmission failed" : errStr);
         if (ok) {
             qDebug() << "[RelayService] sendEncryptedEnvelope succeeded for" << recipientUsername;
@@ -246,17 +290,26 @@ void RelayService::sendEncryptedEnvelope(const QString &recipientUsername,
 void RelayService::pollPendingMessages() {
     QString token = m_storage->authToken();
     QString deviceId = m_storage->deviceId();
-    if (token.isEmpty() || deviceId.isEmpty() || m_isPollingActive) {
+    if (token.isEmpty() || deviceId.isEmpty()) {
+        return;
+    }
+    if (m_isPollingActive) {
+        m_repollRequested = true;
         return;
     }
 
     m_isPollingActive = true;
+    m_repollRequested = false;
+    const uint64_t generation = m_pollGeneration;
 
     QMap<QString, QString> params;
     params["device_id"] = deviceId;
 
-    m_transport->get(Constants::EP_RELAY_POLL, params, this, [this](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
+    m_transport->get(Constants::EP_RELAY_POLL, params, this, [this, generation, deviceId](int statusCode, const QByteArray &data, QNetworkReply::NetworkError error, const QString &errStr) {
         Q_UNUSED(errStr);
+        if (generation != m_pollGeneration || deviceId != m_storage->deviceId()) {
+            return;
+        }
         m_isPollingActive = false;
 
         if (statusCode == 401) {
@@ -264,23 +317,59 @@ void RelayService::pollPendingMessages() {
             return;
         }
 
-        if (error != QNetworkReply::NoError || data.isEmpty()) {
+        if (error != QNetworkReply::NoError || (statusCode != 0 && statusCode != 200) || data.isEmpty()) {
+            if (m_pollTimer->isActive() && m_retryPollTimer && !m_retryPollTimer->isActive()) {
+                m_retryPollTimer->start();
+            }
             return;
         }
 
         m_retry401Count = 0;
 
         QJsonDocument doc = QJsonDocument::fromJson(data);
-        if (doc.isNull() || !doc.isObject()) return;
+        if (doc.isNull() || !doc.isObject()) {
+            if (m_pollTimer->isActive() && m_retryPollTimer && !m_retryPollTimer->isActive()) {
+                m_retryPollTimer->start();
+            }
+            return;
+        }
 
         QJsonObject root = doc.object();
         if (!root.contains("messages") || !root.value("messages").isArray()) return;
 
         QJsonArray messages = root.value("messages").toArray();
+        QSet<QString> blockedSenderDevicesInPass;
+        bool needsRetryPoll = false;
+
         for (const QJsonValue &val : messages) {
             if (!val.isObject()) continue;
             QJsonObject msgObj = val.toObject();
-            processIncomingRelayItem(msgObj);
+            const QString senderDeviceId = msgObj.value("sender_device_id").toString();
+            if (!senderDeviceId.isEmpty() && blockedSenderDevicesInPass.contains(senderDeviceId)) {
+                needsRetryPoll = true;
+                continue;
+            }
+
+            const RelayItemOutcome outcome = processIncomingRelayItem(msgObj);
+            if (generation != m_pollGeneration) {
+                return;
+            }
+
+            if (outcome == RelayItemOutcome::TransientFailure) {
+                needsRetryPoll = true;
+                if (!senderDeviceId.isEmpty()) {
+                    blockedSenderDevicesInPass.insert(senderDeviceId);
+                }
+            } else if (outcome == RelayItemOutcome::RetryableCryptoFailure) {
+                needsRetryPoll = true;
+            }
+        }
+
+        if (m_repollRequested) {
+            m_repollRequested = false;
+            QTimer::singleShot(0, this, &RelayService::pollPendingMessages);
+        } else if (needsRetryPoll && m_pollTimer->isActive() && m_retryPollTimer && !m_retryPollTimer->isActive()) {
+            m_retryPollTimer->start();
         }
     });
 }
@@ -291,68 +380,127 @@ void RelayService::onWebSocketMessageReceived(const QString &text) {
 
     QJsonObject msgObj = doc.object();
     qDebug() << "[RelayService] WebSocket real-time delivery received. MsgId:" << msgObj.value("id").toInteger();
-    processIncomingRelayItem(msgObj);
+    const RelayItemOutcome outcome = processIncomingRelayItem(msgObj);
+    if ((outcome == RelayItemOutcome::TransientFailure || outcome == RelayItemOutcome::RetryableCryptoFailure) &&
+        m_pollTimer->isActive() && m_retryPollTimer && !m_retryPollTimer->isActive()) {
+        m_retryPollTimer->start();
+    }
 }
 
-void RelayService::processIncomingRelayItem(const QJsonObject &msgObj) {
+RelayService::RelayItemOutcome RelayService::processIncomingRelayItem(const QJsonObject &msgObj) {
     qint64 msgId = msgObj.value("id").toInteger();
     QString base64Cipher = msgObj.value("ciphertext").toString();
 
     if (m_processedMessageIds.find(msgId) != m_processedMessageIds.end()) {
         acknowledgeMessage(msgId);
-        return;
+        return RelayItemOutcome::ProcessedOrSkipped;
+    }
+
+    if (m_inFlightMessageIds.find(msgId) != m_inFlightMessageIds.end()) {
+        return RelayItemOutcome::ProcessedOrSkipped;
     }
 
     if (base64Cipher.isEmpty()) {
+        recordProcessedMessageId(msgId);
         acknowledgeMessage(msgId);
-        return;
+        return RelayItemOutcome::PermanentlyInvalidAcked;
     }
 
     QByteArray envelopeBytes = QByteArray::fromBase64(base64Cipher.toLatin1());
 
     if (!m_capabilities) {
         qDebug() << "[RelayService] Incoming envelope rejected: capabilities not initialized";
-        // Do NOT acknowledge, defer processing until capabilities are known
-        return;
+        return RelayItemOutcome::TransientFailure;
     }
 
     auto maxEnvelope = m_capabilities->maxEnvelopeBytes();
     if (!maxEnvelope.has_value()) {
         qDebug() << "[RelayService] Incoming envelope rejected: unknown max envelope capability";
-        // Do NOT acknowledge, defer processing until capabilities are negotiated
-        return;
+        return RelayItemOutcome::TransientFailure;
     }
 
     if (envelopeBytes.size() > maxEnvelope.value()) {
         qDebug() << "[RelayService] Incoming envelope exceeds maximum payload size limit.";
-        acknowledgeMessage(msgId); // Discard oversized message
-        return;
+        recordProcessedMessageId(msgId);
+        acknowledgeMessage(msgId);
+        return RelayItemOutcome::PermanentlyInvalidAcked;
     }
 
     if (m_envelopeHandler) {
         Transport::TransportMetadata metadata;
         metadata.messageId = msgId;
-        // The server might send these fields; fallback to empty if missing
         metadata.senderUserId = msgObj.value("sender_id").toString();
         metadata.senderDeviceId = msgObj.value("sender_device_id").toString();
         metadata.recipientDeviceId = msgObj.value("recipient_device_id").toString();
 
+        m_inFlightMessageIds.insert(msgId);
         auto result = m_envelopeHandler->handleEnvelope(envelopeBytes, metadata);
+        m_inFlightMessageIds.erase(msgId);
+
         if (result.success) {
-            // ACK only after successful acceptance boundary
+            m_failedMessageAttempts.erase(msgId);
+            recordProcessedMessageId(msgId);
             acknowledgeMessage(msgId);
-            m_processedMessageIds.insert(msgId);
+            return RelayItemOutcome::ProcessedOrSkipped;
         } else {
-            // Log rejection, but do not retry malformed envelopes if they are fundamentally invalid.
             qDebug() << "[RelayService] Envelope processing failed:" << result.message;
-            if (result.message == "invalid envelope" || result.message.contains("malformed", Qt::CaseInsensitive)) {
-                // If the message is irreversibly malformed, just ACK it to stop retry loops
-                acknowledgeMessage(msgId);
-                m_processedMessageIds.insert(msgId);
+
+            const bool isTransientLocalFailure =
+                result.message == "Local message persistence failed" ||
+                result.message == "Storage context unavailable" ||
+                result.message == "No local identity" ||
+                result.message == "Failed to write chunk to disk" ||
+                result.message == "Store not available" ||
+                result.message == "Failed to open spool" ||
+                result.message == "Seek failed" ||
+                result.message == "Spool flush failed" ||
+                result.message == "Spool durability failed" ||
+                result.message == "DB commit failed";
+
+            if (isTransientLocalFailure) {
+                return RelayItemOutcome::TransientFailure;
             }
+
+            int attempts = ++m_failedMessageAttempts[msgId];
+            bool isPermanentlyInvalid =
+                result.message == "envelope too short" ||
+                result.message == "invalid envelope" ||
+                result.message == "Unhandled envelope" ||
+                result.message.contains("malformed", Qt::CaseInsensitive) ||
+                result.message == "InitialEnvelope missing sender identity key" ||
+                result.message == "Decrypted InitialEnvelope payload is not a valid RatchetEnvelope" ||
+                result.message == "DoubleRatchet Receive failed on initial message" ||
+                result.message == "Authenticated session user does not match payload senderId" ||
+                result.message == "Invalid FILE_CHUNK envelope" ||
+                result.message == "Sender cannot receive chunks" ||
+                result.message == "Invalid chunk index" ||
+                result.message == "Malformed chunk length" ||
+                (attempts >= 2 &&
+                 (result.message == "Ratchet payload decryption failed" ||
+                  result.message == "DoubleRatchet Receive failed" ||
+                  result.message == "InitialEnvelope decryption failed" ||
+                  result.message == "X3DH respond failed" ||
+                  result.message == "Session not found" ||
+                  result.message == "No session found for incoming RatchetEnvelope" ||
+                  result.message == "Sender identity verification failed" ||
+                  result.message == "Remote identity key mismatch for existing session" ||
+                  result.message == "Transfer not found" ||
+                  result.message == "Transfer not active" ||
+                  result.message == "Chunk authentication failed"));
+            if (isPermanentlyInvalid) {
+                m_failedMessageAttempts.erase(msgId);
+                recordProcessedMessageId(msgId);
+                acknowledgeMessage(msgId);
+                return RelayItemOutcome::PermanentlyInvalidAcked;
+            }
+            if (result.message == "Sender identity verification failed") {
+                return RelayItemOutcome::TransientFailure;
+            }
+            return RelayItemOutcome::RetryableCryptoFailure;
         }
     } else {
         qWarning() << "[RelayService] No envelope handler registered. Dropping packet.";
+        return RelayItemOutcome::TransientFailure;
     }
 }
 
@@ -366,11 +514,25 @@ void RelayService::acknowledgeMessage(qint64 messageId) {
     body["message_id"] = messageId;
 
     QByteArray postData = QJsonDocument(body).toJson(QJsonDocument::Compact);
-    m_transport->post(Constants::EP_RELAY_ACK, postData, this, [](int, const QByteArray&, QNetworkReply::NetworkError, const QString&) {});
+    const uint64_t generation = m_pollGeneration;
+    m_transport->post(Constants::EP_RELAY_ACK, postData, this, [this, generation](int statusCode, const QByteArray&, QNetworkReply::NetworkError error, const QString&) {
+        if (generation != m_pollGeneration) {
+            return;
+        }
+        if (error != QNetworkReply::NoError || (statusCode != 0 && statusCode != 200)) {
+            if (m_pollTimer && m_pollTimer->isActive() && m_retryPollTimer && !m_retryPollTimer->isActive()) {
+                m_retryPollTimer->start();
+            }
+        }
+    });
 }
 
 void RelayService::setEnvelopeHandler(std::shared_ptr<Transport::IIncomingEnvelopeHandler> handler) {
     m_envelopeHandler = std::move(handler);
+}
+
+void RelayService::setCapabilities(std::shared_ptr<Storage::ICapabilitiesRepository> capabilities) {
+    m_capabilities = std::move(capabilities);
 }
 
 } // namespace Services

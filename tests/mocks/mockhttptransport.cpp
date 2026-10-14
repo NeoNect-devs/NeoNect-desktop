@@ -59,6 +59,24 @@ void MockHttpTransport::loadSharedState() {
         for (auto dit = devObj.begin(); dit != devObj.end(); ++dit) {
             u.devices[dit.key()] = dit.value().toString();
         }
+        auto pkObj = uObj.value("device_prekeys").toObject();
+        for (auto pit = pkObj.begin(); pit != pkObj.end(); ++pit) {
+            auto bObj = pit.value().toObject();
+            MockDevicePreKeys bundle;
+            auto spkObj = bObj.value("signed_curve_prekey").toObject();
+            bundle.signedPreKey.keyId = spkObj.value("key_id").toInt();
+            bundle.signedPreKey.publicKey = spkObj.value("public_key").toString();
+            bundle.signedPreKey.signature = spkObj.value("signature").toString();
+            auto opkArr = bObj.value("one_time_curve_prekeys").toArray();
+            for (const auto &v : opkArr) {
+                auto oObj = v.toObject();
+                MockOneTimePreKey opk;
+                opk.keyId = oObj.value("key_id").toInt();
+                opk.publicKey = oObj.value("public_key").toString();
+                bundle.oneTimePreKeys.push_back(opk);
+            }
+            u.devicePreKeys[pit.key()] = std::move(bundle);
+        }
         m_users[u.username] = u;
         if (!u.sessionToken.isEmpty()) {
             m_tokenToUser[u.sessionToken] = u.username;
@@ -73,6 +91,9 @@ void MockHttpTransport::loadSharedState() {
         MockQueuedMessage item;
         item.id = qObj.value("id").toInteger();
         item.deviceId = qObj.value("device_id").toString();
+        item.senderDeviceId = qObj.value("sender_device_id").toString();
+        item.messageId = qObj.value("message_id").toString();
+        item.protocolVersion = qObj.value("protocol_version").toInt(2);
         item.toUsername = qObj.value("to_username").toString();
         item.ciphertextBase64 = qObj.value("ciphertext").toString();
         // nonce is inside envelope now
@@ -112,6 +133,27 @@ void MockHttpTransport::saveSharedState() {
             devObj[dit.key()] = dit.value();
         }
         uObj["devices"] = devObj;
+
+        QJsonObject pkObj;
+        for (auto pit = it.value().devicePreKeys.begin(); pit != it.value().devicePreKeys.end(); ++pit) {
+            QJsonObject bObj;
+            QJsonObject spkObj;
+            spkObj["key_id"] = pit.value().signedPreKey.keyId;
+            spkObj["public_key"] = pit.value().signedPreKey.publicKey;
+            spkObj["signature"] = pit.value().signedPreKey.signature;
+            bObj["signed_curve_prekey"] = spkObj;
+
+            QJsonArray opkArr;
+            for (const auto &opk : pit.value().oneTimePreKeys) {
+                QJsonObject oObj;
+                oObj["key_id"] = opk.keyId;
+                oObj["public_key"] = opk.publicKey;
+                opkArr.append(oObj);
+            }
+            bObj["one_time_curve_prekeys"] = opkArr;
+            pkObj[pit.key()] = bObj;
+        }
+        uObj["device_prekeys"] = pkObj;
         usersObj[it.key()] = uObj;
     }
     root["users"] = usersObj;
@@ -121,6 +163,9 @@ void MockHttpTransport::saveSharedState() {
         QJsonObject qObj;
         qObj["id"] = item.id;
         qObj["device_id"] = item.deviceId;
+        qObj["sender_device_id"] = item.senderDeviceId;
+        qObj["message_id"] = item.messageId;
+        qObj["protocol_version"] = item.protocolVersion;
         qObj["to_username"] = item.toUsername;
         qObj["ciphertext"] = item.ciphertextBase64;
         // nonce is inside envelope now
@@ -165,10 +210,24 @@ void MockHttpTransport::setAuthToken(const QString &token) {
     }
     m_activeToken = token;
     if (!token.isEmpty()) {
+        if (m_tokenToUser.contains(token)) {
+            return;
+        }
         for (const auto &user : m_users) {
             if (token.contains(user.username, Qt::CaseInsensitive)) {
                 m_tokenToUser[token] = user.username;
                 return;
+            }
+        }
+        if (token.startsWith("mock-token-", Qt::CaseInsensitive)) {
+            QString prefix = token.mid(11).trimmed();
+            if (!prefix.isEmpty()) {
+                for (const auto &user : m_users) {
+                    if (user.username.startsWith(prefix, Qt::CaseInsensitive)) {
+                        m_tokenToUser[token] = user.username;
+                        return;
+                    }
+                }
             }
         }
         if (!m_users.isEmpty()) {
@@ -198,6 +257,15 @@ void MockHttpTransport::seedUser(const QString &username, const QString &passwor
     }
     if (!m_activeToken.isEmpty() && m_activeToken.contains(cleanUser, Qt::CaseInsensitive)) {
         m_tokenToUser[m_activeToken] = cleanUser;
+    }
+}
+
+void MockHttpTransport::bindToken(const QString &token, const QString &username) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    QString cleanUser = username.trimmed().toLower();
+    if (!token.isEmpty() && !cleanUser.isEmpty()) {
+        seedUser(cleanUser, "password123");
+        m_tokenToUser[token] = cleanUser;
     }
 }
 
@@ -343,6 +411,10 @@ QNetworkReply* MockHttpTransport::post(const QString &endpoint, const QByteArray
         handleUsers(jsonData, callback);
     } else if (endpoint == Constants::EP_DEVICE_REGISTER) {
         handleDeviceRegister(jsonData, callback);
+    } else if (endpoint == Constants::EP_PREKEY_UPLOAD) {
+        handlePreKeyUpload(jsonData, callback);
+    } else if (endpoint == Constants::EP_PREKEY_CLAIM) {
+        handlePreKeyClaim(jsonData, callback);
     } else if (endpoint == Constants::EP_RELAY_SEND) {
         handleRelaySend(jsonData, callback);
     } else if (endpoint == Constants::EP_RELAY_ACK) {
@@ -659,6 +731,101 @@ void MockHttpTransport::handleRelayKeys(const QMap<QString, QString> &queryParam
     callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
 }
 
+void MockHttpTransport::handlePreKeyUpload(const QByteArray &data, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken.isEmpty() || !m_tokenToUser.contains(m_activeToken)) {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    QString username = m_tokenToUser[m_activeToken];
+    auto doc = QJsonDocument::fromJson(data);
+    auto obj = doc.object();
+    QString deviceId = obj.value("device_id").toString();
+    if (deviceId.isEmpty()) {
+        QJsonObject err;
+        err["error"] = "device_id required";
+        callback(400, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ProtocolInvalidOperationError, "Bad Request");
+        return;
+    }
+
+    MockDevicePreKeys bundle;
+    auto spkObj = obj.value("signed_curve_prekey").toObject();
+    bundle.signedPreKey.keyId = spkObj.value("key_id").toInt();
+    bundle.signedPreKey.publicKey = spkObj.value("public_key").toString();
+    bundle.signedPreKey.signature = spkObj.value("signature").toString();
+
+    auto opkArr = obj.value("one_time_curve_prekeys").toArray();
+    for (const auto &v : opkArr) {
+        auto opkObj = v.toObject();
+        MockOneTimePreKey opk;
+        opk.keyId = opkObj.value("key_id").toInt();
+        opk.publicKey = opkObj.value("public_key").toString();
+        bundle.oneTimePreKeys.push_back(opk);
+    }
+
+    m_users[username].devicePreKeys[deviceId] = std::move(bundle);
+    if (m_enableSharedStorage) {
+        saveSharedState();
+    }
+
+    QJsonObject res;
+    res["status"] = "success";
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
+void MockHttpTransport::handlePreKeyClaim(const QByteArray &data, Transport::HttpResponseCallback callback) {
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (m_activeToken.isEmpty() || !m_tokenToUser.contains(m_activeToken)) {
+        QJsonObject err;
+        err["error"] = "unauthorized";
+        callback(401, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::AuthenticationRequiredError, "Unauthorized");
+        return;
+    }
+
+    auto doc = QJsonDocument::fromJson(data);
+    auto obj = doc.object();
+    QString targetUser = obj.value("target_user").toString().trimmed().toLower();
+    QString targetDevice = obj.value("target_device").toString();
+
+    if (!m_users.contains(targetUser) ||
+        !m_users[targetUser].devices.contains(targetDevice) ||
+        !m_users[targetUser].devicePreKeys.contains(targetDevice)) {
+        QJsonObject err;
+        err["error"] = "prekey bundle not found";
+        callback(404, QJsonDocument(err).toJson(QJsonDocument::Compact), QNetworkReply::ContentNotFoundError, "Not Found");
+        return;
+    }
+
+    auto &user = m_users[targetUser];
+    auto &prekeys = user.devicePreKeys[targetDevice];
+
+    QJsonObject res;
+    res["identity_key"] = user.devices[targetDevice];
+
+    QJsonObject spkObj;
+    spkObj["key_id"] = prekeys.signedPreKey.keyId;
+    spkObj["public_key"] = prekeys.signedPreKey.publicKey;
+    spkObj["signature"] = prekeys.signedPreKey.signature;
+    res["signed_curve_prekey"] = spkObj;
+
+    if (!prekeys.oneTimePreKeys.empty()) {
+        auto opk = prekeys.oneTimePreKeys.front();
+        prekeys.oneTimePreKeys.erase(prekeys.oneTimePreKeys.begin());
+        QJsonObject opkObj;
+        opkObj["key_id"] = opk.keyId;
+        opkObj["public_key"] = opk.publicKey;
+        res["one_time_curve_prekey"] = opkObj;
+        if (m_enableSharedStorage) {
+            saveSharedState();
+        }
+    }
+
+    callback(200, QJsonDocument(res).toJson(QJsonDocument::Compact), QNetworkReply::NoError, QString());
+}
+
 void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpResponseCallback callback) {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (m_activeToken.isEmpty() || !m_tokenToUser.contains(m_activeToken)) {
@@ -669,19 +836,49 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
     }
 
     auto doc = QJsonDocument::fromJson(data);
-    QString fromDeviceId = doc.object().value("from_device_id").toString();
-    QString toUsername = doc.object().value("to_username").toString().trimmed().toLower();
-    QString ciphertext = doc.object().value("ciphertext").toString();
-    qint64 timestamp = doc.object().value("timestamp").toInteger();
+    auto obj = doc.object();
+    QString fromDeviceId = obj.value("from_device_id").toString();
+    QString recipientDeviceId = obj.value("recipient_device_id").toString();
+    if (recipientDeviceId.isEmpty()) {
+        recipientDeviceId = obj.value("to_device_id").toString();
+    }
+    QString toUsername = obj.value("to_username").toString().trimmed().toLower();
+    QString messageId = obj.value("message_id").toString();
+    int protocolVersion = obj.value("protocol_version").toInt(2);
+    QString ciphertext = obj.value("ciphertext").toString();
+    qint64 timestamp = obj.value("timestamp").toInteger();
 
-    // Handle channel broadcast (e.g. general)
-    if (toUsername == "general") {
+    if (!recipientDeviceId.isEmpty()) {
+        QString resolvedUser = toUsername;
+        if (resolvedUser.isEmpty()) {
+            for (auto uit = m_users.cbegin(); uit != m_users.cend(); ++uit) {
+                if (uit.value().devices.contains(recipientDeviceId)) {
+                    resolvedUser = uit.key();
+                    break;
+                }
+            }
+        }
+        MockQueuedMessage item;
+        item.id = m_nextMessageId++;
+        item.deviceId = recipientDeviceId;
+        item.senderDeviceId = fromDeviceId;
+        item.messageId = messageId;
+        item.protocolVersion = protocolVersion;
+        item.toUsername = resolvedUser;
+        item.ciphertextBase64 = ciphertext;
+        item.timestamp = timestamp;
+        m_deliveryQueue.push_back(std::move(item));
+    } else if (toUsername == "general") {
+        // Handle channel broadcast (e.g. general)
         for (const auto &user : m_users) {
             for (auto it = user.devices.cbegin(); it != user.devices.cend(); ++it) {
                 if (it.key() != fromDeviceId) {
                     MockQueuedMessage item;
                     item.id = m_nextMessageId++;
                     item.deviceId = it.key();
+                    item.senderDeviceId = fromDeviceId;
+                    item.messageId = messageId;
+                    item.protocolVersion = protocolVersion;
                     item.toUsername = user.username;
                     item.ciphertextBase64 = ciphertext;
                     item.timestamp = timestamp;
@@ -710,6 +907,9 @@ void MockHttpTransport::handleRelaySend(const QByteArray &data, Transport::HttpR
                 MockQueuedMessage item;
                 item.id = m_nextMessageId++;
                 item.deviceId = it.key();
+                item.senderDeviceId = fromDeviceId;
+                item.messageId = messageId;
+                item.protocolVersion = protocolVersion;
                 item.toUsername = toUsername;
                 item.ciphertextBase64 = ciphertext;
                 item.timestamp = timestamp;
@@ -744,6 +944,18 @@ void MockHttpTransport::handleRelayPoll(const QMap<QString, QString> &queryParam
             QJsonObject m;
             m["id"] = item.id;
             m["ciphertext"] = item.ciphertextBase64;
+            if (!item.senderDeviceId.isEmpty()) {
+                m["sender_device_id"] = item.senderDeviceId;
+            }
+            if (!item.deviceId.isEmpty()) {
+                m["recipient_device_id"] = item.deviceId;
+            }
+            if (!item.messageId.isEmpty()) {
+                m["message_id"] = item.messageId;
+            }
+            if (item.protocolVersion > 0) {
+                m["protocol_version"] = item.protocolVersion;
+            }
             // The real backend does NOT return a nonce, it was removed for Phase 10B.
             m["timestamp"] = item.timestamp;
             msgs.append(m);

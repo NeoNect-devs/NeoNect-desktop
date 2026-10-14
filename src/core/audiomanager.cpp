@@ -23,6 +23,102 @@
 #endif
 #include <windows.h>
 #include <mmsystem.h>
+#else
+#include <QLibrary>
+#include <cmath>
+
+namespace {
+
+struct pa_sample_spec {
+    int format;
+    uint32_t rate;
+    uint8_t channels;
+};
+
+struct pa_buffer_attr {
+    uint32_t maxlength;
+    uint32_t tlength;
+    uint32_t prebuf;
+    uint32_t minreq;
+    uint32_t fragsize;
+};
+
+using pa_simple = void;
+
+using fn_pa_simple_new = pa_simple* (*)(const char *server, const char *name, int dir, const char *dev, const char *stream_name, const pa_sample_spec *ss, const void *map, const pa_buffer_attr *attr, int *error);
+using fn_pa_simple_free = void (*)(pa_simple *s);
+using fn_pa_simple_read = int (*)(pa_simple *s, void *data, size_t bytes, int *error);
+using fn_pa_simple_write = int (*)(pa_simple *s, const void *data, size_t bytes, int *error);
+using fn_pa_simple_drain = int (*)(pa_simple *s, int *error);
+
+class PulseAudioHelper {
+public:
+    static PulseAudioHelper& instance() {
+        static PulseAudioHelper s_instance;
+        return s_instance;
+    }
+
+    bool isAvailable() const { return m_available; }
+
+    pa_simple* createStream(int dir, int sampleRate, int channels, const pa_buffer_attr *attr = nullptr) {
+        if (!m_available || !m_fnNew) return nullptr;
+        pa_sample_spec ss;
+        ss.format = 3;
+        ss.rate = static_cast<uint32_t>(sampleRate > 0 ? sampleRate : 16000);
+        ss.channels = static_cast<uint8_t>(channels > 0 ? channels : 1);
+        int error = 0;
+        return m_fnNew(nullptr, "NeoNect", dir, nullptr, dir == 2 ? "voice-record" : "voice-playback", &ss, nullptr, attr, &error);
+    }
+
+    void freeStream(pa_simple* s) {
+        if (s && m_fnFree) m_fnFree(s);
+    }
+
+    int read(pa_simple* s, void* data, size_t bytes) {
+        if (!s || !m_fnRead) return -1;
+        int error = 0;
+        return m_fnRead(s, data, bytes, &error);
+    }
+
+    int write(pa_simple* s, const void* data, size_t bytes) {
+        if (!s || !m_fnWrite) return -1;
+        int error = 0;
+        return m_fnWrite(s, data, bytes, &error);
+    }
+
+    int drain(pa_simple* s) {
+        if (!s || !m_fnDrain) return -1;
+        int error = 0;
+        return m_fnDrain(s, &error);
+    }
+
+private:
+    PulseAudioHelper() {
+        m_lib.setFileName("libpulse-simple.so.0");
+        if (!m_lib.load()) {
+            m_lib.setFileName("pulse-simple");
+            m_lib.load();
+        }
+        if (m_lib.isLoaded()) {
+            m_fnNew = reinterpret_cast<fn_pa_simple_new>(m_lib.resolve("pa_simple_new"));
+            m_fnFree = reinterpret_cast<fn_pa_simple_free>(m_lib.resolve("pa_simple_free"));
+            m_fnRead = reinterpret_cast<fn_pa_simple_read>(m_lib.resolve("pa_simple_read"));
+            m_fnWrite = reinterpret_cast<fn_pa_simple_write>(m_lib.resolve("pa_simple_write"));
+            m_fnDrain = reinterpret_cast<fn_pa_simple_drain>(m_lib.resolve("pa_simple_drain"));
+            m_available = (m_fnNew && m_fnFree && m_fnRead && m_fnWrite && m_fnDrain);
+        }
+    }
+
+    QLibrary m_lib;
+    bool m_available{false};
+    fn_pa_simple_new m_fnNew{nullptr};
+    fn_pa_simple_free m_fnFree{nullptr};
+    fn_pa_simple_read m_fnRead{nullptr};
+    fn_pa_simple_write m_fnWrite{nullptr};
+    fn_pa_simple_drain m_fnDrain{nullptr};
+};
+
+}
 #endif
 
 
@@ -62,8 +158,23 @@ void AudioManager::playUiBeep(int freqHz, int durationMs) {
     Q_UNUSED(durationMs);
     MessageBeep(MB_OK);
 #else
-    Q_UNUSED(freqHz);
-    Q_UNUSED(durationMs);
+    auto &pulse = PulseAudioHelper::instance();
+    if (!pulse.isAvailable()) return;
+    int sampleRate = 16000;
+    pa_simple *s = pulse.createStream(1, sampleRate, 1);
+    if (!s) return;
+    int samples = std::clamp(durationMs, 10, 500) * sampleRate / 1000;
+    std::vector<int16_t> buf(samples);
+    double freq = std::clamp(freqHz, 100, 5000);
+    double vol = m_volumeAtomic.load();
+    for (int i = 0; i < samples; ++i) {
+        double t = static_cast<double>(i) / sampleRate;
+        double sVal = std::sin(2.0 * M_PI * freq * t) * 12000.0 * vol;
+        buf[i] = static_cast<int16_t>(qBound(-32000.0, sVal, 32000.0));
+    }
+    pulse.write(s, buf.data(), buf.size() * sizeof(int16_t));
+    pulse.drain(s);
+    pulse.freeStream(s);
 #endif
 }
 
@@ -91,13 +202,16 @@ void AudioManager::cleanupLocalFile(const QString& url) {
     }
 
     QString baseDir = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, sUser);
-    QString expectedRoot = QDir(baseDir + "/voice_notes").canonicalPath();
+    QString legacyRoot = QDir(baseDir + "/voice_notes").canonicalPath();
+    QString mediaVoiceDir = NeoNect::Storage::StoragePathResolver::mediaVoiceDirectory(sUrl, sUser);
+    QString expectedRoot = QDir(mediaVoiceDir).canonicalPath();
 
     QFileInfo fi(localPath);
     if (!fi.exists()) return;
 
     QString canonPath = fi.canonicalFilePath();
-    if (!expectedRoot.isEmpty() && (canonPath.startsWith(expectedRoot + "/") || canonPath == expectedRoot)) {
+    if ((!expectedRoot.isEmpty() && (canonPath.startsWith(expectedRoot + "/") || canonPath == expectedRoot)) ||
+        (!legacyRoot.isEmpty() && (canonPath.startsWith(legacyRoot + "/") || canonPath == legacyRoot))) {
         QFile::remove(canonPath);
     }
 }
@@ -286,9 +400,10 @@ void AudioManager::stopMci() {
 // WAV FILE I/O HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 void AudioManager::saveWavFile(const QString &filePath, const std::vector<int16_t> &pcmData, int sampleRate) {
-    QFile file(filePath);
+    QString tmpPath = filePath + ".tmp." + QString::number(QRandomGenerator::global()->generate());
+    QFile file(tmpPath);
     if (!file.open(QIODevice::WriteOnly)) {
-        qWarning() << "[AudioManager] Could not open file for writing:" << filePath;
+        qWarning() << "[AudioManager] Could not open file for writing";
         return;
     }
 
@@ -300,22 +415,19 @@ void AudioManager::saveWavFile(const QString &filePath, const std::vector<int16_
     header.resize(44);
     char *hdr = header.data();
 
-    // RIFF chunk descriptor
     memcpy(hdr + 0, "RIFF", 4);
     *reinterpret_cast<uint32_t*>(hdr + 4) = totalBytes;
     memcpy(hdr + 8, "WAVE", 4);
 
-    // fmt sub-chunk
     memcpy(hdr + 12, "fmt ", 4);
-    *reinterpret_cast<uint32_t*>(hdr + 16) = 16; // PCM
-    *reinterpret_cast<uint16_t*>(hdr + 20) = 1;  // AudioFormat 1 = PCM
-    *reinterpret_cast<uint16_t*>(hdr + 22) = 1;  // NumChannels 1 = Mono
-    *reinterpret_cast<uint32_t*>(hdr + 24) = sampleRate; // SampleRate
-    *reinterpret_cast<uint32_t*>(hdr + 28) = sampleRate * 2; // ByteRate
-    *reinterpret_cast<uint16_t*>(hdr + 32) = 2;  // BlockAlign
-    *reinterpret_cast<uint16_t*>(hdr + 34) = 16; // BitsPerSample
+    *reinterpret_cast<uint32_t*>(hdr + 16) = 16;
+    *reinterpret_cast<uint16_t*>(hdr + 20) = 1;
+    *reinterpret_cast<uint16_t*>(hdr + 22) = 1;
+    *reinterpret_cast<uint32_t*>(hdr + 24) = sampleRate;
+    *reinterpret_cast<uint32_t*>(hdr + 28) = sampleRate * 2;
+    *reinterpret_cast<uint16_t*>(hdr + 32) = 2;
+    *reinterpret_cast<uint16_t*>(hdr + 34) = 16;
 
-    // data sub-chunk
     memcpy(hdr + 36, "data", 4);
     *reinterpret_cast<uint32_t*>(hdr + 40) = dataBytes;
 
@@ -323,7 +435,15 @@ void AudioManager::saveWavFile(const QString &filePath, const std::vector<int16_
     if (!pcmData.empty()) {
         file.write(reinterpret_cast<const char*>(pcmData.data()), dataBytes);
     }
+    file.flush();
     file.close();
+
+    if (QFile::exists(filePath)) {
+        QFile::remove(filePath);
+    }
+    if (!file.rename(filePath)) {
+        QFile::remove(tmpPath);
+    }
 }
 
 bool AudioManager::loadWavFile(const QString &filePath, std::vector<int16_t> &outPcm, int &outSampleRate) {
@@ -388,6 +508,7 @@ bool AudioManager::loadWavFile(const QString &filePath, std::vector<int16_t> &ou
 // MICROPHONE RECORDING THREAD
 // ─────────────────────────────────────────────────────────────────────────────
 void AudioManager::startMicrophoneThread() {
+    stopMicrophoneThread();
     m_recordThreadRunning = true;
     m_recordThread = std::thread(&AudioManager::microphoneCaptureWorker, this);
 }
@@ -395,7 +516,9 @@ void AudioManager::startMicrophoneThread() {
 void AudioManager::stopMicrophoneThread() {
     m_recordThreadRunning = false;
     if (m_recordThread.joinable()) {
-        m_recordThread.join();
+        if (m_recordThread.get_id() != std::this_thread::get_id()) {
+            m_recordThread.join();
+        }
     }
 }
 
@@ -413,12 +536,14 @@ void AudioManager::microphoneCaptureWorker() {
     wfx.cbSize = 0;
 
     if (waveInOpen(&hWaveIn, WAVE_MAPPER, &wfx, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) {
-        qDebug() << "[AudioManager] Could not open microphone device, falling back to synthesizer";
+        qDebug() << "[AudioManager] Could not open microphone device";
+        m_recordThreadRunning = false;
+        QMetaObject::invokeMethod(this, &AudioManager::cancelRecording, Qt::QueuedConnection);
         return;
     }
 
     const int NUM_BUFFERS = 3;
-    const int SAMPLES_PER_BUFFER = 800; // 50ms
+    const int SAMPLES_PER_BUFFER = 800;
     const int BUFFER_SIZE = SAMPLES_PER_BUFFER * sizeof(int16_t);
 
     std::vector<int16_t> pcmBuffers[NUM_BUFFERS];
@@ -445,7 +570,7 @@ void AudioManager::microphoneCaptureWorker() {
                 sumSq += static_cast<double>(s) * s;
             }
             double rms = std::sqrt(sumSq / buf.size()) / 32768.0;
-            double level = qBound(0.1, rms * 5.0, 1.0);
+            double level = qBound(0.05, rms * 5.0, 1.0);
 
             {
                 std::lock_guard<std::mutex> lock(m_recordMutex);
@@ -467,6 +592,49 @@ void AudioManager::microphoneCaptureWorker() {
         waveInUnprepareHeader(hWaveIn, &waveHeaders[i], sizeof(WAVEHDR));
     }
     waveInClose(hWaveIn);
+    m_recordThreadRunning = false;
+#else
+    auto &pulse = PulseAudioHelper::instance();
+    pa_buffer_attr ba;
+    ba.maxlength = static_cast<uint32_t>(-1);
+    ba.tlength = static_cast<uint32_t>(-1);
+    ba.prebuf = static_cast<uint32_t>(-1);
+    ba.minreq = static_cast<uint32_t>(-1);
+    ba.fragsize = 1600;
+
+    pa_simple *s = pulse.createStream(2, 16000, 1, &ba);
+    if (!s) {
+        qDebug() << "[AudioManager] Could not open microphone device, PulseAudio stream creation failed";
+        m_recordThreadRunning = false;
+        QMetaObject::invokeMethod(this, &AudioManager::cancelRecording, Qt::QueuedConnection);
+        return;
+    }
+
+    const size_t SAMPLES_PER_BUFFER = 800;
+    std::vector<int16_t> buf(SAMPLES_PER_BUFFER, 0);
+
+    while (m_recordThreadRunning && m_isRecording) {
+        int r = pulse.read(s, buf.data(), buf.size() * sizeof(int16_t));
+        if (r == 0) {
+            double sumSq = 0.0;
+            for (int16_t val : buf) {
+                sumSq += static_cast<double>(val) * val;
+            }
+            double rms = std::sqrt(sumSq / buf.size()) / 32768.0;
+            double level = qBound(0.05, rms * 5.0, 1.0);
+
+            {
+                std::lock_guard<std::mutex> lock(m_recordMutex);
+                m_recordedPcmAudio.insert(m_recordedPcmAudio.end(), buf.begin(), buf.end());
+                m_recordedAmplitudes.push_back(level);
+            }
+        } else {
+            break;
+        }
+    }
+
+    pulse.freeStream(s);
+    m_recordThreadRunning = false;
 #endif
 }
 
@@ -477,10 +645,9 @@ void AudioManager::startRecording() {
         pauseAudio();
     }
 
-    playUiBeep(880, 70); // Start notification
-
     m_isRecording = true;
     m_recordingDuration = 0;
+    m_recordElapsedTimer.restart();
     {
         std::lock_guard<std::mutex> lock(m_recordMutex);
         m_recordedPcmAudio.clear();
@@ -488,7 +655,7 @@ void AudioManager::startRecording() {
     }
     m_liveWaveform.clear();
     for (int i = 0; i < 24; ++i) {
-        m_liveWaveform.append(0.15);
+        m_liveWaveform.append(0.05);
     }
 
     emit recordingStateChanged();
@@ -502,13 +669,11 @@ void AudioManager::startRecording() {
 void AudioManager::onRecordTimerTick() {
     if (!m_isRecording) return;
 
-    double level = 0.2;
+    double level = 0.05;
     {
         std::lock_guard<std::mutex> lock(m_recordMutex);
         if (!m_recordedAmplitudes.empty()) {
             level = m_recordedAmplitudes.back();
-        } else {
-            level = 0.2 + (QRandomGenerator::global()->bounded(100) / 100.0) * 0.4;
         }
     }
 
@@ -518,7 +683,12 @@ void AudioManager::onRecordTimerTick() {
     }
     emit liveWaveformChanged();
 
-    int elapsedSecs = static_cast<int>(m_recordedPcmAudio.size() / 16000);
+    int pcmSecs = 0;
+    {
+        std::lock_guard<std::mutex> lock(m_recordMutex);
+        pcmSecs = static_cast<int>(m_recordedPcmAudio.size() / 16000);
+    }
+    int elapsedSecs = std::max(pcmSecs, static_cast<int>(m_recordElapsedTimer.elapsed() / 1000));
     if (elapsedSecs > m_recordingDuration) {
         m_recordingDuration = elapsedSecs;
         emit recordingDurationChanged();
@@ -535,11 +705,6 @@ QVariantMap AudioManager::stopRecording() {
 
     playUiBeep(660, 60);
 
-    int finalSecs = std::max(1, m_recordingDuration);
-
-    QVariantList sampledWaveform;
-    int targetBars = 28;
-
     std::vector<double> amps;
     std::vector<int16_t> pcm;
     {
@@ -548,24 +713,43 @@ QVariantMap AudioManager::stopRecording() {
         pcm = m_recordedPcmAudio;
     }
 
-    // Removed pcm.empty() block to allow empty wav files (44 bytes) to be generated
-    // on Linux where waveIn is not available, preserving original fallback behavior.
+    if (pcm.empty()) {
+        m_recordingDuration = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_recordMutex);
+            m_recordedAmplitudes.clear();
+            m_recordedPcmAudio.clear();
+        }
+        emit recordingDurationChanged();
+        return {};
+    }
+
+    double sampleSecs = static_cast<double>(pcm.size()) / 16000.0;
+    int finalSecs = std::max(1, static_cast<int>(std::round(sampleSecs)));
+
+    QVariantList sampledWaveform;
+    int targetBars = 28;
 
     if (amps.empty()) {
         for (int i = 0; i < targetBars; ++i) {
-            sampledWaveform.append(0.2 + (i % 3) * 0.2);
+            sampledWaveform.append(0.05);
         }
     } else if (amps.size() <= targetBars) {
         for (double a : amps) sampledWaveform.append(a);
         while (sampledWaveform.size() < targetBars) {
-            sampledWaveform.append(0.2);
+            sampledWaveform.append(0.05);
         }
     } else {
         double step = static_cast<double>(amps.size()) / targetBars;
         for (int i = 0; i < targetBars; ++i) {
-            int idx = static_cast<int>(i * step);
-            idx = qBound(0, idx, static_cast<int>(amps.size() - 1));
-            sampledWaveform.append(amps[idx]);
+            int startIdx = static_cast<int>(i * step);
+            int endIdx = static_cast<int>((i + 1) * step);
+            endIdx = std::clamp(endIdx, startIdx + 1, static_cast<int>(amps.size()));
+            double peak = 0.05;
+            for (int j = startIdx; j < endIdx; ++j) {
+                if (amps[j] > peak) peak = amps[j];
+            }
+            sampledWaveform.append(peak);
         }
     }
 
@@ -588,11 +772,11 @@ QVariantMap AudioManager::stopRecording() {
         return {};
     }
 
-    QString baseDir = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, sUser);
-    QDir().mkpath(baseDir + "/voice_notes");
+    QString voiceDir = NeoNect::Storage::StoragePathResolver::mediaVoiceDirectory(sUrl, sUser);
+    QDir().mkpath(voiceDir);
 
     QString fileName = "voice_note_" + QUuid::createUuid().toString(QUuid::WithoutBraces) + ".wav";
-    QString fullPath = baseDir + "/voice_notes/" + fileName;
+    QString fullPath = voiceDir + "/" + fileName;
 
     saveWavFile(fullPath, pcm, 16000);
 
@@ -633,10 +817,9 @@ void AudioManager::cancelRecording() {
 // AUDIO PLAYBACK THREAD
 // ─────────────────────────────────────────────────────────────────────────────
 void AudioManager::startAudioPlaybackThread() {
-    if (m_audioThreadRunning.exchange(true)) return;
-    if (m_audioThread.joinable()) {
-        m_audioThread.join();
-    }
+    stopAudioPlaybackThread();
+    m_audioPlaying = true;
+    m_audioThreadRunning = true;
     m_audioThread = std::thread(&AudioManager::audioOutputWorker, this);
 }
 
@@ -644,18 +827,23 @@ void AudioManager::stopAudioPlaybackThread() {
     m_audioPlaying = false;
     m_audioThreadRunning = false;
     if (m_audioThread.joinable()) {
-        m_audioThread.join();
+        if (m_audioThread.get_id() != std::this_thread::get_id()) {
+            m_audioThread.join();
+        }
     }
 }
 
 void AudioManager::audioOutputWorker() {
 #ifdef _WIN32
+    int sampleRate = m_playbackSampleRate.load();
+    if (sampleRate <= 0) sampleRate = 16000;
+
     HWAVEOUT hWaveOut = NULL;
     WAVEFORMATEX wfx;
     memset(&wfx, 0, sizeof(wfx));
     wfx.wFormatTag = WAVE_FORMAT_PCM;
     wfx.nChannels = 1;
-    wfx.nSamplesPerSec = 16000;
+    wfx.nSamplesPerSec = sampleRate;
     wfx.wBitsPerSample = 16;
     wfx.nBlockAlign = 2;
     wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign;
@@ -664,11 +852,13 @@ void AudioManager::audioOutputWorker() {
     if (waveOutOpen(&hWaveOut, WAVE_MAPPER, &wfx, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) {
         qDebug() << "[AudioManager] Could not open waveOut playback device";
         m_audioThreadRunning = false;
+        m_audioPlaying = false;
+        QMetaObject::invokeMethod(this, &AudioManager::handlePlaybackFinished, Qt::QueuedConnection);
         return;
     }
 
     const int NUM_BUFFERS = 3;
-    const int SAMPLES_PER_BUFFER = 1600; // 100ms
+    const int SAMPLES_PER_BUFFER = 1600;
     const int BUFFER_SIZE = SAMPLES_PER_BUFFER * sizeof(int16_t);
 
     std::vector<int16_t> pcmBuffers[NUM_BUFFERS];
@@ -690,10 +880,10 @@ void AudioManager::audioOutputWorker() {
     int songTick = 0;
 
     const double chordProgression[4][4] = {
-        { 261.63, 329.63, 392.00, 523.25 }, // C Major
-        { 196.00, 246.94, 293.66, 392.00 }, // G Major
-        { 220.00, 261.63, 329.63, 440.00 }, // A Minor
-        { 174.61, 220.00, 261.63, 349.23 }  // F Major
+        { 261.63, 329.63, 392.00, 523.25 },
+        { 196.00, 246.94, 293.66, 392.00 },
+        { 220.00, 261.63, 329.63, 440.00 },
+        { 174.61, 220.00, 261.63, 349.23 }
     };
 
     while (m_audioThreadRunning && m_audioPlaying) {
@@ -711,20 +901,40 @@ void AudioManager::audioOutputWorker() {
         auto &buf = pcmBuffers[currentBuf];
 
         if (type == 2) {
-            std::lock_guard<std::mutex> lock(m_audioMutex);
-            size_t sampleIdx = m_playbackFileSampleIndex.load();
-            size_t totalSamples = m_playbackFilePcm.size();
+            size_t sampleIdx = 0;
+            size_t totalSamples = 0;
+            {
+                std::lock_guard<std::mutex> lock(m_audioMutex);
+                sampleIdx = m_playbackFileSampleIndex.load();
+                totalSamples = m_playbackFilePcm.size();
 
-            for (int i = 0; i < SAMPLES_PER_BUFFER; ++i) {
-                if (sampleIdx < totalSamples) {
-                    double s = static_cast<double>(m_playbackFilePcm[sampleIdx]) * vol;
-                    buf[i] = static_cast<int16_t>(qBound(-32767.0, s, 32767.0));
-                    sampleIdx += (speed >= 1.9 ? 2 : 1);
-                } else {
-                    buf[i] = 0;
+                for (int i = 0; i < SAMPLES_PER_BUFFER; ++i) {
+                    if (sampleIdx < totalSamples) {
+                        double s = static_cast<double>(m_playbackFilePcm[sampleIdx]) * vol;
+                        buf[i] = static_cast<int16_t>(qBound(-32767.0, s, 32767.0));
+                        sampleIdx += (speed >= 1.9 ? 2 : (speed >= 1.4 ? (i % 2 == 0 ? 2 : 1) : 1));
+                    } else {
+                        buf[i] = 0;
+                    }
                 }
+                m_playbackFileSampleIndex.store(sampleIdx);
             }
-            m_playbackFileSampleIndex.store(sampleIdx);
+
+            waveHeaders[currentBuf].dwFlags &= ~WHDR_DONE;
+            waveOutWrite(hWaveOut, &waveHeaders[currentBuf], sizeof(WAVEHDR));
+            currentBuf = (currentBuf + 1) % NUM_BUFFERS;
+
+            if (sampleIdx >= totalSamples && totalSamples > 0) {
+                for (int i = 0; i < NUM_BUFFERS; ++i) {
+                    int drainWait = 0;
+                    while (!(waveHeaders[i].dwFlags & WHDR_DONE) && drainWait++ < 50) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    }
+                }
+                m_audioPlaying = false;
+                QMetaObject::invokeMethod(this, &AudioManager::handlePlaybackFinished, Qt::QueuedConnection);
+                break;
+            }
         } else if (type == 0) {
             for (int i = 0; i < SAMPLES_PER_BUFFER; ++i) {
                 songTick++;
@@ -749,6 +959,9 @@ void AudioManager::audioOutputWorker() {
                 double sampleVal = (v1 + v2 + v3) * syllable * vocalTremolo * 18000.0 * vol;
                 buf[i] = static_cast<int16_t>(qBound(-32000.0, sampleVal, 32000.0));
             }
+            waveHeaders[currentBuf].dwFlags &= ~WHDR_DONE;
+            waveOutWrite(hWaveOut, &waveHeaders[currentBuf], sizeof(WAVEHDR));
+            currentBuf = (currentBuf + 1) % NUM_BUFFERS;
         } else if (type == 1) {
             for (int i = 0; i < SAMPLES_PER_BUFFER; ++i) {
                 songTick++;
@@ -771,11 +984,10 @@ void AudioManager::audioOutputWorker() {
                 double sampleVal = (lead * pluck + bass) * 16000.0 * vol;
                 buf[i] = static_cast<int16_t>(qBound(-32000.0, sampleVal, 32000.0));
             }
+            waveHeaders[currentBuf].dwFlags &= ~WHDR_DONE;
+            waveOutWrite(hWaveOut, &waveHeaders[currentBuf], sizeof(WAVEHDR));
+            currentBuf = (currentBuf + 1) % NUM_BUFFERS;
         }
-
-        waveHeaders[currentBuf].dwFlags &= ~WHDR_DONE;
-        waveOutWrite(hWaveOut, &waveHeaders[currentBuf], sizeof(WAVEHDR));
-        currentBuf = (currentBuf + 1) % NUM_BUFFERS;
     }
 
     waveOutReset(hWaveOut);
@@ -783,6 +995,79 @@ void AudioManager::audioOutputWorker() {
         waveOutUnprepareHeader(hWaveOut, &waveHeaders[i], sizeof(WAVEHDR));
     }
     waveOutClose(hWaveOut);
+    m_audioThreadRunning = false;
+#else
+    int sampleRate = m_playbackSampleRate.load();
+    if (sampleRate <= 0) sampleRate = 16000;
+
+    auto &pulse = PulseAudioHelper::instance();
+    pa_buffer_attr ba;
+    ba.maxlength = static_cast<uint32_t>(-1);
+    uint32_t bytesPerSec = static_cast<uint32_t>(sampleRate) * sizeof(int16_t);
+    ba.tlength = bytesPerSec / 10;
+    ba.prebuf = static_cast<uint32_t>(-1);
+    ba.minreq = bytesPerSec / 20;
+    ba.fragsize = static_cast<uint32_t>(-1);
+
+    pa_simple *s = pulse.createStream(1, sampleRate, 1, &ba);
+    if (!s) {
+        qDebug() << "[AudioManager] Could not open PulseAudio playback stream";
+        m_audioThreadRunning = false;
+        m_audioPlaying = false;
+        QMetaObject::invokeMethod(this, &AudioManager::handlePlaybackFinished, Qt::QueuedConnection);
+        return;
+    }
+
+    const int SAMPLES_PER_BUFFER = 800;
+    std::vector<int16_t> buf(SAMPLES_PER_BUFFER, 0);
+
+    while (m_audioThreadRunning && m_audioPlaying) {
+        int type = m_audioType.load();
+        double speed = m_playbackSpeedAtomic.load();
+        double vol = m_volumeAtomic.load();
+
+        if (type == 2) {
+            size_t sampleIdx = 0;
+            size_t totalSamples = 0;
+            {
+                std::lock_guard<std::mutex> lock(m_audioMutex);
+                sampleIdx = m_playbackFileSampleIndex.load();
+                totalSamples = m_playbackFilePcm.size();
+                for (int i = 0; i < SAMPLES_PER_BUFFER; ++i) {
+                    if (sampleIdx < totalSamples) {
+                        double val = static_cast<double>(m_playbackFilePcm[sampleIdx]) * vol;
+                        buf[i] = static_cast<int16_t>(qBound(-32767.0, val, 32767.0));
+                        sampleIdx += (speed >= 1.9 ? 2 : (speed >= 1.4 ? (i % 2 == 0 ? 2 : 1) : 1));
+                    } else {
+                        buf[i] = 0;
+                    }
+                }
+                m_playbackFileSampleIndex.store(sampleIdx);
+            }
+
+            if (pulse.write(s, buf.data(), buf.size() * sizeof(int16_t)) < 0) {
+                break;
+            }
+
+            if (sampleIdx >= totalSamples && totalSamples > 0) {
+                pulse.drain(s);
+                m_audioPlaying = false;
+                QMetaObject::invokeMethod(this, &AudioManager::handlePlaybackFinished, Qt::QueuedConnection);
+                break;
+            }
+        } else {
+            for (int i = 0; i < SAMPLES_PER_BUFFER; ++i) {
+                buf[i] = 0;
+            }
+            if (pulse.write(s, buf.data(), buf.size() * sizeof(int16_t)) < 0) {
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    }
+
+    pulse.drain(s);
+    pulse.freeStream(s);
     m_audioThreadRunning = false;
 #endif
 }
@@ -802,24 +1087,43 @@ void AudioManager::playAudio(const QString &messageId, const QString &audioUrl, 
         return;
     }
 
+    QString localPath = audioUrl;
+    if (localPath.startsWith("file:///")) {
+        localPath = QUrl(localPath).toLocalFile();
+    } else if (localPath.startsWith("file://")) {
+        localPath = localPath.mid(7);
+    }
+
     if (m_currentPlayingId != messageId) {
-        QString localPath = audioUrl;
-        if (localPath.startsWith("file:///")) {
-            localPath = QUrl(localPath).toLocalFile();
-        }
-        
+        QString mediaDir = NeoNect::Storage::StoragePathResolver::mediaDirectory(sUrl, sUser);
+        QString canonMediaDir = QDir(mediaDir).canonicalPath();
         QString baseDir = NeoNect::Storage::StoragePathResolver::cacheDirectory(sUrl, sUser);
         QString expectedRoot = QDir(baseDir + "/voice_notes").canonicalPath();
+        QString accountDir = NeoNect::Storage::StoragePathResolver::accountDirectory(sUrl, sUser);
+        QString canonAccountDir = QDir(accountDir).canonicalPath();
+        QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+        QString canonSpoolDir = QDir(spoolDir).canonicalPath();
 
         QFileInfo fi(localPath);
         if (!fi.exists()) {
-            qWarning() << "[AudioManager] Audio file does not exist:" << localPath;
+            qWarning() << "[AudioManager] Audio file does not exist";
             return;
         }
 
         QString canonPath = fi.canonicalFilePath();
-        if (expectedRoot.isEmpty() || (!canonPath.startsWith(expectedRoot + "/") && canonPath != expectedRoot)) {
-            qWarning() << "[AudioManager] Cannot play audio outside of authenticated voice-note directory.";
+        bool isAllowed = false;
+        if (!canonMediaDir.isEmpty() && (canonPath.startsWith(canonMediaDir + "/") || canonPath == canonMediaDir)) {
+            isAllowed = true;
+        } else if (!expectedRoot.isEmpty() && (canonPath.startsWith(expectedRoot + "/") || canonPath == expectedRoot)) {
+            isAllowed = true;
+        } else if (!canonAccountDir.isEmpty() && (canonPath.startsWith(canonAccountDir + "/") || canonPath == canonAccountDir)) {
+            isAllowed = true;
+        } else if (!canonSpoolDir.isEmpty() && (canonPath.startsWith(canonSpoolDir + "/") || canonPath == canonSpoolDir)) {
+            isAllowed = true;
+        }
+
+        if (!isAllowed) {
+            qWarning() << "[AudioManager] Cannot play audio outside of authenticated storage boundary.";
             return;
         }
 
@@ -842,6 +1146,7 @@ void AudioManager::playAudio(const QString &messageId, const QString &audioUrl, 
                 if (loadWavFile(localPath, loadedPcm, sampleRate)) {
                     std::lock_guard<std::mutex> lock(m_audioMutex);
                     m_playbackFilePcm = std::move(loadedPcm);
+                    m_playbackSampleRate.store(sampleRate > 0 ? sampleRate : 16000);
                     m_audioType = 2;
                     if (!m_playbackFilePcm.empty() && sampleRate > 0) {
                         m_totalDuration = static_cast<int>((m_playbackFilePcm.size() * 1000) / sampleRate);
@@ -939,8 +1244,18 @@ void AudioManager::onPlaybackTimerTick() {
         }
 #endif
     } else {
-        int increment = static_cast<int>(50 * m_playbackSpeed);
-        m_currentPosition += increment;
+        if (m_audioType == 2) {
+            int rate = m_playbackSampleRate.load();
+            if (rate > 0) {
+                m_currentPosition = static_cast<int>((m_playbackFileSampleIndex.load() * 1000) / rate);
+            } else {
+                int increment = static_cast<int>(50 * m_playbackSpeed);
+                m_currentPosition += increment;
+            }
+        } else {
+            int increment = static_cast<int>(50 * m_playbackSpeed);
+            m_currentPosition += increment;
+        }
     }
 
     if (m_totalDuration > 0) {
@@ -950,20 +1265,34 @@ void AudioManager::onPlaybackTimerTick() {
     }
 
     if (m_currentPosition >= m_totalDuration) {
-        m_currentPosition = m_totalDuration;
-        m_playbackProgress = 1.0;
-        m_isPlaying = false;
-        m_audioPlaying = false;
-        m_playbackTimer->stop();
-        stopMci();
-        stopAudioPlaybackThread();
-        QString finishedId = m_currentPlayingId;
-        m_currentPlayingId.clear();
-        emit playbackProgressChanged();
-        emit playbackStateChanged();
-        emit playbackFinished(finishedId);
-        return;
+        if (m_audioType != 2) {
+            handlePlaybackFinished();
+            return;
+        } else {
+            m_currentPosition = m_totalDuration;
+            m_playbackProgress = 1.0;
+            if (!m_audioThreadRunning.load()) {
+                handlePlaybackFinished();
+                return;
+            }
+        }
     }
 
     emit playbackProgressChanged();
+}
+
+void AudioManager::handlePlaybackFinished() {
+    if (!m_isPlaying && m_currentPlayingId.isEmpty()) return;
+    m_currentPosition = m_totalDuration;
+    m_playbackProgress = 1.0;
+    m_isPlaying = false;
+    m_audioPlaying = false;
+    m_playbackTimer->stop();
+    stopMci();
+    stopAudioPlaybackThread();
+    QString finishedId = m_currentPlayingId;
+    m_currentPlayingId.clear();
+    emit playbackProgressChanged();
+    emit playbackStateChanged();
+    emit playbackFinished(finishedId);
 }

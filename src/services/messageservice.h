@@ -58,33 +58,12 @@ public:
      * @brief Destructor. Cleans up active file transfer timers.
      */
     ~MessageService() override;
-        void setFileTransferManager(std::shared_ptr<FileTransferManager> ftm) {
-        m_fileTransferManager = ftm;
-        if (ftm) {
-            connect(ftm.get(), &FileTransferManager::transferProgress, this, [this](const QString& tid, int pct) {
-                if (m_outgoingMessages.contains(tid)) {
-                    QString cid = m_outgoingMessages[tid].conversationId;
-                    emit mediaTransferProgress(cid, tid, pct / 100.0, 0, 100);
-                }
-            });
-            connect(ftm.get(), &FileTransferManager::transferCompleted, this, [this](const QString& tid, const QString& path) {
-                if (m_outgoingMessages.contains(tid)) {
-                    m_outgoingMessages[tid].status = Domain::MessageStatus::Sent;
-                    QString cid = m_outgoingMessages[tid].conversationId;
-                    this->updateMessageStatusAsync(tid, Domain::MessageStatus::Sent, "", this, nullptr);
-                    emit messageUpdated(cid, tid, "sent", "");
-                }
-            });
-            connect(ftm.get(), &FileTransferManager::transferFailed, this, [this](const QString& tid, const QString& err) {
-                if (m_outgoingMessages.contains(tid)) {
-                    m_outgoingMessages[tid].status = Domain::MessageStatus::Failed;
-                    QString cid = m_outgoingMessages[tid].conversationId;
-                    this->updateMessageStatusAsync(tid, Domain::MessageStatus::Failed, err, this, nullptr);
-                    emit messageUpdated(cid, tid, "failed", err);
-                }
-            });
-        }
-    }
+    void setFileTransferManager(std::shared_ptr<FileTransferManager> ftm);
+
+    using DeviceResolverCallback = std::function<void(const QString& targetUser, std::function<void(std::optional<QString>)> resultCb)>;
+    using MultiDeviceResolverCallback = std::function<void(const QString& targetUser, std::function<void(QStringList)> resultCb)>;
+    void setDeviceResolverCallback(DeviceResolverCallback cb) { m_deviceResolver = std::move(cb); }
+    void setMultiDeviceResolverCallback(MultiDeviceResolverCallback cb) { m_multiDeviceResolver = std::move(cb); }
 
     /**
      * @brief Dispatches an outbound message from the local user.
@@ -228,7 +207,7 @@ signals:
     /** @brief Emitted when a new message is added to a conversation. */
     void messageAdded(const QString &conversationId, const QVariantMap &message);
     /** @brief Emitted when a message's delivery status or error text updates. */
-    void messageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText);
+    void messageUpdated(const QString &conversationId, const QString &messageId, const QString &status, const QString &errorText, const QString &mediaUrl = QString());
     /** @brief Emitted when a message is removed from a conversation. */
     void messageRemoved(const QString &conversationId, const QString &messageId);
     /** @brief Emitted during active media transfer to update progress bars. */
@@ -243,12 +222,14 @@ signals:
     void transmitMessage(const NeoNect::Domain::Message &msg);
 
 private:
-    /** @brief Converts Domain::Message to QVariantMap for QML consumption. */
     QVariantMap domainToVariantMap(const Domain::Message &msg) const;
+    void startPeerTransfers(const QString &receiver, const QString &localPath, const QString &msgId);
+    void reconcileMediaMessage(Domain::Message &dm, NeoNect::Core::Messaging::IMessageStorage *storage);
 
-    /** @brief Local SQLite message repository. */
     std::weak_ptr<NeoNect::Core::Messaging::IMessageStorage> m_storage;
     std::shared_ptr<FileTransferManager> m_fileTransferManager;
+    DeviceResolverCallback m_deviceResolver;
+    MultiDeviceResolverCallback m_multiDeviceResolver;
     QThread* m_workerThread = nullptr;
     QObject* m_workerContext = nullptr;
 
@@ -259,18 +240,14 @@ private:
     void deleteMessageAsync(const QString &id);
     void getMessagesAsync(const QString &conversationId, int limit, qint64 beforeTimestamp, const QObject* context, std::function<void(const std::vector<Domain::Message>&)> callback);
     void getMessageByIdAsync(const QString &id, const QObject* context, std::function<void(const std::optional<Domain::Message>&)> callback);
-    /** @brief Active authenticated username. */
     QString m_currentUserId;
     QString m_serverUrl;
-    /** @brief In-flight outgoing messages pending ACK. */
     QHash<QString, Domain::Message> m_outgoingMessages;
-    /** @brief In-flight outbound media request proposals. */
+    QHash<QString, Domain::Message> m_incomingMessages;
     QHash<QString, Domain::Message> m_pendingMediaRequests;
-    /** @brief Inbound media requests awaiting user approval. */
     QHash<QString, Domain::Message> m_receivedMediaRequests;
-    /** @brief Active simulated media transfer progress timers. */
     QHash<QString, QTimer*> m_activeTransfers;
-    /** @brief Stealth mode flag suppressing presence/receipts. */
+    QHash<QString, QString> m_completedTransfers;
     bool m_isInvisible{false};
 };
 

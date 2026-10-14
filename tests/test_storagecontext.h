@@ -9,4 +9,5 @@ private slots:
     void testDeterministicRecreation();
     void testIsolation();
     void testResourceCleanup();
+    void testE2EEInitFailurePropagated();
 };

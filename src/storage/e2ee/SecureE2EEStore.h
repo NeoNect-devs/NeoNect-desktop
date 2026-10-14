@@ -15,6 +15,7 @@ public:
     ~SecureE2EEStore() override;
 
     ServiceResult<std::monostate> initialize(const QString& dbPath, const QString& profileId) override;
+    bool isOpen() const override;
     void close() override;
     ServiceResult<std::monostate> closeAndWipeDatabase() override;
 
@@ -32,6 +33,7 @@ public:
 
     ServiceResult<std::monostate> saveSession(const E2EESession& session) override;
     ServiceResult<E2EESession> getSession(const QString& session_id) override;
+    ServiceResult<std::vector<E2EESession>> getSessionsForDevice(const QString& device_id) override;
     
     ServiceResult<std::monostate> updateSessionState(const SessionUpdateTx& tx) override;
 
@@ -48,7 +50,7 @@ public:
 private:
     std::shared_ptr<IMasterKeyProvider> m_keyProvider;
     sqlite3* m_db{nullptr};
-    std::mutex m_mutex;
+    mutable std::mutex m_mutex;
     QString m_dbPath;
 
     ServiceResult<std::monostate> executeSql(const char* sql);

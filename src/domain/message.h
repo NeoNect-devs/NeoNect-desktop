@@ -43,13 +43,14 @@ namespace Domain {
  * 5. Two-phase media requests and call invites use `Pending`, `Accepted`, or `Declined`.
  */
 enum class MessageStatus {
-    Sending,   /**< Message created locally; currently awaiting network transmission or relay ACK. */
-    Sent,      /**< Message successfully transmitted to relay server or delivered to peer. */
-    Failed,    /**< Message transmission failed (network timeout, encryption error, or server rejection). */
-    Seen,      /**< Read receipt acknowledged by the remote peer. */
-    Pending,   /**< Two-phase media transfer or call invite awaiting recipient acceptance. */
-    Accepted,  /**< Two-phase media transfer or invitation accepted by recipient. */
-    Declined   /**< Two-phase media transfer or invitation explicitly rejected by recipient. */
+    Sending,
+    Downloading,
+    Sent,
+    Failed,
+    Seen,
+    Pending,
+    Accepted,
+    Declined
 };
 
 /**

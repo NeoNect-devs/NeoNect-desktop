@@ -25,7 +25,11 @@ public:
      *
      * Pre-auth rule: MUST NOT be called if username is empty.
      */
-    StorageContext(const QString& serverUrl, const QString& username, bool isMockMode, const QString& profile = QString());
+    StorageContext(const QString& serverUrl,
+                   const QString& username,
+                   bool isMockMode,
+                   const QString& profile = QString(),
+                   std::shared_ptr<IOSSecretStore> customSecretStore = nullptr);
     ~StorageContext();
 
     StorageContext(const StorageContext&) = delete;
@@ -36,10 +40,13 @@ public:
     std::weak_ptr<Core::Messaging::MessageQueue> messageQueue() const { return m_messageQueue; }
     QString serverUrl() const { return m_serverUrl; }
     QString username() const { return m_username; }
+    bool isE2EEReady() const { return m_secureStore && m_secureStore->isOpen(); }
+    QString e2eeError() const { return m_e2eeError; }
 
 private:
     QString m_serverUrl;
     QString m_username;
+    QString m_e2eeError;
     
     std::shared_ptr<IOSSecretStore> m_secretStore;
     std::shared_ptr<MasterKeyProvider> m_keyProvider;
