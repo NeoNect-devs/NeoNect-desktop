@@ -15,8 +15,12 @@
 #include "../storage/StoragePathResolver.h"
 #include <iostream>
 
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_UNIX)
+#include <cstdio>
 #include <unistd.h>
+#include <fcntl.h>
+#elif defined(Q_OS_WIN)
+#include <windows.h>
 #endif
 
 namespace NeoNect {
@@ -98,6 +102,61 @@ QByteArray FileTransferManager::generateNonce(uint32_t chunkIndex, uint8_t domai
     uint32_t beIdx = qToBigEndian(chunkIndex);
     memcpy(nonce.data() + 8, &beIdx, 4);
     return nonce;
+}
+
+static bool atomicReplaceFile(const QString& sourcePath, const QString& targetPath) {
+#if defined(Q_OS_UNIX)
+    return ::rename(QFile::encodeName(sourcePath).constData(), QFile::encodeName(targetPath).constData()) == 0;
+#elif defined(Q_OS_WIN)
+    return MoveFileExW(
+        reinterpret_cast<LPCWSTR>(sourcePath.utf16()),
+        reinterpret_cast<LPCWSTR>(targetPath.utf16()),
+        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+    return QFile::rename(sourcePath, targetPath);
+#endif
+}
+
+qint64 FileTransferManager::writeData(QFile& file, const char* data, qint64 len, const QString& stage) {
+    if (m_writeHook) {
+        return m_writeHook(file, data, len, stage);
+    }
+    return file.write(data, len);
+}
+
+bool FileTransferManager::replaceFile(const QString& sourcePath, const QString& targetPath) {
+    if (m_replaceHook) {
+        return m_replaceHook(sourcePath, targetPath);
+    }
+    return atomicReplaceFile(sourcePath, targetPath);
+}
+
+bool FileTransferManager::syncDirectory(const QString& dirPath) {
+    if (m_dirSyncHook) {
+        return m_dirSyncHook(dirPath);
+    }
+#ifdef Q_OS_LINUX
+    int dirFd = ::open(QFile::encodeName(dirPath).constData(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (dirFd < 0) {
+        return false;
+    }
+    int syncErr = 0;
+    int res = 0;
+    if (m_fsyncHook) {
+        res = m_fsyncHook(dirFd, syncErr);
+    } else {
+        res = ::fsync(dirFd);
+        syncErr = errno;
+    }
+    int closeRes = ::close(dirFd);
+    if (res != 0 && syncErr != EINVAL && syncErr != ENOTSUP) {
+        return false;
+    }
+    if (closeRes != 0) {
+        return false;
+    }
+#endif
+    return true;
 }
 
 static constexpr qint32 MAX_CHUNK_COUNT = 2000000;
@@ -289,12 +348,22 @@ void FileTransferManager::startTransfer(const QString& recipientUser, const QStr
                 emit transferFailed(transferIdStr, "Spool encryption failed");
                 return;
             }
-            spool.write(encRes.ciphertext);
-            spool.write(encRes.tag.data);
+            if (writeData(spool, encRes.ciphertext.constData(), encRes.ciphertext.size(), QStringLiteral("sender_spool_ciphertext")) != encRes.ciphertext.size() ||
+                writeData(spool, reinterpret_cast<const char*>(encRes.tag.data.data()), encRes.tag.data.size(), QStringLiteral("sender_spool_tag")) != encRes.tag.data.size()) {
+                spool.close();
+                spool.remove();
+                emit transferFailed(transferIdStr, "Spool write failed");
+                return;
+            }
         }
         totalHash = fileHash.result();
 
-        spool.flush();
+        if (!spool.flush()) {
+            spool.close();
+            spool.remove();
+            emit transferFailed(transferIdStr, "Spool flush failed");
+            return;
+        }
 #ifdef Q_OS_LINUX
         if (fdatasync(spool.handle()) != 0) {
             spool.close();
@@ -1000,8 +1069,13 @@ NeoNect::VoidResult FileTransferManager::handleEnvelope(const QByteArray &envelo
     qint64 offset = static_cast<qint64>(chunkEnv.chunkIndex) * (static_cast<qint64>(tx.chunk_size) + 16);
     if (!spool.seek(offset)) return VoidResult::fail("Seek failed");
     
-    spool.write(chunkEnv.ciphertext);
-    spool.write(chunkEnv.tag.data);
+    if (writeData(spool, chunkEnv.ciphertext.constData(), chunkEnv.ciphertext.size(), QStringLiteral("receiver_spool_ciphertext")) != chunkEnv.ciphertext.size() ||
+        writeData(spool, chunkEnv.tag.data.constData(), chunkEnv.tag.data.size(), QStringLiteral("receiver_spool_tag")) != chunkEnv.tag.data.size()) {
+        spool.close();
+        store->updateFileTransferStatus(tid, tx.peer_device_id, "failed");
+        emit transferFailed(tid, "Spool write failed");
+        return VoidResult::fail("Spool write failed");
+    }
     if (!spool.flush()) {
         spool.close();
         store->updateFileTransferStatus(tid, tx.peer_device_id, "failed");
@@ -1121,13 +1195,37 @@ void FileTransferManager::reconstructFile(const Storage::E2EEFileTransfer& tx) {
             emit transferFailed(tx.transfer_id, "Chunk decryption failed during reconstruction");
             return;
         }
-        out.write(decRes.value());
+        if (writeData(out, decRes.value().constData(), decRes.value().size(), QStringLiteral("reconstruct_plaintext")) != decRes.value().size()) {
+            out.close();
+            out.remove();
+            spool.close();
+            auto store = m_store.lock();
+            if (store) store->updateFileTransferStatus(tx.transfer_id, tx.peer_device_id, "failed");
+            emit transferFailed(tx.transfer_id, "Output write failed");
+            return;
+        }
         fileHash.addData(decRes.value());
     }
 
-    out.flush();
+    spool.close();
+
+    if (!out.flush()) {
+        out.close();
+        out.remove();
+        auto store = m_store.lock();
+        if (store) store->updateFileTransferStatus(tx.transfer_id, tx.peer_device_id, "failed");
+        emit transferFailed(tx.transfer_id, "Output flush failed");
+        return;
+    }
 #ifdef Q_OS_LINUX
-    fdatasync(out.handle());
+    if (fdatasync(out.handle()) != 0) {
+        out.close();
+        out.remove();
+        auto store = m_store.lock();
+        if (store) store->updateFileTransferStatus(tx.transfer_id, tx.peer_device_id, "failed");
+        emit transferFailed(tx.transfer_id, "Output durability failed");
+        return;
+    }
 #endif
     out.close();
 
@@ -1162,19 +1260,19 @@ void FileTransferManager::reconstructFile(const Storage::E2EEFileTransfer& tx) {
         outPath = canonicalDir + "/" + tx.transfer_id + (fn.isEmpty() ? ".final" : ("_" + QFileInfo(fn).fileName()));
     }
 
-    if (QFile::exists(outPath)) {
-        QFile::remove(outPath);
-    }
-    if (!QFile::rename(tmpOutPath, outPath)) {
+    if (!replaceFile(tmpOutPath, outPath)) {
         QFile::remove(tmpOutPath);
         auto store = m_store.lock();
         if (store) store->updateFileTransferStatus(tx.transfer_id, tx.peer_device_id, "failed");
         emit transferFailed(tx.transfer_id, "Failed to finalize output file");
         return;
     }
-    
-    if (tx.spool_path != outPath && QFile::exists(tx.spool_path)) {
-        QFile::remove(tx.spool_path);
+
+    if (!syncDirectory(canonicalDir)) {
+        auto store = m_store.lock();
+        if (store) store->updateFileTransferStatus(tx.transfer_id, tx.peer_device_id, "failed");
+        emit transferFailed(tx.transfer_id, "Directory synchronization failed");
+        return;
     }
 
     auto store = m_store.lock();
@@ -1182,9 +1280,21 @@ void FileTransferManager::reconstructFile(const Storage::E2EEFileTransfer& tx) {
         Storage::E2EEFileTransfer updatedTx = tx;
         updatedTx.status = "completed";
         updatedTx.spool_path = outPath;
-        store->saveFileTransfer(updatedTx);
+        auto saveRes = store->saveFileTransfer(updatedTx);
+        if (!saveRes.success) {
+            store->updateFileTransferStatus(tx.transfer_id, tx.peer_device_id, "failed");
+            emit transferFailed(tx.transfer_id, "Failed to persist transfer completion");
+            return;
+        }
+    } else {
+        emit transferFailed(tx.transfer_id, "Store not available to complete transfer");
+        return;
     }
-    
+
+    if (tx.spool_path != outPath && QFile::exists(tx.spool_path)) {
+        QFile::remove(tx.spool_path);
+    }
+
     emit transferCompleted(tx.transfer_id, outPath);
 }
 

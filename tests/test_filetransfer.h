@@ -51,4 +51,12 @@ private slots:
     void testReq41_MicroChunkingRejectedAndSmallFilesAllowed();
     void testReq42_MalformedAndTraversalTransferIdsRejected();
     void testReq43_CapabilityUnknownFailsClosedUntilValid();
+    void testReq44_ShortChunkWriteRejectedAndBitsetUnmodified();
+    void testReq45_SpoolWriteIoErrorRejectedAndBitsetUnmodified();
+    void testReq46_AtomicDestinationReplacementPreservesExistingOnFailure();
+    void testReq47_AtomicDestinationReplacementOverwritesExistingAtomically();
+    void testReq48_SqliteCompletionFailureDoesNotReportSuccessAndPreservesSpool();
+    void testReq49_FailedChunkWriteRetriedAndCompleted();
+    void testReq50_DirectorySyncFailurePreservesSpoolAndReportsError();
+    void testReq51_SyncDirectoryPolicyOpenPermissionFsyncEioAndUnsupported();
 };

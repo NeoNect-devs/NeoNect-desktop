@@ -4,6 +4,7 @@
 #include <QByteArray>
 #include <QJsonObject>
 #include <memory>
+#include <functional>
 #include <QUuid>
 #include <QFile>
 #include <QDir>
@@ -47,6 +48,17 @@ public:
         m_retryTimer->setInterval(timerIntervalMs);
     }
 
+    using WriteHook = std::function<qint64(QFile& file, const char* data, qint64 len, const QString& stage)>;
+    using ReplaceHook = std::function<bool(const QString& sourcePath, const QString& targetPath)>;
+    using DirSyncHook = std::function<bool(const QString& dirPath)>;
+    using FsyncHook = std::function<int(int fd, int& err)>;
+
+    void setWriteHookForTesting(WriteHook hook) { m_writeHook = std::move(hook); }
+    void setReplaceHookForTesting(ReplaceHook hook) { m_replaceHook = std::move(hook); }
+    void setDirSyncHookForTesting(DirSyncHook hook) { m_dirSyncHook = std::move(hook); }
+    void setFsyncHookForTesting(FsyncHook hook) { m_fsyncHook = std::move(hook); }
+    bool syncDirectory(const QString& dirPath);
+
     // Handle incoming data-plane chunk (IIncomingEnvelopeHandler)
     NeoNect::VoidResult handleEnvelope(const QByteArray &envelope, const Transport::TransportMetadata &metadata) override;
 
@@ -73,6 +85,8 @@ private:
     QByteArray deriveRecipientDeviceKey(const QByteArray& rootKey, const QByteArray& transferId, const QString& recipientDeviceId);
     
     QByteArray generateNonce(uint32_t chunkIndex, uint8_t domain = 0);
+    qint64 writeData(QFile& file, const char* data, qint64 len, const QString& stage);
+    bool replaceFile(const QString& sourcePath, const QString& targetPath);
 
 private slots:
     void onRetryTimeout();
@@ -94,6 +108,10 @@ private:
     QMap<QString, bool> m_completedTransferIds;
     QTimer* m_retryTimer;
     int m_inFlightTimeoutMs = 10000;
+    WriteHook m_writeHook;
+    ReplaceHook m_replaceHook;
+    DirSyncHook m_dirSyncHook;
+    FsyncHook m_fsyncHook;
 };
 
 } // namespace Services

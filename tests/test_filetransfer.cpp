@@ -61,7 +61,9 @@ public:
     ServiceResult<E2EESession> getSession(const QString&) override { return ServiceResult<E2EESession>::fail(""); }
     ServiceResult<std::monostate> updateSessionState(const SessionUpdateTx&) override { return ServiceResult<std::monostate>::ok(std::monostate{}); }
     
+    bool failSaveFileTransfer = false;
     ServiceResult<std::monostate> saveFileTransfer(const E2EEFileTransfer& transfer) override {
+        if (failSaveFileTransfer) return ServiceResult<std::monostate>::fail("Injected saveFileTransfer failure");
         m_transfers[transfer.transfer_id + "_" + transfer.peer_device_id] = transfer;
         return ServiceResult<std::monostate>::ok(std::monostate{});
     }
@@ -2064,4 +2066,547 @@ void TestFileTransfer::testReq43_CapabilityUnknownFailsClosedUntilValid() {
 
     ctx.ftm->handleControlMessage("senderUser", "senderDevice", startValid);
     QCOMPARE(spyFailed.count(), 0);
+}
+
+void TestFileTransfer::testReq44_ShortChunkWriteRejectedAndBitsetUnmodified() {
+    FTTestContext ctx;
+    QJsonObject startMsg;
+    startMsg["type"] = "file_start";
+    startMsg["transfer_id"] = "44000000-0000-0000-0000-000000000001";
+    startMsg["file_size"] = 100;
+    startMsg["chunk_size"] = 100;
+    startMsg["chunk_count"] = 1;
+    startMsg["total_hash"] = QString(QByteArray(32, 'a').toBase64());
+    startMsg["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMsg);
+
+    QString key = "44000000-0000-0000-0000-000000000001_senderDevice";
+    QVERIFY(ctx.store->m_transfers.contains(key));
+    auto t = ctx.store->m_transfers[key];
+
+    ctx.store->updateBitsetCalled = false;
+    ctx.sentChatMsgs.clear();
+
+    ctx.ftm->setWriteHookForTesting([](QFile& file, const char* data, qint64 len, const QString& stage) -> qint64 {
+        if (stage == QStringLiteral("receiver_spool_ciphertext")) {
+            return file.write(data, len / 2);
+        }
+        return file.write(data, len);
+    });
+
+    QByteArray tidBin = QUuid("{" + t.transfer_id + "}").toRfc4122();
+    QByteArray info = ctx.settings->deviceId().toUtf8();
+    auto deviceKeyBytes = ctx.crypto->HkdfSha256(t.root_file_key, tidBin, info, 32);
+    QByteArray nonce(12, 0); nonce[0] = 1;
+    auto encRes = ctx.crypto->AeadEncrypt(toAeadKey(deviceKeyBytes), Crypto::AeadNonce{nonce}, QByteArray(100, 'X'), tidBin);
+
+    Crypto::Wire::FileChunkEnvelope env;
+    env.version = 1;
+    env.transferId = tidBin;
+    env.chunkIndex = 0;
+    env.ciphertext = encRes.ciphertext;
+    env.tag.data = encRes.tag.data;
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "senderUser";
+    meta.senderDeviceId = "senderDevice";
+    auto res = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env), meta);
+
+    QVERIFY(!res.success);
+    QCOMPARE(res.message, QString("Spool write failed"));
+    QVERIFY(ctx.sentChatMsgs.empty());
+    QVERIFY(!ctx.store->updateBitsetCalled);
+    auto afterTx = ctx.store->m_transfers[key];
+    QCOMPARE(afterTx.status, QString("failed"));
+    QVERIFY(afterTx.received_bitset.isEmpty() || afterTx.received_bitset.at(0) == '\0');
+
+    if (QFile::exists(t.spool_path)) QFile::remove(t.spool_path);
+}
+
+void TestFileTransfer::testReq45_SpoolWriteIoErrorRejectedAndBitsetUnmodified() {
+    FTTestContext ctx;
+    QJsonObject startMsg;
+    startMsg["type"] = "file_start";
+    startMsg["transfer_id"] = "45000000-0000-0000-0000-000000000001";
+    startMsg["file_size"] = 100;
+    startMsg["chunk_size"] = 100;
+    startMsg["chunk_count"] = 1;
+    startMsg["total_hash"] = QString(QByteArray(32, 'a').toBase64());
+    startMsg["root_file_key"] = QString(QByteArray(32, 'k').toBase64());
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMsg);
+
+    QString key = "45000000-0000-0000-0000-000000000001_senderDevice";
+    QVERIFY(ctx.store->m_transfers.contains(key));
+    auto t = ctx.store->m_transfers[key];
+
+    ctx.store->updateBitsetCalled = false;
+    ctx.sentChatMsgs.clear();
+
+    ctx.ftm->setWriteHookForTesting([](QFile& file, const char* data, qint64 len, const QString& stage) -> qint64 {
+        if (stage == QStringLiteral("receiver_spool_tag")) {
+            return -1;
+        }
+        return file.write(data, len);
+    });
+
+    QByteArray tidBin = QUuid("{" + t.transfer_id + "}").toRfc4122();
+    QByteArray info = ctx.settings->deviceId().toUtf8();
+    auto deviceKeyBytes = ctx.crypto->HkdfSha256(t.root_file_key, tidBin, info, 32);
+    QByteArray nonce(12, 0); nonce[0] = 1;
+    auto encRes = ctx.crypto->AeadEncrypt(toAeadKey(deviceKeyBytes), Crypto::AeadNonce{nonce}, QByteArray(100, 'X'), tidBin);
+
+    Crypto::Wire::FileChunkEnvelope env;
+    env.version = 1;
+    env.transferId = tidBin;
+    env.chunkIndex = 0;
+    env.ciphertext = encRes.ciphertext;
+    env.tag.data = encRes.tag.data;
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "senderUser";
+    meta.senderDeviceId = "senderDevice";
+    auto res = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env), meta);
+
+    QVERIFY(!res.success);
+    QCOMPARE(res.message, QString("Spool write failed"));
+    QVERIFY(ctx.sentChatMsgs.empty());
+    QVERIFY(!ctx.store->updateBitsetCalled);
+    auto afterTx = ctx.store->m_transfers[key];
+    QCOMPARE(afterTx.status, QString("failed"));
+    QVERIFY(afterTx.received_bitset.isEmpty() || afterTx.received_bitset.at(0) == '\0');
+
+    if (QFile::exists(t.spool_path)) QFile::remove(t.spool_path);
+}
+
+void TestFileTransfer::testReq46_AtomicDestinationReplacementPreservesExistingOnFailure() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+    QSignalSpy spyCompleted(ctx.ftm.get(), &FileTransferManager::transferCompleted);
+
+    QString tid = "46000000-0000-0000-0000-000000000001";
+    QByteArray payload(100, 'A');
+    QByteArray expectedHash = QCryptographicHash::hash(payload, QCryptographicHash::Sha256);
+    QByteArray rootKey = ctx.crypto->RandomBytes(32);
+
+    QJsonObject startMsg;
+    startMsg["type"] = "file_start";
+    startMsg["transfer_id"] = tid;
+    startMsg["file_name"] = "dest46.txt";
+    startMsg["file_size"] = 100;
+    startMsg["chunk_size"] = 100;
+    startMsg["chunk_count"] = 1;
+    startMsg["total_hash"] = QString(expectedHash.toBase64());
+    startMsg["root_file_key"] = QString(rootKey.toBase64());
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMsg);
+
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+    QString outPath = spoolDir + "/" + tid + "_dest46.txt";
+    QFile existingDest(outPath);
+    QVERIFY(existingDest.open(QIODevice::WriteOnly));
+    existingDest.write("PRESERVED_CONTENT_BEFORE_RENAME");
+    existingDest.close();
+
+    ctx.ftm->setReplaceHookForTesting([](const QString&, const QString&) -> bool {
+        return false;
+    });
+
+    QByteArray tidBin = QUuid("{" + tid + "}").toRfc4122();
+    QByteArray info = ctx.settings->deviceId().toUtf8();
+    auto deviceKeyBytes = ctx.crypto->HkdfSha256(rootKey, tidBin, info, 32);
+    QByteArray nonce(12, 0); nonce[0] = 1;
+    auto encRes = ctx.crypto->AeadEncrypt(toAeadKey(deviceKeyBytes), Crypto::AeadNonce{nonce}, payload, tidBin);
+
+    Crypto::Wire::FileChunkEnvelope env;
+    env.version = 1;
+    env.transferId = tidBin;
+    env.chunkIndex = 0;
+    env.ciphertext = encRes.ciphertext;
+    env.tag.data = encRes.tag.data;
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "senderUser";
+    meta.senderDeviceId = "senderDevice";
+    auto res = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env), meta);
+    QVERIFY(res.success);
+
+    QCOMPARE(spyCompleted.count(), 0);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Failed to finalize output file"));
+
+    QVERIFY(QFile::exists(outPath));
+    QFile readDest(outPath);
+    QVERIFY(readDest.open(QIODevice::ReadOnly));
+    QCOMPARE(readDest.readAll(), QByteArray("PRESERVED_CONTENT_BEFORE_RENAME"));
+    readDest.close();
+
+    QFile::remove(outPath);
+    QString recvSpool = spoolDir + "/" + tid + ".recv.spool";
+    if (QFile::exists(recvSpool)) QFile::remove(recvSpool);
+}
+
+void TestFileTransfer::testReq47_AtomicDestinationReplacementOverwritesExistingAtomically() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+    QSignalSpy spyCompleted(ctx.ftm.get(), &FileTransferManager::transferCompleted);
+
+    QString tid = "47000000-0000-0000-0000-000000000001";
+    QByteArray payload(100, 'B');
+    QByteArray expectedHash = QCryptographicHash::hash(payload, QCryptographicHash::Sha256);
+    QByteArray rootKey = ctx.crypto->RandomBytes(32);
+
+    QJsonObject startMsg;
+    startMsg["type"] = "file_start";
+    startMsg["transfer_id"] = tid;
+    startMsg["file_name"] = "dest47.txt";
+    startMsg["file_size"] = 100;
+    startMsg["chunk_size"] = 100;
+    startMsg["chunk_count"] = 1;
+    startMsg["total_hash"] = QString(expectedHash.toBase64());
+    startMsg["root_file_key"] = QString(rootKey.toBase64());
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMsg);
+
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+    QString outPath = spoolDir + "/" + tid + "_dest47.txt";
+    QFile existingDest(outPath);
+    QVERIFY(existingDest.open(QIODevice::WriteOnly));
+    existingDest.write("STALE_CONTENT_TO_BE_OVERWRITTEN");
+    existingDest.close();
+
+    QByteArray tidBin = QUuid("{" + tid + "}").toRfc4122();
+    QByteArray info = ctx.settings->deviceId().toUtf8();
+    auto deviceKeyBytes = ctx.crypto->HkdfSha256(rootKey, tidBin, info, 32);
+    QByteArray nonce(12, 0); nonce[0] = 1;
+    auto encRes = ctx.crypto->AeadEncrypt(toAeadKey(deviceKeyBytes), Crypto::AeadNonce{nonce}, payload, tidBin);
+
+    Crypto::Wire::FileChunkEnvelope env;
+    env.version = 1;
+    env.transferId = tidBin;
+    env.chunkIndex = 0;
+    env.ciphertext = encRes.ciphertext;
+    env.tag.data = encRes.tag.data;
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "senderUser";
+    meta.senderDeviceId = "senderDevice";
+    auto res = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env), meta);
+    QVERIFY(res.success);
+
+    QCOMPARE(spyFailed.count(), 0);
+    QCOMPARE(spyCompleted.count(), 1);
+    QCOMPARE(spyCompleted.first().at(1).toString(), outPath);
+
+    QVERIFY(QFile::exists(outPath));
+    QFile readDest(outPath);
+    QVERIFY(readDest.open(QIODevice::ReadOnly));
+    QCOMPARE(readDest.readAll(), payload);
+    readDest.close();
+
+    QFile::remove(outPath);
+}
+
+void TestFileTransfer::testReq48_SqliteCompletionFailureDoesNotReportSuccessAndPreservesSpool() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+    QSignalSpy spyCompleted(ctx.ftm.get(), &FileTransferManager::transferCompleted);
+
+    QString tid = "48000000-0000-0000-0000-000000000001";
+    QByteArray payload(100, 'C');
+    QByteArray expectedHash = QCryptographicHash::hash(payload, QCryptographicHash::Sha256);
+    QByteArray rootKey = ctx.crypto->RandomBytes(32);
+
+    QJsonObject startMsg;
+    startMsg["type"] = "file_start";
+    startMsg["transfer_id"] = tid;
+    startMsg["file_name"] = "dest48.txt";
+    startMsg["file_size"] = 100;
+    startMsg["chunk_size"] = 100;
+    startMsg["chunk_count"] = 1;
+    startMsg["total_hash"] = QString(expectedHash.toBase64());
+    startMsg["root_file_key"] = QString(rootKey.toBase64());
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMsg);
+
+    QString key = tid + "_senderDevice";
+    QVERIFY(ctx.store->m_transfers.contains(key));
+    auto t = ctx.store->m_transfers[key];
+    QVERIFY(QFile::exists(t.spool_path));
+
+    ctx.store->failSaveFileTransfer = true;
+
+    QByteArray tidBin = QUuid("{" + tid + "}").toRfc4122();
+    QByteArray info = ctx.settings->deviceId().toUtf8();
+    auto deviceKeyBytes = ctx.crypto->HkdfSha256(rootKey, tidBin, info, 32);
+    QByteArray nonce(12, 0); nonce[0] = 1;
+    auto encRes = ctx.crypto->AeadEncrypt(toAeadKey(deviceKeyBytes), Crypto::AeadNonce{nonce}, payload, tidBin);
+
+    Crypto::Wire::FileChunkEnvelope env;
+    env.version = 1;
+    env.transferId = tidBin;
+    env.chunkIndex = 0;
+    env.ciphertext = encRes.ciphertext;
+    env.tag.data = encRes.tag.data;
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "senderUser";
+    meta.senderDeviceId = "senderDevice";
+    auto res = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env), meta);
+    QVERIFY(res.success);
+
+    QCOMPARE(spyCompleted.count(), 0);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Failed to persist transfer completion"));
+
+    QVERIFY(QFile::exists(t.spool_path));
+    auto afterTx = ctx.store->m_transfers[key];
+    QCOMPARE(afterTx.status, QString("failed"));
+
+    QFile::remove(t.spool_path);
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+    QString outPath = spoolDir + "/" + tid + "_dest48.txt";
+    if (QFile::exists(outPath)) QFile::remove(outPath);
+}
+
+void TestFileTransfer::testReq49_FailedChunkWriteRetriedAndCompleted() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+    QSignalSpy spyCompleted(ctx.ftm.get(), &FileTransferManager::transferCompleted);
+
+    QString tid = "49000000-0000-0000-0000-000000000001";
+    QByteArray p0(100, 'A');
+    QByteArray p1(100, 'B');
+    QByteArray payload = p0 + p1;
+    QByteArray expectedHash = QCryptographicHash::hash(payload, QCryptographicHash::Sha256);
+    QByteArray rootKey = ctx.crypto->RandomBytes(32);
+
+    QJsonObject startMsg;
+    startMsg["type"] = "file_start";
+    startMsg["transfer_id"] = tid;
+    startMsg["file_name"] = "dest49.txt";
+    startMsg["file_size"] = 200;
+    startMsg["chunk_size"] = 100;
+    startMsg["chunk_count"] = 2;
+    startMsg["total_hash"] = QString(expectedHash.toBase64());
+    startMsg["root_file_key"] = QString(rootKey.toBase64());
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMsg);
+
+    QString key = tid + "_senderDevice";
+    QVERIFY(ctx.store->m_transfers.contains(key));
+    auto t = ctx.store->m_transfers[key];
+    QVERIFY(QFile::exists(t.spool_path));
+
+    ctx.store->updateBitsetCalled = false;
+    ctx.sentChatMsgs.clear();
+
+    ctx.ftm->setWriteHookForTesting([](QFile& file, const char* data, qint64 len, const QString& stage) -> qint64 {
+        if (stage == QStringLiteral("receiver_spool_ciphertext")) {
+            return file.write(data, len / 2);
+        }
+        return file.write(data, len);
+    });
+
+    QByteArray tidBin = QUuid("{" + tid + "}").toRfc4122();
+    QByteArray info = ctx.settings->deviceId().toUtf8();
+    auto deviceKeyBytes = ctx.crypto->HkdfSha256(rootKey, tidBin, info, 32);
+
+    QByteArray nonce0(12, 0); nonce0[0] = 1;
+    uint32_t be0 = 0;
+    memcpy(nonce0.data() + 8, &be0, 4);
+    auto encRes0 = ctx.crypto->AeadEncrypt(toAeadKey(deviceKeyBytes), Crypto::AeadNonce{nonce0}, p0, tidBin);
+
+    Crypto::Wire::FileChunkEnvelope env0;
+    env0.version = 1;
+    env0.transferId = tidBin;
+    env0.chunkIndex = 0;
+    env0.ciphertext = encRes0.ciphertext;
+    env0.tag.data = encRes0.tag.data;
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "senderUser";
+    meta.senderDeviceId = "senderDevice";
+    auto res = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env0), meta);
+
+    QVERIFY(!res.success);
+    QCOMPARE(res.message, QString("Spool write failed"));
+    QVERIFY(ctx.sentChatMsgs.empty());
+    QVERIFY(!ctx.store->updateBitsetCalled);
+    auto failedTx = ctx.store->m_transfers[key];
+    QCOMPARE(failedTx.status, QString("failed"));
+    QVERIFY(failedTx.received_bitset.isEmpty() || failedTx.received_bitset.at(0) == '\0');
+    QCOMPARE(spyCompleted.count(), 0);
+    QCOMPARE(spyFailed.count(), 1);
+
+    bool resumed = ctx.ftm->resumeIncomingTransfer(tid, "senderUser");
+    QVERIFY(resumed);
+    QCOMPARE(ctx.store->m_transfers[key].status, QString("active"));
+    QCOMPARE(ctx.sentChatMsgs.size(), 1);
+    QCOMPARE(ctx.sentChatMsgs[0].msg["type"].toString(), QString("file_nack"));
+    QCOMPARE(ctx.sentChatMsgs[0].msg["chunk_indexes"].toArray().size(), 2);
+    QCOMPARE(ctx.sentChatMsgs[0].msg["chunk_indexes"].toArray()[0].toInt(), 0);
+    QCOMPARE(ctx.sentChatMsgs[0].msg["chunk_indexes"].toArray()[1].toInt(), 1);
+
+    ctx.sentChatMsgs.clear();
+    ctx.store->updateBitsetCalled = false;
+    ctx.ftm->setWriteHookForTesting(nullptr);
+
+    auto resRetry0 = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env0), meta);
+    QVERIFY(resRetry0.success);
+
+    QFile spoolCheck(t.spool_path);
+    QVERIFY(spoolCheck.open(QIODevice::ReadOnly));
+    QVERIFY(spoolCheck.seek(0));
+    QCOMPARE(spoolCheck.read(encRes0.ciphertext.size()), encRes0.ciphertext);
+    QCOMPARE(spoolCheck.read(16), encRes0.tag.data);
+    spoolCheck.close();
+
+    QVERIFY(ctx.store->updateBitsetCalled);
+    auto afterChunk0Tx = ctx.store->m_transfers[key];
+    QVERIFY(!afterChunk0Tx.received_bitset.isEmpty() && (afterChunk0Tx.received_bitset.at(0) & 1) != 0);
+
+    QCOMPARE(ctx.sentChatMsgs.size(), 1);
+    QCOMPARE(ctx.sentChatMsgs[0].msg["type"].toString(), QString("file_ack"));
+    QCOMPARE(ctx.sentChatMsgs[0].msg["chunk_index"].toInt(), 0);
+    QCOMPARE(spyCompleted.count(), 0);
+
+    ctx.sentChatMsgs.clear();
+    QByteArray nonce1(12, 0); nonce1[0] = 1;
+    uint32_t be1 = qToBigEndian((uint32_t)1);
+    memcpy(nonce1.data() + 8, &be1, 4);
+    auto encRes1 = ctx.crypto->AeadEncrypt(toAeadKey(deviceKeyBytes), Crypto::AeadNonce{nonce1}, p1, tidBin);
+
+    Crypto::Wire::FileChunkEnvelope env1;
+    env1.version = 1;
+    env1.transferId = tidBin;
+    env1.chunkIndex = 1;
+    env1.ciphertext = encRes1.ciphertext;
+    env1.tag.data = encRes1.tag.data;
+
+    auto res1 = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env1), meta);
+    QVERIFY(res1.success);
+
+    QCOMPARE(ctx.sentChatMsgs.size(), 1);
+    QCOMPARE(ctx.sentChatMsgs[0].msg["type"].toString(), QString("file_ack"));
+    QCOMPARE(ctx.sentChatMsgs[0].msg["chunk_index"].toInt(), 1);
+
+    QCOMPARE(spyCompleted.count(), 1);
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+    QString outPath = spoolDir + "/" + tid + "_dest49.txt";
+    QVERIFY(QFile::exists(outPath));
+    QFile readFinal(outPath);
+    QVERIFY(readFinal.open(QIODevice::ReadOnly));
+    QCOMPARE(readFinal.readAll(), payload);
+    readFinal.close();
+
+    QFile::remove(outPath);
+    if (QFile::exists(t.spool_path)) QFile::remove(t.spool_path);
+}
+
+void TestFileTransfer::testReq50_DirectorySyncFailurePreservesSpoolAndReportsError() {
+    FTTestContext ctx;
+    QSignalSpy spyFailed(ctx.ftm.get(), &FileTransferManager::transferFailed);
+    QSignalSpy spyCompleted(ctx.ftm.get(), &FileTransferManager::transferCompleted);
+
+    QString tid = "50000000-0000-0000-0000-000000000001";
+    QByteArray payload(100, 'S');
+    QByteArray expectedHash = QCryptographicHash::hash(payload, QCryptographicHash::Sha256);
+    QByteArray rootKey = ctx.crypto->RandomBytes(32);
+
+    QJsonObject startMsg;
+    startMsg["type"] = "file_start";
+    startMsg["transfer_id"] = tid;
+    startMsg["file_name"] = "dest50.txt";
+    startMsg["file_size"] = 100;
+    startMsg["chunk_size"] = 100;
+    startMsg["chunk_count"] = 1;
+    startMsg["total_hash"] = QString(expectedHash.toBase64());
+    startMsg["root_file_key"] = QString(rootKey.toBase64());
+    ctx.ftm->handleControlMessage("senderUser", "senderDevice", startMsg);
+
+    QString key = tid + "_senderDevice";
+    QVERIFY(ctx.store->m_transfers.contains(key));
+    auto t = ctx.store->m_transfers[key];
+    QVERIFY(QFile::exists(t.spool_path));
+
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+    QString outPath = spoolDir + "/" + tid + "_dest50.txt";
+    QFile initialDest(outPath);
+    QVERIFY(initialDest.open(QIODevice::WriteOnly));
+    initialDest.write("INITIAL_STALE_DESTINATION_CONTENT");
+    initialDest.close();
+
+    ctx.ftm->setDirSyncHookForTesting([](const QString&) -> bool {
+        return false;
+    });
+
+    QByteArray tidBin = QUuid("{" + tid + "}").toRfc4122();
+    QByteArray info = ctx.settings->deviceId().toUtf8();
+    auto deviceKeyBytes = ctx.crypto->HkdfSha256(rootKey, tidBin, info, 32);
+    QByteArray nonce(12, 0); nonce[0] = 1;
+    auto encRes = ctx.crypto->AeadEncrypt(toAeadKey(deviceKeyBytes), Crypto::AeadNonce{nonce}, payload, tidBin);
+
+    Crypto::Wire::FileChunkEnvelope env;
+    env.version = 1;
+    env.transferId = tidBin;
+    env.chunkIndex = 0;
+    env.ciphertext = encRes.ciphertext;
+    env.tag.data = encRes.tag.data;
+
+    Transport::TransportMetadata meta;
+    meta.senderUserId = "senderUser";
+    meta.senderDeviceId = "senderDevice";
+    auto res = ctx.ftm->handleEnvelope(Crypto::Wire::WireCodec::encodeFileChunkEnvelope(env), meta);
+    QVERIFY(res.success);
+
+    QCOMPARE(spyCompleted.count(), 0);
+    QCOMPARE(spyFailed.count(), 1);
+    QCOMPARE(spyFailed.takeFirst().at(1).toString(), QString("Directory synchronization failed"));
+
+    QVERIFY(QFile::exists(t.spool_path));
+    auto afterTx = ctx.store->m_transfers[key];
+    QCOMPARE(afterTx.status, QString("failed"));
+
+    QVERIFY(QFile::exists(outPath));
+    QFile readDest(outPath);
+    QVERIFY(readDest.open(QIODevice::ReadOnly));
+    QCOMPARE(readDest.readAll(), payload);
+    readDest.close();
+
+    QFile::remove(outPath);
+    QFile::remove(t.spool_path);
+}
+
+void TestFileTransfer::testReq51_SyncDirectoryPolicyOpenPermissionFsyncEioAndUnsupported() {
+    FTTestContext ctx;
+    QString spoolDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/spool";
+    QDir().mkpath(spoolDir);
+
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    QFile::setPermissions(tempDir.path(), QFileDevice::WriteUser | QFileDevice::ExeUser);
+    bool openPermRes = ctx.ftm->syncDirectory(tempDir.path());
+    QFile::setPermissions(tempDir.path(), QFileDevice::ReadUser | QFileDevice::WriteUser | QFileDevice::ExeUser);
+    QVERIFY(!openPermRes);
+
+    ctx.ftm->setFsyncHookForTesting([](int, int& err) -> int {
+        err = EIO;
+        return -1;
+    });
+    bool fsyncEioRes = ctx.ftm->syncDirectory(spoolDir);
+    QVERIFY(!fsyncEioRes);
+
+    ctx.ftm->setFsyncHookForTesting([](int, int& err) -> int {
+        err = EINVAL;
+        return -1;
+    });
+    bool einvalRes = ctx.ftm->syncDirectory(spoolDir);
+    QVERIFY(einvalRes);
+
+    ctx.ftm->setFsyncHookForTesting([](int, int& err) -> int {
+        err = ENOTSUP;
+        return -1;
+    });
+    bool enotsupRes = ctx.ftm->syncDirectory(spoolDir);
+    QVERIFY(enotsupRes);
+
+    ctx.ftm->setFsyncHookForTesting(nullptr);
+    bool normalRes = ctx.ftm->syncDirectory(spoolDir);
+    QVERIFY(normalRes);
 }
